@@ -1,0 +1,29 @@
+id: opal_vanguard_whitener
+label: Opal Whitener (x^7 + x^4 + 1)
+category: '[Opal Vanguard]'
+
+templates:
+  imports: import sys; import os; sys.path.append(os.path.join(os.path.dirname(os.path.abspath('__file__')), '../src')); from whitener import whitener
+  make: whitener(mask=${mask}, seed=${seed})
+
+parameters:
+- id: mask
+  label: Mask
+  dtype: int
+  default: '0x48'
+- id: seed
+  label: Seed
+  dtype: int
+  default: '0x7F'
+
+inputs:
+- label: in
+  domain: stream
+  dtype: byte
+
+outputs:
+- label: out
+  domain: stream
+  dtype: byte
+
+file_format: 1

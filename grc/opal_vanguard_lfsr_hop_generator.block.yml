@@ -1,0 +1,35 @@
+id: opal_vanguard_lfsr_hop_generator
+label: LFSR Hop Generator
+category: '[Opal Vanguard]'
+
+templates:
+  imports: import sys; import os; sys.path.append(os.path.join(os.path.dirname(os.path.abspath('__file__')), '../src')); from hop_controller import lfsr_hop_generator
+  make: lfsr_hop_generator(seed=${seed}, num_channels=${num_channels}, center_freq=${center_freq}, channel_spacing=${channel_spacing})
+
+parameters:
+- id: seed
+  label: LFSR Seed
+  dtype: int
+  default: '1'
+- id: num_channels
+  label: Number of Channels
+  dtype: int
+  default: '50'
+- id: center_freq
+  label: Center Frequency (Hz)
+  dtype: float
+  default: '915e6'
+- id: channel_spacing
+  label: Channel Spacing (Hz)
+  dtype: float
+  default: '500e3'
+
+inputs:
+- label: trigger
+  domain: message
+
+outputs:
+- label: freq
+  domain: message
+
+file_format: 1

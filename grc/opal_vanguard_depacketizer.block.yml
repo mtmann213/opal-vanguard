@@ -1,0 +1,26 @@
+id: opal_vanguard_depacketizer
+label: Opal Depacketizer
+category: '[Opal Vanguard]'
+
+templates:
+  imports: import sys; import os; sys.path.append(os.path.join(os.path.dirname(os.path.abspath('__file__')), '../src')); from depacketizer import depacketizer
+  make: depacketizer(use_fec=${use_fec})
+
+parameters:
+- id: use_fec
+  label: Use Reed-Solomon FEC
+  dtype: bool
+  default: 'True'
+  options: ['True', 'False']
+  option_labels: [Enabled, Disabled]
+
+inputs:
+- label: in
+  domain: stream
+  dtype: byte
+
+outputs:
+- label: out
+  domain: message
+
+file_format: 1

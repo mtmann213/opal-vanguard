@@ -1,0 +1,33 @@
+id: opal_vanguard_msg_to_rotator
+label: Message to Rotator
+category: '[Opal Vanguard]'
+
+templates:
+  imports: import sys; import os; sys.path.append(os.path.join(os.path.dirname(os.path.abspath('__file__')), '../src')); from msg_to_rotator import msg_to_rotator
+  make: msg_to_rotator(parent=self, rotator_id=${rotator}, center_freq=${center_freq}, samp_rate=${samp_rate}, invert=${invert})
+
+parameters:
+- id: center_freq
+  label: Center Frequency
+  dtype: float
+  default: '915e6'
+- id: samp_rate
+  label: Sample Rate
+  dtype: float
+  default: '2e6'
+- id: rotator
+  label: Rotator Block ID
+  dtype: string
+  default: '"rot_tx"'
+- id: invert
+  label: Invert Phase
+  dtype: bool
+  default: 'False'
+  options: ['True', 'False']
+  option_labels: [Enabled, Disabled]
+
+inputs:
+- label: msg
+  domain: message
+
+file_format: 1

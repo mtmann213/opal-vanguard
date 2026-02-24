@@ -1,0 +1,16 @@
+# Compiled Python modules
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Data files (recorded signals, binary dumps)
+*.bin
+*.cf32
+*.fc32
+*.cfile
+*.dat
+binary
+
+# Temporary and build files
+build/
+.grc_history
