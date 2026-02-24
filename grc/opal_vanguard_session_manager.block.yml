@@ -1,0 +1,29 @@
+id: opal_vanguard_session_manager
+label: Opal Session Manager
+category: '[Opal Vanguard]'
+
+templates:
+  imports: import sys; import os; sys.path.append(os.path.join(os.path.dirname(os.path.abspath('__file__')), '../src')); from session_manager import session_manager
+  make: session_manager(initial_seed=${initial_seed})
+
+parameters:
+- id: initial_seed
+  label: Initial LFSR Seed
+  dtype: int
+  default: '0xACE'
+
+inputs:
+- label: msg_in
+  domain: message
+- label: data_in
+  domain: message
+
+outputs:
+- label: pkt_out
+  domain: message
+- label: data_out
+  domain: message
+- label: set_seed
+  domain: message
+
+file_format: 1

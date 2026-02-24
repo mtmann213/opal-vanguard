@@ -27,6 +27,8 @@ parameters:
 inputs:
 - label: trigger
   domain: message
+- label: set_seed
+  domain: message
 
 outputs:
 - label: freq

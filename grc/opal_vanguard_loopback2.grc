@@ -37,7 +37,7 @@ blocks:
   id: variable
   parameters:
     comment: ''
-    value: '915e6'
+    value: 915e6
   states:
     bus_sink: false
     bus_source: false
@@ -49,7 +49,7 @@ blocks:
   id: variable
   parameters:
     comment: ''
-    value: '500e3'
+    value: 500e3
   states:
     bus_sink: false
     bus_source: false
@@ -114,12 +114,11 @@ blocks:
     maxoutbuf: '0'
     minoutbuf: '0'
     use_fec: 'True'
-    use_whitening: 'True'
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [928, 532.0]
+    coordinate: [760, 540.0]
     rotation: 0
     state: true
 - name: gfsk_demod
@@ -130,16 +129,19 @@ blocks:
     comment: ''
     freq_error: '0.0'
     gain_mu: '0.175'
+    log: 'False'
     maxoutbuf: '0'
     minoutbuf: '0'
     mu: '0.5'
     omega_relative_limit: '0.005'
     samples_per_symbol: '4'
+    sensitivity: '1.0'
+    verbose: 'False'
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [304, 492.0]
+    coordinate: [328, 500.0]
     rotation: 0
     state: true
 - name: gfsk_mod
@@ -150,10 +152,12 @@ blocks:
     bt: '0.35'
     comment: ''
     do_unpack: 'False'
+    log: 'False'
     maxoutbuf: '0'
     minoutbuf: '0'
     samples_per_symbol: '4'
     sensitivity: '1.0'
+    verbose: 'False'
   states:
     bus_sink: false
     bus_source: false
@@ -167,7 +171,7 @@ blocks:
     affinity: ''
     alias: ''
     center_freq: center_freq
-    channel_spacing: '50e3'
+    channel_spacing: 50e3
     comment: ''
     maxoutbuf: '0'
     minoutbuf: '0'
@@ -194,7 +198,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [8, 244.0]
+    coordinate: [96, 236.0]
     rotation: 180
     state: enabled
 - name: import_path
@@ -225,7 +229,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [352, 420.0]
+    coordinate: [480, 364.0]
     rotation: 0
     state: true
 - name: opal_vanguard_msg_to_rotator_0
@@ -242,7 +246,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [352, 308.0]
+    coordinate: [480, 268.0]
     rotation: 0
     state: true
 - name: packetizer
@@ -254,12 +258,11 @@ blocks:
     maxoutbuf: '0'
     minoutbuf: '0'
     use_fec: 'True'
-    use_whitening: 'True'
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [216, 148.0]
+    coordinate: [296, 108.0]
     rotation: 0
     state: enabled
 - name: pdu_pdu_to_tagged_stream_0
@@ -583,7 +586,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [8, 404.0]
+    coordinate: [96, 424.0]
     rotation: 0
     state: true
 - name: unpacker
@@ -604,26 +607,26 @@ blocks:
     state: enabled
 
 connections:
+- [blocks_throttle_0, '0', qtgui_freq_sink_x_0, '0']
+- [blocks_throttle_0, '0', qtgui_waterfall_sink_x_0, '0']
+- [blocks_throttle_0, '0', rot_rx, '0']
+- [byte_to_float, '0', qtgui_time_sink_x_0, '0']
+- [depacketizer, out, session_manager, msg_in]
+- [gfsk_demod, '0', byte_to_float, '0']
+- [gfsk_demod, '0', depacketizer, '0']
 - [gfsk_mod, '0', rot_tx, '0']
-- [hop_ctrl, freq, opal_vanguard_msg_to_rotator_0, msg]
 - [hop_ctrl, freq, msg_to_rot_rx, msg]
+- [hop_ctrl, freq, opal_vanguard_msg_to_rotator_0, msg]
 - [hop_timer, strobe, hop_ctrl, trigger]
 - [packetizer, out, pdu_pdu_to_tagged_stream_0, pdus]
 - [pdu_pdu_to_tagged_stream_0, '0', unpacker, '0']
 - [pdu_strobe, strobe, session_manager, data_in]
-- [session_manager, pkt_out, packetizer, in]
-- [session_manager, data_out, blocks_message_debug_0, print]
-- [session_manager, set_seed, hop_ctrl, set_seed]
-- [rot_tx, '0', blocks_throttle_0, '0']
-- [blocks_throttle_0, '0', qtgui_freq_sink_x_0, '0']
-- [blocks_throttle_0, '0', qtgui_waterfall_sink_x_0, '0']
-- [blocks_throttle_0, '0', rot_rx, '0']
-- [unpacker, '0', gfsk_mod, '0']
 - [rot_rx, '0', gfsk_demod, '0']
-- [gfsk_demod, '0', byte_to_float, '0']
-- [gfsk_demod, '0', depacketizer, '0']
-- [byte_to_float, '0', qtgui_time_sink_x_0, '0']
-- [depacketizer, out, session_manager, msg_in]
+- [rot_tx, '0', blocks_throttle_0, '0']
+- [session_manager, data_out, blocks_message_debug_0, print]
+- [session_manager, pkt_out, packetizer, in]
+- [session_manager, set_seed, hop_ctrl, trigger]
+- [unpacker, '0', gfsk_mod, '0']
 
 metadata:
   file_format: 1

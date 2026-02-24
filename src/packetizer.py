@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Opal Vanguard - Packetizer Block (with RS FEC & Internal Whitening)
+# Opal Vanguard - Packetizer Block (Handshake Support)
 
 import numpy as np
 from gnuradio import gr
@@ -52,8 +52,14 @@ class packetizer(gr.basic_block):
 
     def handle_msg(self, msg):
         if not pmt.is_pdu(msg): return
+        meta = pmt.car(msg)
         payload_bytes = bytes(pmt.u8vector_elements(pmt.cdr(msg)))
         
+        # Get message type from metadata (default to 0x00: DATA)
+        msg_type = 0x00
+        if pmt.dict_has_key(meta, pmt.intern("type")):
+            msg_type = pmt.to_long(pmt.dict_ref(meta, pmt.intern("type"), pmt.from_long(0)))
+
         # 1. FEC
         if self.use_fec:
             pad_len = (11 - (len(payload_bytes) % 11)) % 11
@@ -61,9 +67,9 @@ class packetizer(gr.basic_block):
             fec_payload = b''
             for i in range(0, len(padded), 11):
                 chunk = padded[i:i+11]
+                nib = [(b >> 4) & 0x0F for b in chunk] + [b & 0x0F for b in chunk] # This logic was slightly off, fixing:
                 nib = []
-                for b in chunk:
-                    nib.extend([(b >> 4) & 0x0F, b & 0x0F])
+                for b in chunk: nib.extend([(b >> 4) & 0x0F, b & 0x0F])
                 all_nib = self.rs.encode(nib[:11]) + self.rs.encode(nib[11:])
                 for j in range(0, 30, 2):
                     fec_payload += bytes([(all_nib[j] << 4) | all_nib[j+1]])
@@ -71,16 +77,16 @@ class packetizer(gr.basic_block):
         else:
             payload = payload_bytes
             
-        # 2. Assemble Header + Payload + CRC
-        header_payload_crc = struct.pack('B', len(payload_bytes) & 0xFF) + payload
-        header_payload_crc += self.crc16_ccitt(header_payload_crc)
+        # 2. Assemble Type + Length + Payload + CRC
+        data_to_whiten = struct.pack('BB', msg_type, len(payload_bytes) & 0xFF) + payload
+        data_to_whiten += self.crc16_ccitt(data_to_whiten)
         
-        # 3. Whiten only the data part (not preamble/sync)
+        # 3. Whiten
         if self.use_whitening:
-            data_part = self.whiten(header_payload_crc)
+            data_part = self.whiten(data_to_whiten)
         else:
-            data_part = header_payload_crc
+            data_part = data_to_whiten
             
         packet = self.preamble + self.syncword + data_part
-        out_msg = pmt.cons(pmt.car(msg), pmt.init_u8vector(len(packet), list(packet)))
+        out_msg = pmt.cons(meta, pmt.init_u8vector(len(packet), list(packet)))
         self.message_port_pub(pmt.intern("out"), out_msg)
