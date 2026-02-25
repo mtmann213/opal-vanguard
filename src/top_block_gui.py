@@ -116,6 +116,13 @@ class OpalVanguardVisualDemo(gr.top_block, Qt.QWidget):
         self.time_slider.valueChanged.connect(self.update_channel)
         self.ctrl_panel.addWidget(self.time_slider)
 
+        self.burst_val = Qt.QLabel("Burst Jammer: OFF")
+        self.ctrl_panel.addWidget(self.burst_val)
+        self.burst_slider = Qt.QSlider(Qt.Qt.Horizontal)
+        self.burst_slider.setRange(0, 100) # 0% to 100% duty cycle of jamming
+        self.burst_slider.valueChanged.connect(self.update_channel)
+        self.ctrl_panel.addWidget(self.burst_slider)
+
         self.clear_btn = Qt.QPushButton("Clear Mission Log")
         self.clear_btn.clicked.connect(lambda: self.text_out.clear())
         self.ctrl_panel.addWidget(self.clear_btn)
@@ -217,17 +224,19 @@ class OpalVanguardVisualDemo(gr.top_block, Qt.QWidget):
 
     def update_channel(self):
         noise = self.noise_slider.value() / 100.0
-        # Normalize freq offset: 100 on slider = 0.01 relative to samp_rate
-        # For 10MHz samp_rate, 0.001 offset is 10kHz.
         freq_off_rel = self.freq_slider.value() / 10000.0
         freq_off_hz = freq_off_rel * self.samp_rate
         epsilon = self.time_slider.value() / 1000.0
+        burst = self.burst_slider.value()
         
         self.noise_val.setText(f"Noise Voltage: {noise:.2f} V")
         self.freq_val.setText(f"Freq Offset: {freq_off_hz/1e3:.1f} kHz")
         self.time_val.setText(f"Timing Offset: {epsilon:.3f}")
+        self.burst_val.setText(f"Burst Jammer: {burst}% Intensity")
         
-        self.channel.set_noise_voltage(noise)
+        # In a real burst jammer we'd use a vector source, 
+        # but increasing the floor noise is a good approximation for stress.
+        self.channel.set_noise_voltage(noise + (burst/100.0 * 0.5))
         self.channel.set_frequency_offset(freq_off_rel)
         self.channel.set_timing_offset(epsilon)
 

@@ -6,7 +6,7 @@ This document provides a deep-dive into the "Opal Vanguard" framework—a high-f
 ---
 
 ## 1. System Overview
-Opal Vanguard is designed to provide robust, asynchronous messaging in the 900MHz ISM band. It utilizes **GFSK modulation** combined with **Reed-Solomon FEC** and **Fibonacci LFSR hopping** to maintain link integrity in high-interference environments.
+Opal Vanguard is designed to provide robust, asynchronous messaging in the 900MHz ISM band. It utilizes **GFSK modulation** combined with **Reed-Solomon FEC**, **Matrix Interleaving**, and **Fibonacci LFSR hopping** to maintain link integrity in high-interference environments.
 
 ### Core Technical Specs:
 *   **Sample Rate:** 10 MHz (Simulation) / 2 MHz (Hardware Target)
@@ -14,6 +14,7 @@ Opal Vanguard is designed to provide robust, asynchronous messaging in the 900MH
 *   **Channels:** 50 Channels, 150 kHz spacing
 *   **Hopping:** Fibonacci LFSR (16-bit), 200ms dwell time
 *   **FEC:** Reed-Solomon (15, 11) over GF(16)
+*   **Interleaving:** 8-row Matrix Interleaver
 *   **Whitening:** $x^7 + x^4 + 1$ LFSR
 
 ---
@@ -31,14 +32,16 @@ The Packetizer transforms the raw payload into a structured frame:
 1.  **CRC16-CCITT:** Calculates a 2-byte checksum over the (Type + Length + Payload).
 2.  **Reed-Solomon FEC:** 
     *   Splits the data into 11-byte chunks (22 nibbles).
-    *   Encodes each into two 15-nibble RS blocks.
-    *   Result: 11 bytes of data expand to 15 bytes of protected symbols.
-3.  **Whitening:** Data is XORed with a bitstream from an $x^7+x^4+1$ LFSR to ensure high transition density (DC balance).
-4.  **Framing:**
+    *   Encodes each into two 15-nibble RS blocks (30 nibbles total per 11 bytes).
+3.  **Matrix Interleaving (NEW):** 
+    *   **Reasoning:** Wireless channels suffer from "Burst Errors". A 5-byte burst can overwhelm a single FEC block.
+    *   **Logic:** Shuffles symbols using an 8-row matrix. This spreads a localized "burst" of noise across multiple FEC blocks, allowing the RS-FEC to repair the damage.
+4.  **Whitening:** Data is XORed with a bitstream from an $x^7+x^4+1$ LFSR.
+5.  **Framing:**
     *   **Preamble (8 bytes):** `0xAAAA...` for demodulator clock recovery.
     *   **Syncword (4 bytes):** `0x3D4C5B6A` for frame alignment.
-    *   **Data Part:** Type + Length + Protected Payload + CRC.
-    *   **Tail (32 bytes):** `0x00...` to flush the GFSK demodulator's internal FIR filters.
+    *   **Data Part:** Type + Length + Protected/Interleaved Payload + CRC.
+    *   **Tail (32 bytes):** `0x00...` to flush the GFSK demodulator filters.
 
 ### Step C: Modulation & Hopping (`top_block_gui.py`)
 1.  **GFSK Mod:** Converts the bitstream into complex baseband samples.
@@ -67,7 +70,10 @@ The receiver must "de-hop" and "de-structure" the signal in reverse.
 ### Step B: Bit Recovery (`depacketizer.py`)
 1.  **GFSK Demod:** Uses a quadrature rate-of-change detector and an M&M clock recovery loop to extract bits.
 2.  **Syncword Correlation:** A 32-bit sliding window looks for `0x3D4C5B6A` (or its inverse).
-3.  **Header Parsing:** Once found, it de-whitens the next 2 bytes to determine the packet **Type** and **Length**.
+3.  **De-Interleaving (NEW):**
+    *   **Fixed Block Collection:** Since the packet length byte is itself interleaved, the receiver collects a fixed 120-byte block (maximum frame size) before unshuffling.
+    *   **Reconstruction:** The matrix is re-aligned, and the original header and payload are restored for FEC decoding.
+4.  **Header Parsing:** Once found, it de-whitens the next 2 bytes to determine the packet **Type** and **Length**.
 
 ### Step C: Error Correction & Validation
 1.  **FEC Repair:** 

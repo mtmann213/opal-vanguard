@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Opal Vanguard - Depacketizer Block (Handshake Support)
+# Opal Vanguard - Depacketizer Block (Handshake + Interleaving Support)
 
 import numpy as np
 from gnuradio import gr
@@ -11,13 +11,16 @@ import sys
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from rs_helper import RS1511
+from dsp_helper import MatrixInterleaver
 
 class depacketizer(gr.basic_block):
-    def __init__(self, use_fec=True, use_whitening=True):
+    def __init__(self, use_fec=True, use_whitening=True, use_interleaving=True):
         gr.basic_block.__init__(self, name="depacketizer", in_sig=[np.uint8], out_sig=None)
         self.use_fec = use_fec
         self.use_whitening = use_whitening
+        self.use_interleaving = use_interleaving
         self.rs = RS1511()
+        self.interleaver = MatrixInterleaver(rows=8)
         
         self.message_port_register_out(pmt.intern("out"))
         
@@ -66,6 +69,7 @@ class depacketizer(gr.basic_block):
                     self.state = "COLLECT"
                     self.byte_buf = b''
                     self.bits_in_buf = 0
+                    self.fec_payload_len = 0 # Reset for new packet
                     
             elif self.state == "COLLECT":
                 self.bits_in_buf += 1
@@ -75,66 +79,65 @@ class depacketizer(gr.basic_block):
                         current_byte ^= 0xFF
                     self.byte_buf += bytes([current_byte])
                     
-                    if len(self.byte_buf) == 2: # Type + Len bytes
-                        # Peek at header to get length
+                    # Interleaving Depth: We must collect a fixed block because 
+                    # the length byte itself is shuffled inside the matrix.
+                    # We'll collect 120 bytes (maximum expected frame size).
+                    target_len = 120 if self.use_interleaving else (2 + self.fec_payload_len + 2)
+
+                    # Peek only if NOT interleaved
+                    if not self.use_interleaving and len(self.byte_buf) == 2:
                         data_peek = self.dewhiten(self.byte_buf) if self.use_whitening else self.byte_buf
-                        msg_type, self.payload_len = struct.unpack('BB', data_peek)
-                        print(f"[Depacketizer] Header Parsed - Type: {msg_type}, Len: {self.payload_len}")
-                        
-                        # Safety reset for junk headers
-                        if self.payload_len > 128:
-                            print(f"[Depacketizer] Invalid length {self.payload_len}, resetting.")
-                            self.state = "SEARCH"
-                            return 0
+                        msg_type, plen = struct.unpack('BB', data_peek)
+                        if plen > 128: self.state = "SEARCH"; continue
+                        self.fec_payload_len = ((plen + 10) // 11) * 15 if self.use_fec else plen
 
-                        if self.use_fec:
-                            self.fec_payload_len = ((self.payload_len + 10) // 11) * 15
+                    if len(self.byte_buf) >= target_len:
+                        raw_data = self.dewhiten(self.byte_buf) if self.use_whitening else self.byte_buf
+                        
+                        if self.use_interleaving:
+                            data = self.interleaver.deinterleave(raw_data, len(raw_data))
                         else:
-                            self.fec_payload_len = self.payload_len
-
-                    # Total = 1 (Type) + 1 (Len) + N (Payload) + 2 (CRC)
-                    if len(self.byte_buf) == 2 + self.fec_payload_len + 2:
-                        data = self.dewhiten(self.byte_buf) if self.use_whitening else self.byte_buf
-                        calc_crc = self.crc16_ccitt(data[:-2])
-                        received_crc = struct.unpack('>H', data[-2:])[0]
+                            data = raw_data
                         
-                        if calc_crc == received_crc:
-                            msg_type, plen = struct.unpack('BB', data[:2])
-                            fec_payload = data[2:-2]
-                            print(f"[Depacketizer] CRC PASSED! Type: {msg_type}, Len: {plen}")
+                        # Now parse the header from de-interleaved data
+                        msg_type, plen = struct.unpack('BB', data[:2])
+                        fec_len = ((plen + 10) // 11) * 15 if self.use_fec else plen
+                        
+                        # Verify Packet: Type(1) + Len(1) + FEC_Payload + CRC(2)
+                        total_pkt_len = 2 + fec_len + 2
+                        if total_pkt_len <= len(data):
+                            actual_packet = data[:total_pkt_len]
+                            calc_crc = self.crc16_ccitt(actual_packet[:-2])
+                            received_crc = struct.unpack('>H', actual_packet[-2:])[0]
                             
-                            if self.use_fec:
-                                decoded = b''
-                                for j in range(0, len(fec_payload), 15):
-                                    chunk = fec_payload[j:j+15]
-                                    # Convert 15 bytes to 30 nibbles
-                                    nib = []
-                                    for b in chunk: nib.extend([(b >> 4) & 0x0F, b & 0x0F])
-                                    
-                                    block1 = self.rs.decode(nib[:15])
-                                    block2 = self.rs.decode(nib[15:])
-                                    all_nib = block1 + block2
-                                    
-                                    # Check if FEC actually did something
-                                    if all_nib != nib[:11] + nib[15:15+11]: # Simple check
-                                        pass # We'll do a better comparison
-                                    
-                                    for k in range(0, 22, 2):
-                                        decoded += bytes([(all_nib[k] << 4) | all_nib[k+1]])
-                                payload = decoded[:plen]
+                            if calc_crc == received_crc:
+                                print(f"[Depacketizer] CRC PASSED! Type: {msg_type}, Len: {plen}")
+                                fec_payload = actual_packet[2:-2]
                                 
-                                # If the payload we got from FEC is different from the raw whitened payload, 
-                                # then FEC corrected something.
-                                if payload != data[2:2+plen]:
-                                    print(f"[Depacketizer] FEC REPAIR SUCCESSFUL: Fixed bit errors in Type {msg_type} packet.")
+                                if self.use_fec:
+                                    decoded = b''
+                                    for j in range(0, len(fec_payload), 15):
+                                        chunk = fec_payload[j:j+15]
+                                        nib = []
+                                        for b in chunk: nib.extend([(b >> 4) & 0x0F, b & 0x0F])
+                                        block1 = self.rs.decode(nib[:15])
+                                        block2 = self.rs.decode(nib[15:])
+                                        all_nib = block1 + block2
+                                        for k in range(0, 22, 2):
+                                            decoded += bytes([(all_nib[k] << 4) | all_nib[k+1]])
+                                    payload = decoded[:plen]
+                                    if payload != actual_packet[2:2+plen]:
+                                        print("[Depacketizer] FEC REPAIR SUCCESSFUL.")
+                                else:
+                                    payload = fec_payload
+                                
+                                meta = pmt.make_dict()
+                                meta = pmt.dict_add(meta, pmt.intern("type"), pmt.from_long(msg_type))
+                                self.message_port_pub(pmt.intern("out"), pmt.cons(meta, pmt.init_u8vector(len(payload), list(payload))))
                             else:
-                                payload = fec_payload
-                            
-                            meta = pmt.make_dict()
-                            meta = pmt.dict_add(meta, pmt.intern("type"), pmt.from_long(msg_type))
-                            self.message_port_pub(pmt.intern("out"), pmt.cons(meta, pmt.init_u8vector(len(payload), list(payload))))
-                        else:
-                            print(f"[Depacketizer] CRC FAILED: Calc 0x{calc_crc:04X} != Recv 0x{received_crc:04X}")
+                                # For debug
+                                # print(f"[Depacketizer] CRC FAILED: 0x{calc_crc:04X} vs 0x{received_crc:04X}")
+                                pass
                         
                         self.state = "SEARCH"
 

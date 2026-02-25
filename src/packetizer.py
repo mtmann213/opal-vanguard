@@ -11,13 +11,16 @@ import sys
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from rs_helper import RS1511
+from dsp_helper import MatrixInterleaver
 
 class packetizer(gr.basic_block):
-    def __init__(self, use_fec=True, use_whitening=True):
+    def __init__(self, use_fec=True, use_whitening=True, use_interleaving=True):
         gr.basic_block.__init__(self, name="packetizer", in_sig=None, out_sig=None)
         self.use_fec = use_fec
         self.use_whitening = use_whitening
+        self.use_interleaving = use_interleaving
         self.rs = RS1511()
+        self.interleaver = MatrixInterleaver(rows=8)
         
         self.message_port_register_in(pmt.intern("in"))
         self.set_msg_handler(pmt.intern("in"), self.handle_msg)
@@ -80,6 +83,10 @@ class packetizer(gr.basic_block):
         # 2. Assemble Type + Length + Payload + CRC
         data_to_whiten = struct.pack('BB', msg_type, len(payload_bytes) & 0xFF) + payload
         data_to_whiten += self.crc16_ccitt(data_to_whiten)
+        
+        # 2b. Interleave
+        if self.use_interleaving:
+            data_to_whiten = self.interleaver.interleave(data_to_whiten)
         
         # 3. Whiten
         if self.use_whitening:
