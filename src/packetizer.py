@@ -23,7 +23,7 @@ class packetizer(gr.basic_block):
         self.set_msg_handler(pmt.intern("in"), self.handle_msg)
         self.message_port_register_out(pmt.intern("out"))
         
-        self.preamble = b'\xAA\xAA'
+        self.preamble = b'\xAA' * 8
         self.syncword = b'\x3D\x4C\x5B\x6A'
 
     def whiten(self, data):
@@ -87,6 +87,7 @@ class packetizer(gr.basic_block):
         else:
             data_part = data_to_whiten
             
-        packet = self.preamble + self.syncword + data_part
+        # Add a 32-byte 'tail' of zeros to flush the demodulator filters
+        packet = self.preamble + self.syncword + data_part + b'\x00' * 32
         out_msg = pmt.cons(meta, pmt.init_u8vector(len(packet), list(packet)))
         self.message_port_pub(pmt.intern("out"), out_msg)

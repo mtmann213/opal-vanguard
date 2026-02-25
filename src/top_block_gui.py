@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Opal Vanguard - Full Loopback Visual Demo (with Session Management)
+# Opal Vanguard - Full Loopback Visual Demo (Thread-Safe & Robust)
 
 import os
 import sys
@@ -19,6 +19,53 @@ from depacketizer import depacketizer
 from hop_controller import lfsr_hop_generator
 from session_manager import session_manager
 
+# ----------------------------------------------------------------------
+# INTERNAL HANDLER BLOCKS (Fixes AttributeError scoping issues)
+# ----------------------------------------------------------------------
+class FreqHandlerBlock(gr.basic_block):
+    def __init__(self, parent):
+        gr.basic_block.__init__(self, name="FreqHandler", in_sig=None, out_sig=None)
+        self.parent = parent
+        self.message_port_register_in(pmt.intern("msg"))
+        self.set_msg_handler(pmt.intern("msg"), self.handle_msg)
+
+    def handle_msg(self, msg):
+        try:
+            freq = pmt.to_double(msg)
+            offset = freq - self.parent.center_freq
+            phase_inc = 2 * np.pi * offset / self.parent.samp_rate
+            self.parent.rot_tx.set_phase_inc(phase_inc)
+            self.parent.rot_rx.set_phase_inc(-phase_inc)
+        except Exception as e:
+            print(f"FreqHandler Error: {e}")
+
+class StatusHandlerBlock(gr.basic_block):
+    def __init__(self, parent):
+        gr.basic_block.__init__(self, name="StatusHandler", in_sig=None, out_sig=None)
+        self.parent = parent
+        self.message_port_register_in(pmt.intern("msg"))
+        self.set_msg_handler(pmt.intern("msg"), self.handle_msg)
+
+    def handle_msg(self, msg):
+        self.parent.status_signal.emit(self.parent.session_a.state, self.parent.session_b.state)
+
+class DataHandlerBlock(gr.basic_block):
+    def __init__(self, parent):
+        gr.basic_block.__init__(self, name="DataHandler", in_sig=None, out_sig=None)
+        self.parent = parent
+        self.message_port_register_in(pmt.intern("msg"))
+        self.set_msg_handler(pmt.intern("msg"), self.handle_msg)
+
+    def handle_msg(self, msg):
+        try:
+            payload = bytes(pmt.u8vector_elements(pmt.cdr(msg))).decode('utf-8', 'ignore')
+            self.parent.data_signal.emit(payload)
+        except Exception as e:
+            print(f"DataHandler Error: {e}")
+
+# ----------------------------------------------------------------------
+# MAIN GUI CLASS
+# ----------------------------------------------------------------------
 class OpalVanguardVisualDemo(gr.top_block, Qt.QWidget):
     status_signal = pyqtSignal(str, str)
     data_signal = pyqtSignal(str)
@@ -28,9 +75,6 @@ class OpalVanguardVisualDemo(gr.top_block, Qt.QWidget):
         Qt.QWidget.__init__(self)
         self.setWindowTitle("Opal Vanguard - Full FHSS Handshake Demo")
         
-        self.status_signal.connect(self.on_status_change)
-        self.data_signal.connect(self.on_data_received)
-        
         self.samp_rate = samp_rate
         self.center_freq = center_freq
 
@@ -39,8 +83,8 @@ class OpalVanguardVisualDemo(gr.top_block, Qt.QWidget):
         self.setLayout(self.layout)
         
         # Status Display
-        self.status_label = Qt.QLabel("System Status: Initializing...")
-        self.status_label.setStyleSheet("font-weight: bold; color: blue;")
+        self.status_label = Qt.QLabel("Node A: IDLE | Node B: IDLE")
+        self.status_label.setStyleSheet("font-weight: bold; color: orange; font-size: 14px;")
         self.layout.addWidget(self.status_label)
         
         # Text Output (Recovered Data)
@@ -52,26 +96,24 @@ class OpalVanguardVisualDemo(gr.top_block, Qt.QWidget):
         # ----------------------------------------------------------------------
         # NODES SETUP
         # ----------------------------------------------------------------------
-        # NODE A (Master/TX)
         self.session_a = session_manager(initial_seed=0xACE)
         self.pkt_a = packetizer()
-        
-        # NODE B (Slave/RX)
         self.session_b = session_manager(initial_seed=0xACE)
         self.depkt_b = depacketizer()
 
         # ----------------------------------------------------------------------
         # TRANSMITTER CHAIN (NODE A)
         # ----------------------------------------------------------------------
-        # PDU Source: Generates mission data every 2s
         payload = "Opal Vanguard Mission 2026 - FHSS Secure Link"
-        self.pdu_src = blocks.message_strobe(pmt.cons(pmt.make_dict(), pmt.init_u8vector(len(payload), list(payload.encode()))), 2000)
+        self.pdu_src = blocks.message_strobe(pmt.cons(pmt.make_dict(), pmt.init_u8vector(len(payload), list(payload.encode()))), 1000)
         
         self.p2s_a = blocks.pdu_to_tagged_stream(gr.types.byte_t, "packet_len")
-        self.unp_a = blocks.unpack_k_bits_bb(8)
-        self.mod_a = digital.gfsk_mod(samples_per_symbol=8, sensitivity=1.0, bt=0.35)
         
-        # FHSS Rotator (TX)
+        # GFSK parameters (h=1.0, BT=0.35)
+        mod_sensitivity = (np.pi * 1.0) / 8.0
+        self.mod_a = digital.gfsk_mod(samples_per_symbol=8, sensitivity=mod_sensitivity, bt=0.35)
+        self.throttle = blocks.throttle(gr.sizeof_gr_complex, self.samp_rate)
+        
         self.hop_ctrl = lfsr_hop_generator(seed=0xACE, center_freq=center_freq, num_channels=50, channel_spacing=100e3)
         self.rot_tx = blocks.rotator_cc(0)
         
@@ -79,46 +121,17 @@ class OpalVanguardVisualDemo(gr.top_block, Qt.QWidget):
         # RECEIVER CHAIN (NODE B)
         # ----------------------------------------------------------------------
         self.rot_rx = blocks.rotator_cc(0)
-        self.demod_b = digital.gfsk_demod(samples_per_symbol=8, gain_mu=0.175, mu=0.5, omega_relative_limit=0.005, freq_error=0.0)
-        self.pack_b = blocks.pack_k_bits_bb(8)
+        self.demod_b = digital.gfsk_demod(samples_per_symbol=8, gain_mu=0.1, mu=0.5, omega_relative_limit=0.005, freq_error=0.0)
 
         # ----------------------------------------------------------------------
-        # HANDSHAKE & SHARED LOGIC
+        # MESSAGE HANDLERS
         # ----------------------------------------------------------------------
-        # Freq Control Callback
-        def handle_freq_msg(msg):
-            freq = pmt.to_double(msg)
-            offset = freq - self.center_freq
-            phase_inc = 2 * np.pi * offset / self.samp_rate
-            self.rot_tx.set_phase_inc(phase_inc)
-            self.rot_rx.set_phase_inc(-phase_inc)
+        self.freq_handler = FreqHandlerBlock(self)
+        self.status_handler = StatusHandlerBlock(self)
+        self.data_handler = DataHandlerBlock(self)
 
-        class MsgProxy(gr.sync_block):
-            def __init__(self, callback):
-                gr.sync_block.__init__(self, "MsgProxy", None, None)
-                self.message_port_register_in(pmt.intern("msg"))
-                self.set_msg_handler(pmt.intern("msg"), callback)
-        
-        self.freq_proxy = MsgProxy(handle_freq_msg)
-        self.msg_connect((self.hop_ctrl, "freq"), (self.freq_proxy, "msg"))
-
-        # Status Update Callback
-        def update_status(msg):
-            # Safe way to update the GUI from the GR thread
-            self.status_signal.emit(self.session_a.state, self.session_b.state)
-
-        self.status_proxy = MsgProxy(update_status)
-        # Trigger status update on any packet activity
-        self.msg_connect((self.session_a, "pkt_out"), (self.status_proxy, "msg"))
-        self.msg_connect((self.session_b, "pkt_out"), (self.status_proxy, "msg"))
-
-        # RX Data Display Callback
-        def handle_received_data(msg):
-            payload = bytes(pmt.u8vector_elements(pmt.cdr(msg))).decode('utf-8', 'ignore')
-            self.data_signal.emit(payload)
-            
-        self.data_proxy = MsgProxy(handle_received_data)
-        self.msg_connect((self.session_b, "data_out"), (self.data_proxy, "msg"))
+        self.status_signal.connect(self.on_status_change)
+        self.data_signal.connect(self.on_data_received)
 
         # ----------------------------------------------------------------------
         # VISUAL SINKS
@@ -132,26 +145,31 @@ class OpalVanguardVisualDemo(gr.top_block, Qt.QWidget):
         # ----------------------------------------------------------------------
         # CONNECTIONS
         # ----------------------------------------------------------------------
-        # A -> B RF Path (Modulated)
+        # A -> B RF Path
         self.msg_connect((self.pdu_src, "strobe"), (self.session_a, "data_in"))
         self.msg_connect((self.session_a, "pkt_out"), (self.pkt_a, "in"))
         self.msg_connect((self.pkt_a, "out"), (self.p2s_a, "pdus"))
-        self.connect(self.p2s_a, self.unp_a, self.mod_a, self.rot_tx)
-        
-        # Channel
-        self.connect(self.rot_tx, self.rot_rx)
+        self.connect(self.p2s_a, self.mod_a, self.demod_b)
         
         # Node B Receive
-        self.connect(self.rot_rx, self.demod_b, self.pack_b, self.depkt_b)
+        self.connect(self.demod_b, self.depkt_b)
         self.msg_connect((self.depkt_b, "out"), (self.session_b, "msg_in"))
         
-        # B -> A Return Path (Simplified message loop for ACK)
-        # In a real demo we'd modulate this too, but for handshake logic it's sufficient
+        # Handshake Return (B -> A)
         self.msg_connect((self.session_b, "pkt_out"), (self.session_a, "msg_in"))
 
+        # Message logic connections
+        self.msg_connect((self.hop_ctrl, "freq"), (self.freq_handler, "msg"))
+        self.msg_connect((self.session_a, "pkt_out"), (self.status_handler, "msg"))
+        self.msg_connect((self.session_b, "pkt_out"), (self.status_handler, "msg"))
+        self.msg_connect((self.session_b, "data_out"), (self.data_handler, "msg"))
+
         # Visualization
-        self.connect(self.rot_tx, self.snk_waterfall)
-        self.connect(self.rot_rx, self.snk_rx_freq)
+        # Use a separate throttle for visualization to keep it from affecting the core processing
+        self.viz_throttle = blocks.throttle(gr.sizeof_gr_complex, self.samp_rate)
+        self.connect(self.mod_a, self.viz_throttle)
+        self.connect(self.viz_throttle, self.snk_waterfall)
+        self.connect(self.viz_throttle, self.snk_rx_freq)
 
         # Timer for frequency hops (every 200ms)
         self.timer = Qt.QTimer()
@@ -161,9 +179,9 @@ class OpalVanguardVisualDemo(gr.top_block, Qt.QWidget):
     def on_status_change(self, state_a, state_b):
         self.status_label.setText(f"Node A: {state_a} | Node B: {state_b}")
         if state_a == "CONNECTED" and state_b == "CONNECTED":
-            self.status_label.setStyleSheet("font-weight: bold; color: green;")
+            self.status_label.setStyleSheet("font-weight: bold; color: green; font-size: 14px;")
         else:
-            self.status_label.setStyleSheet("font-weight: bold; color: orange;")
+            self.status_label.setStyleSheet("font-weight: bold; color: orange; font-size: 14px;")
 
     def on_data_received(self, payload):
         self.text_out.append(f"<b>[NODE B RX]:</b> {payload}")

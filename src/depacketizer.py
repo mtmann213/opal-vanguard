@@ -60,7 +60,9 @@ class depacketizer(gr.basic_block):
             self.bit_buf = ((self.bit_buf << 1) | bit) & 0xFFFFFFFF
             
             if self.state == "SEARCH":
-                if self.bit_buf == self.syncword_bits:
+                if self.bit_buf == self.syncword_bits or self.bit_buf == (0xFFFFFFFF ^ self.syncword_bits):
+                    self.is_inverted = (self.bit_buf == (0xFFFFFFFF ^ self.syncword_bits))
+                    print(f"[Depacketizer] Syncword Found! (Inverted: {self.is_inverted})")
                     self.state = "COLLECT"
                     self.byte_buf = b''
                     self.bits_in_buf = 0
@@ -68,12 +70,23 @@ class depacketizer(gr.basic_block):
             elif self.state == "COLLECT":
                 self.bits_in_buf += 1
                 if self.bits_in_buf % 8 == 0:
-                    self.byte_buf += bytes([self.bit_buf & 0xFF])
+                    current_byte = self.bit_buf & 0xFF
+                    if self.is_inverted:
+                        current_byte ^= 0xFF
+                    self.byte_buf += bytes([current_byte])
                     
                     if len(self.byte_buf) == 2: # Type + Len bytes
                         # Peek at header to get length
                         data_peek = self.dewhiten(self.byte_buf) if self.use_whitening else self.byte_buf
                         msg_type, self.payload_len = struct.unpack('BB', data_peek)
+                        print(f"[Depacketizer] Header Parsed - Type: {msg_type}, Len: {self.payload_len}")
+                        
+                        # Safety reset for junk headers
+                        if self.payload_len > 128:
+                            print(f"[Depacketizer] Invalid length {self.payload_len}, resetting.")
+                            self.state = "SEARCH"
+                            return 0
+
                         if self.use_fec:
                             self.fec_payload_len = ((self.payload_len + 10) // 11) * 15
                         else:
@@ -82,19 +95,27 @@ class depacketizer(gr.basic_block):
                     # Total = 1 (Type) + 1 (Len) + N (Payload) + 2 (CRC)
                     if len(self.byte_buf) == 2 + self.fec_payload_len + 2:
                         data = self.dewhiten(self.byte_buf) if self.use_whitening else self.byte_buf
+                        calc_crc = self.crc16_ccitt(data[:-2])
                         received_crc = struct.unpack('>H', data[-2:])[0]
-                        if self.crc16_ccitt(data[:-2]) == received_crc:
+                        
+                        if calc_crc == received_crc:
                             msg_type, plen = struct.unpack('BB', data[:2])
                             fec_payload = data[2:-2]
+                            print(f"[Depacketizer] CRC PASSED! Type: {msg_type}, Len: {plen}")
                             
                             if self.use_fec:
                                 decoded = b''
                                 for j in range(0, len(fec_payload), 15):
                                     chunk = fec_payload[j:j+15]
+                                    # Convert 15 bytes to 30 nibbles
                                     nib = []
                                     for b in chunk: nib.extend([(b >> 4) & 0x0F, b & 0x0F])
-                                    all_nib = self.rs.decode(nib[:15]) + self.rs.decode(nib[15:])
-                                    for k in range(0, 22, 2): decoded += bytes([(all_nib[k] << 4) | all_nib[k+1]])
+                                    
+                                    block1 = self.rs.decode(nib[:15])
+                                    block2 = self.rs.decode(nib[15:])
+                                    all_nib = block1 + block2
+                                    for k in range(0, 22, 2):
+                                        decoded += bytes([(all_nib[k] << 4) | all_nib[k+1]])
                                 payload = decoded[:plen]
                             else:
                                 payload = fec_payload
@@ -102,6 +123,8 @@ class depacketizer(gr.basic_block):
                             meta = pmt.make_dict()
                             meta = pmt.dict_add(meta, pmt.intern("type"), pmt.from_long(msg_type))
                             self.message_port_pub(pmt.intern("out"), pmt.cons(meta, pmt.init_u8vector(len(payload), list(payload))))
+                        else:
+                            print(f"[Depacketizer] CRC FAILED: Calc 0x{calc_crc:04X} != Recv 0x{received_crc:04X}")
                         
                         self.state = "SEARCH"
 

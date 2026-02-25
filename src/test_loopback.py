@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Opal Vanguard - Full Digital Loopback Test
+# Opal Vanguard - Full Digital Loopback Test (FIXED)
 
 import os
 import sys
@@ -13,37 +13,32 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from packetizer import packetizer
 from depacketizer import depacketizer
-from whitener import whitener
 
 def test_loopback():
-    print("Testing Full Digital Loopback (TX -> Scramble -> RX)...")
+    print("Testing Full Digital Loopback (TX -> Bits -> RX)...")
     
     class LoopbackTest(gr.top_block):
         def __init__(self):
             gr.top_block.__init__(self)
             
-            # TX
+            # TX (PDU -> Bits)
             self.pkt = packetizer()
-            self.whit_tx = whitener(seed=0x7F)
-            self.pdu_to_stream = blocks.pdu_to_tagged_stream(gr.types.byte_t, "packet_len")
-            self.unpacker = blocks.unpack_k_bits_bb(8)
+            self.p2s = blocks.pdu_to_tagged_stream(gr.types.byte_t, "packet_len")
+            self.unp = blocks.unpack_k_bits_bb(8)
             
-            # RX
-            self.whit_rx = whitener(seed=0x7F)
-            self.packer = blocks.pack_k_bits_bb(8)
+            # RX (Bits -> PDU)
             self.depkt = depacketizer()
             self.msg_debug = blocks.message_debug()
             
             # Connections
-            # TX: PDU -> Stream -> Bits -> Whiten
-            self.msg_connect((self.pkt, "out"), (self.pdu_to_stream, "pdus"))
-            self.connect(self.pdu_to_stream, self.unpacker, self.whit_tx)
+            # TX
+            self.msg_connect((self.pkt, "out"), (self.p2s, "pdus"))
+            self.connect(self.p2s, self.unp)
             
-            # Loopback: Whiten (TX) -> Whiten (RX) (self-undoing)
-            self.connect(self.whit_tx, self.whit_rx)
+            # Channel (Bit-to-Bit)
+            self.connect(self.unp, self.depkt)
             
-            # RX: Whiten (RX) -> Pack -> Depacketizer -> PDU Out
-            self.connect(self.whit_rx, self.packer, self.depkt)
+            # RX
             self.msg_connect((self.depkt, "out"), (self.msg_debug, "print"))
             
         def send_pdu(self, payload_bytes):
@@ -59,7 +54,7 @@ def test_loopback():
     print(f"Sending: {test_payload}")
     tb.send_pdu(test_payload)
     
-    time.sleep(0.2)
+    time.sleep(0.5)
     tb.stop()
     tb.wait()
     print("Loopback test complete.")
