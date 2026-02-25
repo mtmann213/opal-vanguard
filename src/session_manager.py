@@ -24,13 +24,14 @@ class session_manager(gr.basic_block):
         
         self.state = "IDLE"
         self.current_seed = initial_seed
+        self.tx_buffer = []
 
     def handle_rx(self, msg):
         meta = pmt.car(msg)
         msg_type = pmt.to_long(pmt.dict_ref(meta, pmt.intern("type"), pmt.from_long(0)))
         payload = bytes(pmt.u8vector_elements(pmt.cdr(msg)))
 
-        elif msg_type == 1: # SYN received (Payload contains 2-byte seed)
+        if msg_type == 1: # SYN received (Payload contains 2-byte seed)
             try:
                 remote_seed = struct.unpack('>H', payload)[0]
                 print(f"[Session] Received SYN with Seed: 0x{remote_seed:04X}. Sending ACK.")
@@ -48,6 +49,10 @@ class session_manager(gr.basic_block):
             if self.state == "CONNECTING":
                 print("[Session] Received ACK. Seed confirmed. Connection Established.")
                 self.state = "CONNECTED"
+                # Flush buffer
+                while self.tx_buffer:
+                    buffered_msg = self.tx_buffer.pop(0)
+                    self.send_data_packet(buffered_msg)
                 
         elif msg_type == 0: # DATA received
             if self.state == "CONNECTED":
@@ -55,14 +60,19 @@ class session_manager(gr.basic_block):
 
     def handle_tx_request(self, msg):
         if self.state == "CONNECTED":
-            new_meta = pmt.dict_add(pmt.car(msg), pmt.intern("type"), pmt.from_long(0))
-            self.message_port_pub(pmt.intern("pkt_out"), pmt.cons(new_meta, pmt.cdr(msg)))
+            self.send_data_packet(msg)
         else:
-            print(f"[Session] Initiating Handshake with Seed: 0x{self.current_seed:04X}")
-            self.state = "CONNECTING"
-            # SYN payload is the 2-byte seed
-            seed_payload = struct.pack('>H', self.current_seed)
-            self.send_packet(seed_payload, msg_type=1)
+            print(f"[Session] Handshake pending. Buffering message and initiating SYN.")
+            self.tx_buffer.append(msg)
+            if self.state == "IDLE":
+                self.state = "CONNECTING"
+                # SYN payload is the 2-byte seed
+                seed_payload = struct.pack('>H', self.current_seed)
+                self.send_packet(seed_payload, msg_type=1)
+
+    def send_data_packet(self, msg):
+        new_meta = pmt.dict_add(pmt.car(msg), pmt.intern("type"), pmt.from_long(0))
+        self.message_port_pub(pmt.intern("pkt_out"), pmt.cons(new_meta, pmt.cdr(msg)))
 
     def send_packet(self, payload_bytes, msg_type):
         meta = pmt.make_dict()

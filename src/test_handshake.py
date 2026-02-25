@@ -56,6 +56,7 @@ def test_handshake():
             # Monitoring
             self.debug = blocks.message_debug()
             self.msg_connect((self.session_a, "data_out"), (self.debug, "print"))
+            self.msg_connect((self.session_b, "data_out"), (self.debug, "print"))
 
         def send_data(self, text):
             msg = pmt.cons(pmt.make_dict(), pmt.init_u8vector(len(text), list(text.encode())))

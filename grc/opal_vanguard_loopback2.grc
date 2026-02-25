@@ -11,7 +11,7 @@ options:
     gen_linking: dynamic
     generate_options: qt_gui
     hier_block_src_path: '.:'
-    id: opal_vanguard_loopback
+    id: opal_vanguard_loopback2
     max_nouts: '0'
     output_language: python
     placement: (0,0)
@@ -625,7 +625,7 @@ connections:
 - [rot_tx, '0', blocks_throttle_0, '0']
 - [session_manager, data_out, blocks_message_debug_0, print]
 - [session_manager, pkt_out, packetizer, in]
-- [session_manager, set_seed, hop_ctrl, trigger]
+- [session_manager, set_seed, hop_ctrl, set_seed]
 - [unpacker, '0', gfsk_mod, '0']
 
 metadata:

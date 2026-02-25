@@ -1,17 +1,21 @@
 title: The OPAL_VANGUARD OOT Module
-brief: Short description of gr-opal_vanguard
-tags: # Tags are arbitrary, but look at CGRAN what other authors are using
+brief: Modular FHSS Messaging System for 900MHz ISM
+tags:
   - sdr
+  - gnuradio
+  - fhss
+  - gfsk
 author:
-  - Author Name <authors@email.address>
+  - Michael Mann <michael.mann@opalvanguard.local>
 copyright_owner:
-  - Copyright Owner 1
-license:
-gr_supported_version: # Put a comma separated list of supported GR versions here
-#repo: # Put the URL of the repository here, or leave blank for default
-#website: <module_website> # If you have a separate project website, put it here
-#icon: <icon_url> # Put a URL to a square image here that will be used as an icon on CGRAN
+  - Opal Vanguard Project
+license: GPL-3.0-or-later
+gr_supported_version: 3.10
 ---
-A longer, multi-line description of gr-opal_vanguard.
-You may use some *basic* Markdown here.
-If left empty, it will try to find a README file instead.
+Opal Vanguard is a Python-based GNU Radio framework for a modular Frequency Hopping Spread Spectrum (FHSS) messaging system. 
+
+It implements a complete digital communication chain with:
+- Fibonacci LFSR-based frequency hopping.
+- Reed-Solomon (15, 11) FEC.
+- Fibonacci LFSR whitening (x^7 + x^4 + 1).
+- Automatic Handshake and Session Management with seed synchronization.
