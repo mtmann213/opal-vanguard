@@ -1,0 +1,25 @@
+# Opal Vanguard - Mission Configuration
+# All enhancements can be toggled here.
+
+physical:
+  samp_rate: 10000000
+  center_freq: 915000000
+  modulation: "GFSK"
+  samples_per_symbol: 8
+
+link_layer:
+  use_fec: true           # Reed-Solomon (15,11)
+  use_whitening: true     # x^7+x^4+1 LFSR
+  use_interleaving: true  # 8-row Matrix Interleaver
+  use_dsss: true          # Direct Sequence Spread Spectrum
+
+dsss:
+  chipping_code: [1, 1, 1, -1, -1, -1, 1, -1, -1, 1, -1] # 11-chip Barker Code
+  spreading_factor: 11
+
+hopping:
+  use_hopping: true
+  dwell_time_ms: 200
+  num_channels: 50
+  channel_spacing: 150000
+  initial_seed: 0xACE

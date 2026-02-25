@@ -135,9 +135,9 @@ class OpalVanguardVisualDemo(gr.top_block, Qt.QWidget):
         # NODES SETUP
         # ----------------------------------------------------------------------
         self.session_a = session_manager(initial_seed=0xACE)
-        self.pkt_a = packetizer()
+        self.pkt_a = packetizer(config_path="config.yaml")
         self.session_b = session_manager(initial_seed=0xACE)
-        self.depkt_b = depacketizer()
+        self.depkt_b = depacketizer(config_path="config.yaml")
 
         # ----------------------------------------------------------------------
         # TRANSMITTER CHAIN (NODE A)

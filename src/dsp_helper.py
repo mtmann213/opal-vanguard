@@ -38,9 +38,42 @@ class MatrixInterleaver:
         data_len = len(data)
         cols = data_len // self.rows
         
-        # Reshape (cols x rows) - because we read columns, they are now rows
+        # Reshape (cols x rows)
         matrix = np.array(list(data)).reshape((cols, self.rows))
         
         # Transpose back to (rows x cols)
         deinterleaved = matrix.T.flatten()
         return bytes(deinterleaved[:original_len].tolist())
+
+class DSSSProcessor:
+    """
+    Direct Sequence Spread Spectrum Processor.
+    Spreads each bit into a sequence of 'chips'.
+    """
+    def __init__(self, chipping_code=[1, 1, 1, -1, -1, -1, 1, -1, -1, 1, -1]):
+        self.code = np.array(chipping_code)
+        self.sf = len(self.code)
+
+    def spread(self, bits):
+        """
+        Spreads a bitstream (0/1) into chips (-1/1).
+        Input is list of bits, output is list of chips.
+        """
+        chips = []
+        for bit in bits:
+            val = 1 if bit == 1 else -1
+            chips.extend((val * self.code).tolist())
+        return chips
+
+    def despread(self, chips):
+        """
+        Correlates incoming chips with the code to recover bits.
+        Input is list of chips, output is list of bits (0/1).
+        """
+        bits = []
+        for i in range(0, len(chips), self.sf):
+            chunk = np.array(chips[i:i+self.sf])
+            if len(chunk) < self.sf: break
+            correlation = np.sum(chunk * self.code)
+            bits.append(1 if correlation > 0 else 0)
+        return bits
