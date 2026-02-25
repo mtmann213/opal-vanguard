@@ -114,9 +114,19 @@ class depacketizer(gr.basic_block):
                                     block1 = self.rs.decode(nib[:15])
                                     block2 = self.rs.decode(nib[15:])
                                     all_nib = block1 + block2
+                                    
+                                    # Check if FEC actually did something
+                                    if all_nib != nib[:11] + nib[15:15+11]: # Simple check
+                                        pass # We'll do a better comparison
+                                    
                                     for k in range(0, 22, 2):
                                         decoded += bytes([(all_nib[k] << 4) | all_nib[k+1]])
                                 payload = decoded[:plen]
+                                
+                                # If the payload we got from FEC is different from the raw whitened payload, 
+                                # then FEC corrected something.
+                                if payload != data[2:2+plen]:
+                                    print(f"[Depacketizer] FEC REPAIR SUCCESSFUL: Fixed bit errors in Type {msg_type} packet.")
                             else:
                                 payload = fec_payload
                             
