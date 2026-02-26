@@ -148,7 +148,8 @@ class OpalVanguardVisualDemo(gr.top_block, Qt.QWidget):
         # TRANSMITTER CHAIN
         # ----------------------------------------------------------------------
         payload = "Opal Vanguard Advanced Mission Data"
-        self.pdu_src = blocks.message_strobe(pmt.cons(pmt.make_dict(), pmt.init_u8vector(len(payload), list(payload.encode()))), 1000)
+        # Increase interval to 3s for DSSS/Manchester overhead
+        self.pdu_src = blocks.message_strobe(pmt.cons(pmt.make_dict(), pmt.init_u8vector(len(payload), list(payload.encode()))), 3000)
         self.p2s_a = blocks.pdu_to_tagged_stream(gr.types.byte_t, "packet_len")
         
         mod_sensitivity = (np.pi * 1.0) / 8.0
@@ -158,7 +159,7 @@ class OpalVanguardVisualDemo(gr.top_block, Qt.QWidget):
         # Hop Controller
         if hcfg['type'] == "AES":
             self.hop_ctrl = aes_hop_generator(
-                key=bytes.fromhex(hcfg['key']),
+                key=bytes.fromhex(hcfg['aes_key']),
                 num_channels=hcfg['num_channels'],
                 center_freq=self.center_freq,
                 channel_spacing=hcfg['channel_spacing']
@@ -177,7 +178,7 @@ class OpalVanguardVisualDemo(gr.top_block, Qt.QWidget):
         self.channel = channels.channel_model(noise_voltage=0.0, frequency_offset=0.0, epsilon=1.0, taps=[1.0+0j])
         self.rot_rx = blocks.rotator_cc(0)
         
-        # Receiver Channel Filter (Low Pass Filter)
+        # Receiver Channel Filter
         lpf_taps = filter.firdes.low_pass(1.0, self.samp_rate, 1.5e6, 250e3)
         self.rx_filter = filter.fir_filter_ccf(1, lpf_taps)
         
@@ -208,7 +209,10 @@ class OpalVanguardVisualDemo(gr.top_block, Qt.QWidget):
         self.msg_connect((self.pkt_a, "out"), (self.p2s_a, "pdus"))
         self.connect(self.p2s_a, self.mod_a, self.rot_tx, self.channel)
         
-        self.connect(self.channel, self.rot_rx, self.rx_filter, self.demod_b, self.depkt_b)
+        # Add constriction delay to help demod stay ahead of its buffer
+        self.stabilizer = blocks.delay(gr.sizeof_gr_complex, 100)
+        
+        self.connect(self.channel, self.rot_rx, self.rx_filter, self.stabilizer, self.demod_b, self.depkt_b)
         self.msg_connect((self.depkt_b, "out"), (self.session_b, "msg_in"))
         self.msg_connect((self.session_b, "pkt_out"), (self.session_a, "msg_in"))
 
