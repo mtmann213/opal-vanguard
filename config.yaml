@@ -88,3 +88,20 @@ hopping:
   
   # Initial seed for LFSR mode.
   initial_seed: 0xACE
+
+hardware:
+  # USRP Device Address. "type=b200" covers both B210 and B205mini.
+  args: "type=b200"
+  
+  # Hardware sample rate. 2MHz is reliable for USB 3.0 throughput.
+  samp_rate: 2000000
+  
+  # Gain settings (0 to 90 dB). Adjust based on distance.
+  tx_gain: 50
+  rx_gain: 50
+  
+  # Antenna selection. 
+  #   B210: "TX/RX" or "RX2"
+  #   B205mini: "TX/RX"
+  tx_antenna: "TX/RX"
+  rx_antenna: "TX/RX"
