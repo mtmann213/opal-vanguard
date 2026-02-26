@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Opal Vanguard - Packetizer Block (DSSS + Config Support)
+# Opal Vanguard - Packetizer Block (DSSS + NRZI + Config Support)
 
 import numpy as np
 from gnuradio import gr
@@ -12,7 +12,7 @@ import yaml
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from rs_helper import RS1511
-from dsp_helper import MatrixInterleaver, DSSSProcessor
+from dsp_helper import MatrixInterleaver, DSSSProcessor, NRZIEncoder
 
 class packetizer(gr.basic_block):
     def __init__(self, config_path="config.yaml"):
@@ -26,10 +26,12 @@ class packetizer(gr.basic_block):
         self.use_whitening = self.cfg['link_layer']['use_whitening']
         self.use_interleaving = self.cfg['link_layer']['use_interleaving']
         self.use_dsss = self.cfg['link_layer']['use_dsss']
+        self.use_nrzi = self.cfg['link_layer'].get('use_nrzi', False)
         
         self.rs = RS1511()
         self.interleaver = MatrixInterleaver(rows=8)
         self.dsss = DSSSProcessor(chipping_code=self.cfg['dsss']['chipping_code'])
+        self.nrzi = NRZIEncoder()
         
         self.message_port_register_in(pmt.intern("in"))
         self.set_msg_handler(pmt.intern("in"), self.handle_msg)
@@ -93,6 +95,9 @@ class packetizer(gr.basic_block):
         
         # 3. Interleave
         if self.use_interleaving:
+            current_len = len(data_to_whiten)
+            if current_len < 120:
+                data_to_whiten += b'\x00' * (120 - current_len)
             data_to_whiten = self.interleaver.interleave(data_to_whiten)
         
         # 4. Whiten
@@ -101,20 +106,21 @@ class packetizer(gr.basic_block):
         else:
             data_final = data_to_whiten
             
-        # 5. DSSS Spreading (Only on the data part)
-        if self.use_dsss:
-            # Convert bytes to bits
-            bits = []
-            for b in data_final:
-                for i in range(8):
-                    bits.append((b >> (7-i)) & 1)
+        # 5. Convert to bits
+        bits = []
+        for b in data_final:
+            for i in range(8): bits.append((b >> (7-i)) & 1)
             
-            # Spread bits to chips
+        # 6. NRZ-I (Differential Encoding)
+        if self.use_nrzi:
+            # Sync start state for each packet
+            self.nrzi.tx_state = 0
+            bits = self.nrzi.encode(bits)
+            
+        # 7. DSSS Spreading
+        if self.use_dsss:
             chips = self.dsss.spread(bits)
             
-            # Pack chips (-1/1) back into bytes for the GFSK modulator
-            # Note: GFSK mod with do_unpack=True expects 0/1 bits packed in bytes.
-            # We must map our bipolar chips back to 0/1 for the standard modulator.
             packed_chips = []
             current_byte = 0
             for i, chip in enumerate(chips):
@@ -123,15 +129,21 @@ class packetizer(gr.basic_block):
                 if (i + 1) % 8 == 0:
                     packed_chips.append(current_byte)
                     current_byte = 0
-            # Handle remaining bits if not multiple of 8
             if len(chips) % 8 != 0:
                 packed_chips.append(current_byte << (8 - (len(chips) % 8)))
-            
             data_part = bytes(packed_chips)
         else:
-            data_part = data_final
+            # Re-pack bits if not using DSSS but using NRZI
+            packed_bits = []
+            current_byte = 0
+            for i, bit in enumerate(bits):
+                current_byte = (current_byte << 1) | bit
+                if (i + 1) % 8 == 0:
+                    packed_bits.append(current_byte)
+                    current_byte = 0
+            data_part = bytes(packed_bits)
 
-        # 6. Final Assembly (Preamble and Syncword are NEVER spread)
+        # 8. Final Assembly
         packet = self.preamble + self.syncword + data_part + b'\x00' * 32
         out_msg = pmt.cons(meta, pmt.init_u8vector(len(packet), list(packet)))
         self.message_port_pub(pmt.intern("out"), out_msg)

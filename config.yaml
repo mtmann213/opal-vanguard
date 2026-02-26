@@ -12,6 +12,7 @@ link_layer:
   use_whitening: true     # x^7+x^4+1 LFSR
   use_interleaving: true  # 8-row Matrix Interleaver
   use_dsss: true          # Direct Sequence Spread Spectrum
+  use_nrzi: true          # Non-Return-to-Zero Inverted encoding
 
 dsss:
   chipping_code: [1, 1, 1, -1, -1, -1, 1, -1, -1, 1, -1] # 11-chip Barker Code
@@ -19,7 +20,9 @@ dsss:
 
 hopping:
   use_hopping: true
-  dwell_time_ms: 200
+  type: "AES"             # "LFSR" or "AES"
+  key: "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
+  dwell_time_ms: 200      # Dwell time in milliseconds
   num_channels: 50
   channel_spacing: 150000
   initial_seed: 0xACE

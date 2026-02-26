@@ -77,3 +77,37 @@ class DSSSProcessor:
             correlation = np.sum(chunk * self.code)
             bits.append(1 if correlation > 0 else 0)
         return bits
+
+class NRZIEncoder:
+    """
+    Non-Return-to-Zero Inverted (NRZ-I) Encoder/Decoder.
+    1 = Transition, 0 = No Transition.
+    Provides immunity to bit inversion (180-degree phase/FM polarity).
+    """
+    def __init__(self):
+        self.tx_state = 0
+        self.rx_state = 0
+
+    def encode(self, bits):
+        """Encodes bits to NRZ-I."""
+        encoded = []
+        state = self.tx_state
+        for bit in bits:
+            if bit == 1:
+                state = 1 - state
+            encoded.append(state)
+        self.tx_state = state
+        return encoded
+
+    def decode(self, bits):
+        """Decodes NRZ-I bits back to original."""
+        decoded = []
+        prev_state = self.rx_state
+        for state in bits:
+            if state != prev_state:
+                decoded.append(1)
+            else:
+                decoded.append(0)
+            prev_state = state
+        self.rx_state = prev_state
+        return decoded

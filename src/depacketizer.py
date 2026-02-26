@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Opal Vanguard - Depacketizer Block (DSSS + Config Support)
+# Opal Vanguard - Depacketizer Block (Handshake + Interleaving + DSSS + NRZI Support)
 
 import numpy as np
 from gnuradio import gr
@@ -12,7 +12,7 @@ import yaml
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from rs_helper import RS1511
-from dsp_helper import MatrixInterleaver, DSSSProcessor
+from dsp_helper import MatrixInterleaver, DSSSProcessor, NRZIEncoder
 
 class depacketizer(gr.basic_block):
     def __init__(self, config_path="config.yaml"):
@@ -26,20 +26,24 @@ class depacketizer(gr.basic_block):
         self.use_whitening = self.cfg['link_layer']['use_whitening']
         self.use_interleaving = self.cfg['link_layer']['use_interleaving']
         self.use_dsss = self.cfg['link_layer']['use_dsss']
+        self.use_nrzi = self.cfg['link_layer'].get('use_nrzi', False)
         self.sf = self.cfg['dsss']['spreading_factor']
         
         self.rs = RS1511()
         self.interleaver = MatrixInterleaver(rows=8)
         self.dsss = DSSSProcessor(chipping_code=self.cfg['dsss']['chipping_code'])
+        self.nrzi = NRZIEncoder()
         
         self.message_port_register_out(pmt.intern("out"))
         
         self.state = "SEARCH"
         self.syncword_bits = 0x3D4C5B6A
         self.bit_buf = 0
+        self.data_bit_buf = 0
         self.bits_in_buf = 0
         self.byte_buf = b''
         self.chip_buf = []
+        self.recovered_bits = []
 
     def dewhiten(self, data):
         state = 0x7F
@@ -74,51 +78,68 @@ class depacketizer(gr.basic_block):
             if self.state == "SEARCH":
                 if self.bit_buf == self.syncword_bits or self.bit_buf == (0xFFFFFFFF ^ self.syncword_bits):
                     self.is_inverted = (self.bit_buf == (0xFFFFFFFF ^ self.syncword_bits))
-                    print(f"[Depacketizer] Syncword Found! (DSSS: {self.use_dsss})")
+                    print(f"[Depacketizer] Syncword Found! (DSSS: {self.use_dsss}, NRZI: {self.use_nrzi})")
                     self.state = "COLLECT"
                     self.byte_buf = b''
                     self.chip_buf = []
                     self.bits_in_buf = 0
+                    self.data_bit_buf = 0
+                    self.recovered_bits = []
+                    self.nrzi.rx_state = 0 # Reset NRZI state for each packet
+                    if self.is_inverted:
+                        self.nrzi.rx_state = 1 # Sync to inverted start
                     
             elif self.state == "COLLECT":
-                # If using DSSS, we collect chips and de-spread them into bytes
                 if self.use_dsss:
-                    # Map 0/1 bits from demod to -1/1 chips for correlation
                     chip = 1 if bit == 1 else -1
                     if self.is_inverted: chip *= -1
                     self.chip_buf.append(chip)
                     
                     if len(self.chip_buf) == self.sf:
-                        # De-spread one bit
                         recovered_bit = self.dsss.despread(self.chip_buf)[0]
                         self.chip_buf = []
-                        
-                        # Pack bit into byte_buf
-                        self.bits_in_buf += 1
-                        self.bit_buf = (self.bit_buf << 1) | recovered_bit
-                        
-                        if self.bits_in_buf % 8 == 0:
-                            self.byte_buf += bytes([self.bit_buf & 0xFF])
+                        self.recovered_bits.append(recovered_bit)
                 else:
-                    # Normal bit collection
-                    self.bits_in_buf += 1
-                    if self.bits_in_buf % 8 == 0:
-                        current_byte = self.bit_buf & 0xFF
-                        if self.is_inverted: current_byte ^= 0xFF
-                        self.byte_buf += bytes([current_byte])
+                    self.recovered_bits.append(bit ^ (1 if self.is_inverted else 0))
 
-                # Check if we have a full block
-                # Interleaving requires a fixed block (120 bytes)
-                target_len = 120 if self.use_interleaving else 64 # Larger default if no interleaving
+                # For NRZI, we process bits from self.recovered_bits later? 
+                # No, we need to know when we have enough bits to form bytes.
+                # Since we collect a fixed block of 120 bytes, we need 960 bits.
+                target_len = 120 if self.use_interleaving else 64
+                target_bits = target_len * 8
                 
-                if len(self.byte_buf) >= target_len:
-                    raw_data = self.dewhiten(self.byte_buf) if self.use_whitening else self.byte_buf
+                if len(self.recovered_bits) >= target_bits:
+                    bits = self.recovered_bits[:target_bits]
                     
+                    # 1. NRZI Decode
+                    if self.use_nrzi:
+                        # Wait, if is_inverted was True, NRZI decode should handle it?
+                        # NRZI is immune to inversion, but the start state matters.
+                        # If the whole stream was inverted, the first bit transition 
+                        # relative to prev_state (0) might be flipped?
+                        # Actually, if we use self.is_inverted to set rx_state, it works.
+                        bits = self.nrzi.decode(bits)
+                        
+                    # 2. Bits to Bytes
+                    byte_list = []
+                    acc = 0
+                    for j, b in enumerate(bits):
+                        acc = (acc << 1) | b
+                        if (j + 1) % 8 == 0:
+                            byte_list.append(acc)
+                            acc = 0
+                    byte_data = bytes(byte_list)
+                    
+                    # 3. De-whiten
+                    raw_data = self.dewhiten(byte_data) if self.use_whitening else byte_data
+                    
+                    # 4. De-interleave
                     if self.use_interleaving:
                         data = self.interleaver.deinterleave(raw_data, len(raw_data))
                     else:
                         data = raw_data
                     
+                    # 5. Header Parsing
                     msg_type, plen = struct.unpack('BB', data[:2])
                     fec_len = ((plen + 10) // 11) * 15 if self.use_fec else plen
                     
@@ -149,9 +170,14 @@ class depacketizer(gr.basic_block):
                             else:
                                 payload = fec_payload
                             
+                            print(f"[Depacketizer] RECOVERED: {payload}")
                             meta = pmt.make_dict()
                             meta = pmt.dict_add(meta, pmt.intern("type"), pmt.from_long(msg_type))
                             self.message_port_pub(pmt.intern("out"), pmt.cons(meta, pmt.init_u8vector(len(payload), list(payload))))
+                        else:
+                            print(f"[Depacketizer] CRC FAILED: Calc 0x{calc_crc:04X} vs Recv 0x{received_crc:04X}")
+                    else:
+                        print(f"[Depacketizer] Packet too short? total_pkt_len={total_pkt_len} > len(data)={len(data)}")
                     
                     self.state = "SEARCH"
 
