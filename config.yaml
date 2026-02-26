@@ -1,49 +1,90 @@
-# Opal Vanguard - Mission Command Configuration
-# Use this file to ramp up the "Hardening" levels for the EW competition.
+# ==============================================================================
+# OPAL VANGUARD - MISSION CONFIGURATION (The "Mission Manual")
+# ==============================================================================
+# Use this file to define the datalink characteristics and EW hardening levels.
+# Changes take effect upon restarting the 'top_block_gui.py' or test scripts.
 
 mission:
   id: "OPAL_VANGUARD_LAB"
   security_level: "MAX"
 
 physical:
+  # Base sample rate. 10MHz recommended for wideband lab visualization.
   samp_rate: 10000000
+  
+  # Center of the hopping band (e.g., 915MHz for ISM band).
   center_freq: 915000000
+  
+  # Modulation type. Only "GFSK" is supported in current version.
   modulation: "GFSK"
+  
+  # Modulation index (h). 1.0 is standard for robust GFSK.
   mod_index: 1.0
+  
+  # Over-sampling factor. 8 is recommended for stable clock recovery.
   samples_per_symbol: 8
 
 link_layer:
-  # --- Error Detection ---
-  crc_type: "CRC16"       # Options: "NONE", "CRC16", "CRC32"
+  # Error Detection: "NONE", "CRC16" (standard), or "CRC32" (high-reliability).
+  crc_type: "CRC16"
   
-  # --- Error Correction ---
-  use_fec: true           # Reed-Solomon (15,11)
+  # Error Correction: Enable/Disable Reed-Solomon (15,11). Fixes up to 2 symbols per block.
+  use_fec: true
   
-  # --- Burst Resilience ---
+  # Burst Resilience: Shuffles data symbols to spread concentrated noise damage.
   use_interleaving: true
   interleaver_rows: 8
   
-  # --- DC Balance & Clock Recovery ---
+  # Data Scrambling: Ensures DC balance and high transition density for clock recovery.
   use_whitening: true
-  scrambler_mask: 0x48    # x^7 + x^4 + 1
+  scrambler_mask: 0x48    # x^7 + x^4 + 1 polynomial
   scrambler_seed: 0x7F
   
-  use_manchester: false   # Perfect DC balance but halves the data rate
+  # Manchester Encoding: Ensures perfect DC balance but cuts data rate by 50%.
+  # Set to 'true' for extremely weak signal environments.
+  use_manchester: false
   
-  # --- Phase Resilience ---
-  use_nrzi: true          # Immune to bit-flips (180 deg)
+  # Differential Encoding (NRZ-I): Protects against bit-flips caused by phase inversion.
+  use_nrzi: true
 
 dsss:
+  # Direct Sequence Spread Spectrum: Multiplies payload bits by high-speed chips.
   enabled: true
+  
+  # Number of chips per bit. Higher factor = better jam-resistance but slower speed.
   spreading_factor: 31
-  # Chipping Code: 31-bit M-Sequence
+  
+  # Chipping Sequence: Must be 1/-1. 31-bit M-Sequence provided below.
   chipping_code: [1, 1, 1, 1, 1, -1, -1, -1, -1, 1, 1, -1, 1, 1, 1, -1, 1, -1, -1, 1, -1, 1, -1, 1, 1, -1, -1, 1, 1, -1, -1] 
 
 hopping:
+  # Master toggle for Frequency Hopping Spread Spectrum.
   enabled: true
-  type: "AES"             # "LFSR" or "AES"
-  dwell_time_ms: 200
-  num_channels: 50
-  channel_spacing: 150000
-  initial_seed: 0xACE
+  
+  # Sync Strategy: 
+  #   "HANDSHAKE" -> Node A sends SYN packet with seed; Node B syncs and ACKs.
+  #   "TOD"       -> Precision Time-of-Day sync. Nodes derive freq from system clock. (STEALTH)
+  sync_mode: "TOD"
+  
+  # Sequence Logic: 
+  #   "LFSR" -> Linear Feedback Shift Register (Predictable).
+  #   "AES"  -> AES-CTR Cryptographic Sequence (Secure TRANSEC).
+  type: "AES"
+  
+  # AES-256 Key for TRANSEC sequence. Change this to change the hop set.
   aes_key: "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
+  
+  # Time on each frequency. Military standards use <10ms. Lab default is 200ms.
+  dwell_time_ms: 200
+  
+  # Compensation for CPU/Hardware latency in TOD mode (milliseconds).
+  lookahead_ms: 10
+  
+  # Number of available channels in the hopping band.
+  num_channels: 50
+  
+  # Frequency separation between channels (Hz).
+  channel_spacing: 150000
+  
+  # Initial seed for LFSR mode.
+  initial_seed: 0xACE
