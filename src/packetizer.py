@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Opal Vanguard - Packetizer Block (DSSS + NRZI + Config Support)
+# Opal Vanguard - Mission-Controlled Packetizer
 
 import numpy as np
 from gnuradio import gr
@@ -9,29 +9,35 @@ import struct
 import os
 import sys
 import yaml
+import binascii
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from rs_helper import RS1511
-from dsp_helper import MatrixInterleaver, DSSSProcessor, NRZIEncoder
+from dsp_helper import MatrixInterleaver, DSSSProcessor, NRZIEncoder, ManchesterEncoder, Scrambler
 
 class packetizer(gr.basic_block):
     def __init__(self, config_path="config.yaml"):
         gr.basic_block.__init__(self, name="packetizer", in_sig=None, out_sig=None)
         
-        # Load Config
         with open(config_path, 'r') as f:
             self.cfg = yaml.safe_load(f)
             
-        self.use_fec = self.cfg['link_layer']['use_fec']
-        self.use_whitening = self.cfg['link_layer']['use_whitening']
-        self.use_interleaving = self.cfg['link_layer']['use_interleaving']
-        self.use_dsss = self.cfg['link_layer']['use_dsss']
-        self.use_nrzi = self.cfg['link_layer'].get('use_nrzi', False)
+        l_cfg = self.cfg['link_layer']
+        self.crc_type = l_cfg.get('crc_type', "CRC16")
+        self.use_fec = l_cfg.get('use_fec', True)
+        self.use_interleaving = l_cfg.get('use_interleaving', True)
+        self.use_whitening = l_cfg.get('use_whitening', True)
+        self.use_manchester = l_cfg.get('use_manchester', False)
+        self.use_nrzi = l_cfg.get('use_nrzi', True)
+        self.use_dsss = self.cfg['dsss'].get('enabled', True)
         
+        # Components
         self.rs = RS1511()
-        self.interleaver = MatrixInterleaver(rows=8)
-        self.dsss = DSSSProcessor(chipping_code=self.cfg['dsss']['chipping_code'])
+        self.interleaver = MatrixInterleaver(rows=l_cfg.get('interleaver_rows', 8))
+        self.scrambler = Scrambler(mask=l_cfg.get('scrambler_mask', 0x48), seed=l_cfg.get('scrambler_seed', 0x7F))
+        self.manchester = ManchesterEncoder()
         self.nrzi = NRZIEncoder()
+        self.dsss = DSSSProcessor(chipping_code=self.cfg['dsss']['chipping_code'])
         
         self.message_port_register_in(pmt.intern("in"))
         self.set_msg_handler(pmt.intern("in"), self.handle_msg)
@@ -40,40 +46,28 @@ class packetizer(gr.basic_block):
         self.preamble = b'\xAA' * 8
         self.syncword = b'\x3D\x4C\x5B\x6A'
 
-    def whiten(self, data):
-        state = 0x7F
-        out = []
-        for byte in data:
-            new_byte = 0
-            for i in range(8):
-                feedback = ((state >> 6) ^ (state >> 3)) & 1
-                bit = (byte >> (7-i)) & 1
-                whitened_bit = bit ^ (state & 1)
-                new_byte = (new_byte << 1) | whitened_bit
-                state = ((state << 1) & 0x7F) | feedback
-            out.append(new_byte)
-        return bytes(out)
-
-    def crc16_ccitt(self, data):
-        crc = 0xFFFF
-        for byte in data:
-            crc ^= byte << 8
-            for _ in range(8):
-                if crc & 0x8000: crc = (crc << 1) ^ 0x1021
-                else: crc = (crc << 1)
-                crc &= 0xFFFF
-        return struct.pack('>H', crc)
+    def calculate_crc(self, data):
+        if self.crc_type == "CRC16":
+            crc = 0xFFFF
+            for byte in data:
+                crc ^= byte << 8
+                for _ in range(8):
+                    if crc & 0x8000: crc = (crc << 1) ^ 0x1021
+                    else: crc = (crc << 1)
+                    crc &= 0xFFFF
+            return struct.pack('>H', crc)
+        elif self.crc_type == "CRC32":
+            return struct.pack('>I', binascii.crc32(data) & 0xFFFFFFFF)
+        return b''
 
     def handle_msg(self, msg):
         if not pmt.is_pdu(msg): return
         meta = pmt.car(msg)
         payload_bytes = bytes(pmt.u8vector_elements(pmt.cdr(msg)))
         
-        msg_type = 0x00
-        if pmt.dict_has_key(meta, pmt.intern("type")):
-            msg_type = pmt.to_long(pmt.dict_ref(meta, pmt.intern("type"), pmt.from_long(0)))
+        msg_type = pmt.to_long(pmt.dict_ref(meta, pmt.intern("type"), pmt.from_long(0)))
 
-        # 1. FEC
+        # 1. FEC (Reed-Solomon)
         if self.use_fec:
             pad_len = (11 - (len(payload_bytes) % 11)) % 11
             padded = payload_bytes + b'\x00' * pad_len
@@ -89,61 +83,52 @@ class packetizer(gr.basic_block):
         else:
             payload = payload_bytes
             
-        # 2. Header + CRC
-        data_to_whiten = struct.pack('BB', msg_type, len(payload_bytes) & 0xFF) + payload
-        data_to_whiten += self.crc16_ccitt(data_to_whiten)
+        # 2. Add Header and CRC
+        data_block = struct.pack('BB', msg_type, len(payload_bytes) & 0xFF) + payload
+        data_block += self.calculate_crc(data_block)
         
         # 3. Interleave
         if self.use_interleaving:
-            current_len = len(data_to_whiten)
-            if current_len < 120:
-                data_to_whiten += b'\x00' * (120 - current_len)
-            data_to_whiten = self.interleaver.interleave(data_to_whiten)
+            # Pad to a fixed size for robust depacketization (120 bytes)
+            if len(data_block) < 120:
+                data_block += b'\x00' * (120 - len(data_block))
+            data_block = self.interleaver.interleave(data_block)
         
-        # 4. Whiten
+        # 4. Whiten (Scramble)
         if self.use_whitening:
-            data_final = self.whiten(data_to_whiten)
-        else:
-            data_final = data_to_whiten
+            data_block = self.scrambler.process(data_block)
             
-        # 5. Convert to bits
+        # 5. Bit-Level Processing
         bits = []
-        for b in data_final:
+        for b in data_block:
             for i in range(8): bits.append((b >> (7-i)) & 1)
             
-        # 6. NRZ-I (Differential Encoding)
+        # 6. NRZ-I (Phase Inversion Resilience)
         if self.use_nrzi:
-            # Sync start state for each packet
             self.nrzi.tx_state = 0
             bits = self.nrzi.encode(bits)
             
-        # 7. DSSS Spreading
+        # 7. Manchester (DC Balance)
+        if self.use_manchester:
+            bits = self.manchester.encode(bits)
+            
+        # 8. DSSS (Stealth / Processing Gain)
         if self.use_dsss:
             chips = self.dsss.spread(bits)
-            
-            packed_chips = []
-            current_byte = 0
-            for i, chip in enumerate(chips):
-                bit = 1 if chip > 0 else 0
-                current_byte = (current_byte << 1) | bit
-                if (i + 1) % 8 == 0:
-                    packed_chips.append(current_byte)
-                    current_byte = 0
-            if len(chips) % 8 != 0:
-                packed_chips.append(current_byte << (8 - (len(chips) % 8)))
-            data_part = bytes(packed_chips)
-        else:
-            # Re-pack bits if not using DSSS but using NRZI
-            packed_bits = []
-            current_byte = 0
-            for i, bit in enumerate(bits):
-                current_byte = (current_byte << 1) | bit
-                if (i + 1) % 8 == 0:
-                    packed_bits.append(current_byte)
-                    current_byte = 0
-            data_part = bytes(packed_bits)
+            # Map -1/1 back to 0/1 bits for GFSK packing
+            bits = [1 if c > 0 else 0 for c in chips]
 
-        # 8. Final Assembly
-        packet = self.preamble + self.syncword + data_part + b'\x00' * 32
-        out_msg = pmt.cons(meta, pmt.init_u8vector(len(packet), list(packet)))
-        self.message_port_pub(pmt.intern("out"), out_msg)
+        # 9. Pack to Bytes for GFSK
+        packed_data = []
+        current_byte = 0
+        for i, bit in enumerate(bits):
+            current_byte = (current_byte << 1) | bit
+            if (i + 1) % 8 == 0:
+                packed_data.append(current_byte)
+                current_byte = 0
+        if len(bits) % 8 != 0:
+            packed_data.append(current_byte << (8 - (len(bits) % 8)))
+        
+        # 10. Final Assembly (Preamble + Syncword are NEVER spread/coded)
+        packet = self.preamble + self.syncword + bytes(packed_data) + b'\x00' * 32
+        self.message_port_pub(pmt.intern("out"), pmt.cons(meta, pmt.init_u8vector(len(packet), list(packet))))

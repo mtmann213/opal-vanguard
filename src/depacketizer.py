@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Opal Vanguard - Depacketizer Block (Handshake + Interleaving + DSSS + NRZI Support)
+# Opal Vanguard - Mission-Controlled Depacketizer
 
 import numpy as np
 from gnuradio import gr
@@ -9,65 +9,62 @@ import struct
 import os
 import sys
 import yaml
+import binascii
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from rs_helper import RS1511
-from dsp_helper import MatrixInterleaver, DSSSProcessor, NRZIEncoder
+from dsp_helper import MatrixInterleaver, DSSSProcessor, NRZIEncoder, ManchesterEncoder, Scrambler
 
 class depacketizer(gr.basic_block):
     def __init__(self, config_path="config.yaml"):
         gr.basic_block.__init__(self, name="depacketizer", in_sig=[np.uint8], out_sig=None)
         
-        # Load Config
         with open(config_path, 'r') as f:
             self.cfg = yaml.safe_load(f)
             
-        self.use_fec = self.cfg['link_layer']['use_fec']
-        self.use_whitening = self.cfg['link_layer']['use_whitening']
-        self.use_interleaving = self.cfg['link_layer']['use_interleaving']
-        self.use_dsss = self.cfg['link_layer']['use_dsss']
-        self.use_nrzi = self.cfg['link_layer'].get('use_nrzi', False)
-        self.sf = self.cfg['dsss']['spreading_factor']
+        l_cfg = self.cfg['link_layer']
+        self.crc_type = l_cfg.get('crc_type', "CRC16")
+        self.use_fec = l_cfg.get('use_fec', True)
+        self.use_interleaving = l_cfg.get('use_interleaving', True)
+        self.use_whitening = l_cfg.get('use_whitening', True)
+        self.use_manchester = l_cfg.get('use_manchester', False)
+        self.use_nrzi = l_cfg.get('use_nrzi', True)
+        self.use_dsss = self.cfg['dsss'].get('enabled', True)
+        self.sf = self.cfg['dsss'].get('spreading_factor', 31)
         
+        # Components
         self.rs = RS1511()
-        self.interleaver = MatrixInterleaver(rows=8)
-        self.dsss = DSSSProcessor(chipping_code=self.cfg['dsss']['chipping_code'])
+        self.interleaver = MatrixInterleaver(rows=l_cfg.get('interleaver_rows', 8))
+        self.scrambler = Scrambler(mask=l_cfg.get('scrambler_mask', 0x48), seed=l_cfg.get('scrambler_seed', 0x7F))
+        self.manchester = ManchesterEncoder()
         self.nrzi = NRZIEncoder()
+        self.dsss = DSSSProcessor(chipping_code=self.cfg['dsss']['chipping_code'])
         
         self.message_port_register_out(pmt.intern("out"))
         
         self.state = "SEARCH"
         self.syncword_bits = 0x3D4C5B6A
         self.bit_buf = 0
-        self.data_bit_buf = 0
-        self.bits_in_buf = 0
-        self.byte_buf = b''
-        self.chip_buf = []
         self.recovered_bits = []
 
-    def dewhiten(self, data):
-        state = 0x7F
-        out = []
-        for byte in data:
-            new_byte = 0
-            for i in range(8):
-                feedback = ((state >> 6) ^ (state >> 3)) & 1
-                bit = (byte >> (7-i)) & 1
-                dewhitened_bit = bit ^ (state & 1)
-                new_byte = (new_byte << 1) | dewhitened_bit
-                state = ((state << 1) & 0x7F) | feedback
-            out.append(new_byte)
-        return bytes(out)
-
-    def crc16_ccitt(self, data):
-        crc = 0xFFFF
-        for byte in data:
-            crc ^= byte << 8
-            for _ in range(8):
-                if crc & 0x8000: crc = (crc << 1) ^ 0x1021
-                else: crc = (crc << 1)
-                crc &= 0xFFFF
-        return crc
+    def verify_crc(self, data):
+        if self.crc_type == "NONE": return True
+        if self.crc_type == "CRC16":
+            if len(data) < 2: return False
+            payload, received_crc = data[:-2], struct.unpack('>H', data[-2:])[0]
+            crc = 0xFFFF
+            for byte in payload:
+                crc ^= byte << 8
+                for _ in range(8):
+                    if crc & 0x8000: crc = (crc << 1) ^ 0x1021
+                    else: crc = (crc << 1)
+                    crc &= 0xFFFF
+            return crc == received_crc
+        elif self.crc_type == "CRC32":
+            if len(data) < 4: return False
+            payload, received_crc = data[:-4], struct.unpack('>I', data[-4:])[0]
+            return (binascii.crc32(payload) & 0xFFFFFFFF) == received_crc
+        return False
 
     def general_work(self, input_items, output_items):
         in0 = input_items[0]
@@ -78,106 +75,88 @@ class depacketizer(gr.basic_block):
             if self.state == "SEARCH":
                 if self.bit_buf == self.syncword_bits or self.bit_buf == (0xFFFFFFFF ^ self.syncword_bits):
                     self.is_inverted = (self.bit_buf == (0xFFFFFFFF ^ self.syncword_bits))
-                    print(f"[Depacketizer] Syncword Found! (DSSS: {self.use_dsss}, NRZI: {self.use_nrzi})")
                     self.state = "COLLECT"
-                    self.byte_buf = b''
-                    self.chip_buf = []
-                    self.bits_in_buf = 0
-                    self.data_bit_buf = 0
                     self.recovered_bits = []
-                    self.nrzi.rx_state = 0 # Reset NRZI state for each packet
-                    if self.is_inverted:
-                        self.nrzi.rx_state = 1 # Sync to inverted start
+                    self.nrzi.rx_state = 1 if self.is_inverted else 0
+                    self.chip_buf = []
                     
             elif self.state == "COLLECT":
+                # 1. DSSS De-spreading
                 if self.use_dsss:
                     chip = 1 if bit == 1 else -1
                     if self.is_inverted: chip *= -1
                     self.chip_buf.append(chip)
-                    
                     if len(self.chip_buf) == self.sf:
-                        recovered_bit = self.dsss.despread(self.chip_buf)[0]
+                        self.recovered_bits.append(self.dsss.despread(self.chip_buf)[0])
                         self.chip_buf = []
-                        self.recovered_bits.append(recovered_bit)
                 else:
                     self.recovered_bits.append(bit ^ (1 if self.is_inverted else 0))
 
-                # For NRZI, we process bits from self.recovered_bits later? 
-                # No, we need to know when we have enough bits to form bytes.
-                # Since we collect a fixed block of 120 bytes, we need 960 bits.
-                target_len = 120 if self.use_interleaving else 64
-                target_bits = target_len * 8
+                # Logic: We collect enough bits to form the fixed block (120 bytes)
+                # target_len = 120 (interleaved) or 64 (non-interleaved)
+                target_bytes = 120 if self.use_interleaving else 64
+                target_bits = target_bytes * 8
+                if self.use_manchester: target_bits *= 2
                 
                 if len(self.recovered_bits) >= target_bits:
                     bits = self.recovered_bits[:target_bits]
                     
-                    # 1. NRZI Decode
+                    # 2. Manchester Decode
+                    if self.use_manchester:
+                        bits = self.manchester.decode(bits)
+                        
+                    # 3. NRZ-I Decode
                     if self.use_nrzi:
-                        # Wait, if is_inverted was True, NRZI decode should handle it?
-                        # NRZI is immune to inversion, but the start state matters.
-                        # If the whole stream was inverted, the first bit transition 
-                        # relative to prev_state (0) might be flipped?
-                        # Actually, if we use self.is_inverted to set rx_state, it works.
                         bits = self.nrzi.decode(bits)
                         
-                    # 2. Bits to Bytes
+                    # 4. Bits to Bytes
                     byte_list = []
                     acc = 0
                     for j, b in enumerate(bits):
                         acc = (acc << 1) | b
                         if (j + 1) % 8 == 0:
-                            byte_list.append(acc)
-                            acc = 0
-                    byte_data = bytes(byte_list)
+                            byte_list.append(acc); acc = 0
+                    data_block = bytes(byte_list)
                     
-                    # 3. De-whiten
-                    raw_data = self.dewhiten(byte_data) if self.use_whitening else byte_data
-                    
-                    # 4. De-interleave
-                    if self.use_interleaving:
-                        data = self.interleaver.deinterleave(raw_data, len(raw_data))
-                    else:
-                        data = raw_data
-                    
-                    # 5. Header Parsing
-                    msg_type, plen = struct.unpack('BB', data[:2])
-                    fec_len = ((plen + 10) // 11) * 15 if self.use_fec else plen
-                    
-                    total_pkt_len = 2 + fec_len + 2
-                    if total_pkt_len <= len(data):
-                        actual_packet = data[:total_pkt_len]
-                        calc_crc = self.crc16_ccitt(actual_packet[:-2])
-                        received_crc = struct.unpack('>H', actual_packet[-2:])[0]
+                    # 5. De-Whiten
+                    if self.use_whitening:
+                        data_block = self.scrambler.process(data_block)
                         
-                        if calc_crc == received_crc:
-                            print(f"[Depacketizer] CRC PASSED! Type: {msg_type}, Len: {plen}")
-                            fec_payload = actual_packet[2:-2]
-                            
-                            if self.use_fec:
-                                decoded = b''
-                                for j in range(0, len(fec_payload), 15):
-                                    chunk = fec_payload[j:j+15]
-                                    nib = []
-                                    for b in chunk: nib.extend([(b >> 4) & 0x0F, b & 0x0F])
-                                    block1 = self.rs.decode(nib[:15])
-                                    block2 = self.rs.decode(nib[15:])
-                                    all_nib = block1 + block2
-                                    for k in range(0, 22, 2):
-                                        decoded += bytes([(all_nib[k] << 4) | all_nib[k+1]])
-                                payload = decoded[:plen]
-                                if payload != actual_packet[2:2+plen]:
-                                    print("[Depacketizer] FEC REPAIR SUCCESSFUL.")
-                            else:
-                                payload = fec_payload
-                            
-                            print(f"[Depacketizer] RECOVERED: {payload}")
-                            meta = pmt.make_dict()
-                            meta = pmt.dict_add(meta, pmt.intern("type"), pmt.from_long(msg_type))
-                            self.message_port_pub(pmt.intern("out"), pmt.cons(meta, pmt.init_u8vector(len(payload), list(payload))))
+                    # 6. De-Interleave
+                    if self.use_interleaving:
+                        data_block = self.interleaver.deinterleave(data_block, len(data_block))
+                        
+                    # 7. Header Parsing
+                    msg_type, plen = struct.unpack('BB', data_block[:2])
+                    fec_len = ((plen + 10) // 11) * 15 if self.use_fec else plen
+                    crc_len = 4 if self.crc_type == "CRC32" else (2 if self.crc_type == "CRC16" else 0)
+                    
+                    actual_packet = data_block[:2 + fec_len + crc_len]
+                    
+                    if self.verify_crc(actual_packet):
+                        print(f"[Depacketizer] {self.crc_type} PASSED! Type: {msg_type}, Len: {plen}")
+                        fec_payload = actual_packet[2 : 2+fec_len]
+                        
+                        if self.use_fec:
+                            decoded = b''
+                            for j in range(0, len(fec_payload), 15):
+                                chunk = fec_payload[j:j+15]
+                                nib = []
+                                for b in chunk: nib.extend([(b >> 4) & 0x0F, b & 0x0F])
+                                block1 = self.rs.decode(nib[:15])
+                                block2 = self.rs.decode(nib[15:])
+                                all_nib = block1 + block2
+                                for k in range(0, 22, 2):
+                                    decoded += bytes([(all_nib[k] << 4) | all_nib[k+1]])
+                            payload = decoded[:plen]
                         else:
-                            print(f"[Depacketizer] CRC FAILED: Calc 0x{calc_crc:04X} vs Recv 0x{received_crc:04X}")
+                            payload = fec_payload
+                        
+                        meta = pmt.make_dict()
+                        meta = pmt.dict_add(meta, pmt.intern("type"), pmt.from_long(msg_type))
+                        self.message_port_pub(pmt.intern("out"), pmt.cons(meta, pmt.init_u8vector(len(payload), list(payload))))
                     else:
-                        print(f"[Depacketizer] Packet too short? total_pkt_len={total_pkt_len} > len(data)={len(data)}")
+                        pass # CRC Failure silently drops or logs
                     
                     self.state = "SEARCH"
 

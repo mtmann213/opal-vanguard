@@ -176,6 +176,11 @@ class OpalVanguardVisualDemo(gr.top_block, Qt.QWidget):
         # ----------------------------------------------------------------------
         self.channel = channels.channel_model(noise_voltage=0.0, frequency_offset=0.0, epsilon=1.0, taps=[1.0+0j])
         self.rot_rx = blocks.rotator_cc(0)
+        
+        # Receiver Channel Filter (Low Pass Filter)
+        lpf_taps = filter.firdes.low_pass(1.0, self.samp_rate, 1.5e6, 250e3)
+        self.rx_filter = filter.fir_filter_ccf(1, lpf_taps)
+        
         self.demod_b = digital.gfsk_demod(samples_per_symbol=8, gain_mu=0.1, mu=0.5, omega_relative_limit=0.005, freq_error=0.0)
 
         # ----------------------------------------------------------------------
@@ -203,7 +208,7 @@ class OpalVanguardVisualDemo(gr.top_block, Qt.QWidget):
         self.msg_connect((self.pkt_a, "out"), (self.p2s_a, "pdus"))
         self.connect(self.p2s_a, self.mod_a, self.rot_tx, self.channel)
         
-        self.connect(self.channel, self.rot_rx, self.demod_b, self.depkt_b)
+        self.connect(self.channel, self.rot_rx, self.rx_filter, self.demod_b, self.depkt_b)
         self.msg_connect((self.depkt_b, "out"), (self.session_b, "msg_in"))
         self.msg_connect((self.session_b, "pkt_out"), (self.session_a, "msg_in"))
 

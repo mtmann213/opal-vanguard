@@ -1,28 +1,49 @@
-# Opal Vanguard - Mission Configuration
-# All enhancements can be toggled here.
+# Opal Vanguard - Mission Command Configuration
+# Use this file to ramp up the "Hardening" levels for the EW competition.
+
+mission:
+  id: "OPAL_VANGUARD_LAB"
+  security_level: "MAX"
 
 physical:
   samp_rate: 10000000
   center_freq: 915000000
   modulation: "GFSK"
+  mod_index: 1.0
   samples_per_symbol: 8
 
 link_layer:
+  # --- Error Detection ---
+  crc_type: "CRC16"       # Options: "NONE", "CRC16", "CRC32"
+  
+  # --- Error Correction ---
   use_fec: true           # Reed-Solomon (15,11)
-  use_whitening: true     # x^7+x^4+1 LFSR
-  use_interleaving: true  # 8-row Matrix Interleaver
-  use_dsss: true          # Direct Sequence Spread Spectrum
-  use_nrzi: true          # Non-Return-to-Zero Inverted encoding
+  
+  # --- Burst Resilience ---
+  use_interleaving: true
+  interleaver_rows: 8
+  
+  # --- DC Balance & Clock Recovery ---
+  use_whitening: true
+  scrambler_mask: 0x48    # x^7 + x^4 + 1
+  scrambler_seed: 0x7F
+  
+  use_manchester: false   # Perfect DC balance but halves the data rate
+  
+  # --- Phase Resilience ---
+  use_nrzi: true          # Immune to bit-flips (180 deg)
 
 dsss:
-  chipping_code: [1, 1, 1, -1, -1, -1, 1, -1, -1, 1, -1] # 11-chip Barker Code
-  spreading_factor: 11
+  enabled: true
+  spreading_factor: 31
+  # Chipping Code: 31-bit M-Sequence
+  chipping_code: [1, 1, 1, 1, 1, -1, -1, -1, -1, 1, 1, -1, 1, 1, 1, -1, 1, -1, -1, 1, -1, 1, -1, 1, 1, -1, -1, 1, 1, -1, -1] 
 
 hopping:
-  use_hopping: true
+  enabled: true
   type: "AES"             # "LFSR" or "AES"
-  key: "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
-  dwell_time_ms: 200      # Dwell time in milliseconds
+  dwell_time_ms: 200
   num_channels: 50
   channel_spacing: 150000
   initial_seed: 0xACE
+  aes_key: "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"

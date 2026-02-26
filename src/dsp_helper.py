@@ -1,64 +1,34 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Opal Vanguard - DSP Helpers (Interleaving & Advanced Logic)
+# Opal Vanguard - Advanced DSP Helpers
 
 import numpy as np
 
 class MatrixInterleaver:
-    """
-    A simple Matrix Interleaver to combat burst errors.
-    Writes data in rows and reads it out in columns.
-    """
     def __init__(self, rows=8):
         self.rows = rows
 
     def interleave(self, data):
-        """
-        Shuffles data using a matrix of specified rows.
-        Padding is added if the data doesn't perfectly fit.
-        """
         data_len = len(data)
         cols = (data_len + self.rows - 1) // self.rows
-        
-        # Pad with zeros
         padded_data = list(data) + [0] * (cols * self.rows - data_len)
-        
-        # Reshape to matrix (rows x cols)
         matrix = np.array(padded_data).reshape((self.rows, cols))
-        
-        # Read out by columns (Transposed)
         interleaved = matrix.T.flatten()
         return bytes(interleaved.tolist())
 
     def deinterleave(self, data, original_len):
-        """
-        Reverses the interleaving process.
-        original_len is required to strip padding.
-        """
         data_len = len(data)
         cols = data_len // self.rows
-        
-        # Reshape (cols x rows)
         matrix = np.array(list(data)).reshape((cols, self.rows))
-        
-        # Transpose back to (rows x cols)
         deinterleaved = matrix.T.flatten()
         return bytes(deinterleaved[:original_len].tolist())
 
 class DSSSProcessor:
-    """
-    Direct Sequence Spread Spectrum Processor.
-    Spreads each bit into a sequence of 'chips'.
-    """
-    def __init__(self, chipping_code=[1, 1, 1, -1, -1, -1, 1, -1, -1, 1, -1]):
+    def __init__(self, chipping_code=[1, -1]):
         self.code = np.array(chipping_code)
         self.sf = len(self.code)
 
     def spread(self, bits):
-        """
-        Spreads a bitstream (0/1) into chips (-1/1).
-        Input is list of bits, output is list of chips.
-        """
         chips = []
         for bit in bits:
             val = 1 if bit == 1 else -1
@@ -66,10 +36,6 @@ class DSSSProcessor:
         return chips
 
     def despread(self, chips):
-        """
-        Correlates incoming chips with the code to recover bits.
-        Input is list of chips, output is list of bits (0/1).
-        """
         bits = []
         for i in range(0, len(chips), self.sf):
             chunk = np.array(chips[i:i+self.sf])
@@ -79,35 +45,64 @@ class DSSSProcessor:
         return bits
 
 class NRZIEncoder:
-    """
-    Non-Return-to-Zero Inverted (NRZ-I) Encoder/Decoder.
-    1 = Transition, 0 = No Transition.
-    Provides immunity to bit inversion (180-degree phase/FM polarity).
-    """
     def __init__(self):
         self.tx_state = 0
         self.rx_state = 0
-
     def encode(self, bits):
-        """Encodes bits to NRZ-I."""
-        encoded = []
-        state = self.tx_state
+        encoded = []; state = self.tx_state
         for bit in bits:
-            if bit == 1:
-                state = 1 - state
+            if bit == 1: state = 1 - state
             encoded.append(state)
         self.tx_state = state
         return encoded
-
     def decode(self, bits):
-        """Decodes NRZ-I bits back to original."""
-        decoded = []
-        prev_state = self.rx_state
+        decoded = []; prev_state = self.rx_state
         for state in bits:
-            if state != prev_state:
-                decoded.append(1)
-            else:
-                decoded.append(0)
+            decoded.append(1 if state != prev_state else 0)
             prev_state = state
         self.rx_state = prev_state
         return decoded
+
+class ManchesterEncoder:
+    """
+    Manchester Encoding (IEEE 802.3 standard):
+    1 -> [1, 0] (falling edge)
+    0 -> [0, 1] (rising edge)
+    Ensures perfect DC balance and clock recovery.
+    """
+    def encode(self, bits):
+        out = []
+        for b in bits:
+            if b == 1: out.extend([1, 0])
+            else: out.extend([0, 1])
+        return out
+    def decode(self, bits):
+        out = []
+        for i in range(0, len(bits), 2):
+            pair = bits[i:i+2]
+            if len(pair) < 2: break
+            out.append(1 if pair == [1, 0] else 0)
+        return out
+
+class Scrambler:
+    """Generic LFSR Scrambler with custom taps."""
+    def __init__(self, mask=0x48, seed=0x7F):
+        self.mask = mask
+        self.seed = seed
+    def process(self, data):
+        state = self.seed
+        out = []
+        for byte in data:
+            new_byte = 0
+            for i in range(8):
+                # Fibonacci LFSR based on mask bits
+                feedback = 0
+                for bit_pos in range(7):
+                    if (self.mask >> bit_pos) & 1:
+                        feedback ^= (state >> bit_pos) & 1
+                
+                bit = (byte >> (7-i)) & 1
+                new_byte = (new_byte << 1) | (bit ^ (state & 1))
+                state = ((state << 1) & 0x7F) | (feedback & 1)
+            out.append(new_byte)
+        return bytes(out)
