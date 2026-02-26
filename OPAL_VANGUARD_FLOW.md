@@ -1,47 +1,65 @@
 # Opal Vanguard: Modular FHSS Messaging System
 ## Full System Architectural Flow & Technical Specification
 
+Opal Vanguard is a high-fidelity GNU Radio implementation of a Frequency Hopping Spread Spectrum (FHSS) messaging system with multi-layer signal protection.
+
 ---
 
 ## 1. System Overview
-Opal Vanguard is a high-fidelity GNU Radio implementation of a Frequency Hopping Spread Spectrum (FHSS) messaging system with multi-layer protection.
+The system is designed for Electronic Warfare (EW) training, allowing operators to ramp up signal hardening layers to combat noise, jamming, and manipulation.
 
-### Core Technical Specs:
-*   **Sample Rate:** 10 MHz (Simulation) / 2 MHz (Hardware Target)
-*   **Modulation:** GFSK (Modulation Index $h=1.0$, $BT=0.35$)
-*   **DSSS Spreading:** 11-chip Barker Code (Toggleable)
-*   **FEC:** Reed-Solomon (15, 11) over GF(16)
-*   **Interleaving:** 8-row Matrix Interleaver
-*   **Config System:** Unified `config.yaml` control
+### Core Technical Stack:
+*   **Modulation:** GFSK (h=1.0, BT=0.35)
+*   **Hopping:** AES-CTR Counter-based frequency hopping (TRANSEC).
+*   **Sync:** Dual-Mode (Asynchronous SYN/ACK or Precision TOD-Sync).
+*   **Configuration:** Unified mission control via `config.yaml`.
 
 ---
 
-## 2. Advanced Signal Enhancements
+## 2. Signal Hardening Layers (Top to Bottom)
 
-### A. Matrix Interleaving
-*   **Logic:** Spreads symbols across multiple FEC blocks using an 8-row matrix.
-*   **Result:** Converts a massive 5-byte "burst" of interference into single-nibble errors that the RS-FEC can easily repair.
+### Layer 1: Error Detection (CRC16 / CRC32)
+*   Provides the final validation of packet integrity.
+*   Located at the tail of the data block.
 
-### B. Direct Sequence Spread Spectrum (DSSS)
-*   **Logic:** Every bit of the payload is multiplied by an 11-chip sequence (`[1, 1, 1, -1, -1, -1, 1, -1, -1, 1, -1]`).
-*   **Receiver:** The depacketizer uses a **Correlator**. It sums the product of the incoming chips and the known Barker code. If the sum is high, it's a `1`; if it's low, it's a `0`.
-*   **Benefit:** Provides **Processing Gain**. The signal can be recovered even if it is significantly below the noise floor (Stealth/LPD).
+### Layer 2: Error Correction (Reed-Solomon 15,11)
+*   Corrects up to 2 symbol errors per 15-symbol block.
+*   Fundamental protection against random bit flips in the channel.
+
+### Layer 3: Burst Resilience (Matrix Interleaving)
+*   Shuffles symbols in an 8-row matrix before transmission.
+*   Spreads a concentrated "burst" of noise across multiple FEC blocks, preventing block-level failure.
+
+### Layer 4: DC Balance (Whitening & Manchester)
+*   **Whitening:** Scrambles data using an $x^7+x^4+1$ LFSR.
+*   **Manchester Encoding:** (Optional) Ensures a transition for every bit (1 -> 10, 0 -> 01) for perfect DC balance and clock synchronization at the cost of 50% data rate.
+
+### Layer 5: Phase Resilience (NRZ-I)
+*   Differential encoding that represents data as transitions rather than absolute values.
+*   Provides immunity to 180-degree phase inversions often found in FM discriminators.
+
+### Layer 6: Stealth & Processing Gain (DSSS)
+*   Payload bits are multiplied by a high-speed 31-chip M-sequence.
+*   **Processing Gain:** Allows the receiver to recover signals buried under the noise floor through correlation.
 
 ---
 
-## 3. Configuration & Control
-The system is entirely modular. By editing `config.yaml`, the operator can:
-*   Enable/Disable FEC, DSSS, and Interleaving independently.
-*   Adjust Hopping parameters (dwell time, channel spacing).
-*   Fine-tune GFSK physical layer settings.
+## 3. Data Flow (TX Chain)
+1.  **Session:** Buffers PDU and initiates handshake if required.
+2.  **FEC:** Encodes data into Reed-Solomon blocks.
+3.  **Header:** Assembles Type, Length, and CRC.
+4.  **Interleave:** Shuffles the full data block.
+5.  **Whiten:** Scrambles the block for spectral density.
+6.  **NRZ-I:** Encodes differentially.
+7.  **Manchester:** (Optional) Encodes for DC balance.
+8.  **DSSS:** Spreads payload bits into high-speed chips.
+9.  **GFSK:** Modulates bits/chips to complex baseband.
+10. **FHSS:** Digital rotation (or USRP tuning) hops the signal across the band.
 
 ---
 
-## 4. The Data Flow (Complete Chain)
-1.  **Session:** Buffers and Handshakes.
-2.  **FEC:** Adds redundancy.
-3.  **Interleave:** Shuffles symbols.
-4.  **Whiten:** Scrambles for DC balance.
-5.  **DSSS:** Spreads payload for stealth (Preamble/Sync remain unspread for initial lock).
-6.  **GFSK:** Modulates chips/bits to RF.
-7.  **FHSS:** Digital rotation hops the signal across 50 channels.
+## 4. Diagnostics & Dashboard
+The system provides a real-time "Health Dashboard" via the `diagnostics` message port:
+*   **CRC Status:** Green/Red pass-fail indicator.
+*   **FEC Correction Counter:** Real-time count of symbols repaired by Reed-Solomon.
+*   **Inversion Alert:** Detects and flags inverted bitstreams.

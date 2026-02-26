@@ -1,107 +1,46 @@
 # ==============================================================================
-# OPAL VANGUARD - MISSION CONFIGURATION (The "Mission Manual")
+# OPAL VANGUARD - MISSION CONFIGURATION (LEVEL 1: THE SOFT LINK)
 # ==============================================================================
-# Use this file to define the datalink characteristics and EW hardening levels.
-# Changes take effect upon restarting the 'top_block_gui.py' or test scripts.
 
 mission:
-  id: "OPAL_VANGUARD_LAB"
-  security_level: "MAX"
+  id: "DIGITAL_DUEL_LEVEL_1"
+  security_level: "MINIMAL"
 
 physical:
-  # Base sample rate. 10MHz recommended for wideband lab visualization.
   samp_rate: 10000000
-  
-  # Center of the hopping band (e.g., 915MHz for ISM band).
   center_freq: 915000000
-  
-  # Modulation type. Only "GFSK" is supported in current version.
   modulation: "GFSK"
-  
-  # Modulation index (h). 1.0 is standard for robust GFSK.
   mod_index: 1.0
-  
-  # Over-sampling factor. 8 is recommended for stable clock recovery.
   samples_per_symbol: 8
 
 link_layer:
-  # Error Detection: "NONE", "CRC16" (standard), or "CRC32" (high-reliability).
   crc_type: "CRC16"
-  
-  # Error Correction: Enable/Disable Reed-Solomon (15,11). Fixes up to 2 symbols per block.
-  use_fec: true
-  
-  # Burst Resilience: Shuffles data symbols to spread concentrated noise damage.
-  use_interleaving: true
-  interleaver_rows: 8
-  
-  # Data Scrambling: Ensures DC balance and high transition density for clock recovery.
-  use_whitening: true
-  scrambler_mask: 0x48    # x^7 + x^4 + 1 polynomial
-  scrambler_seed: 0x7F
-  
-  # Manchester Encoding: Ensures perfect DC balance but cuts data rate by 50%.
-  # Set to 'true' for extremely weak signal environments.
-  use_manchester: false
-  
-  # Differential Encoding (NRZ-I): Protects against bit-flips caused by phase inversion.
-  use_nrzi: true
+  use_fec: false           # DISABLED
+  use_interleaving: false  # DISABLED
+  use_whitening: false     # DISABLED
+  use_manchester: false    # DISABLED
+  use_nrzi: false          # DISABLED
 
 dsss:
-  # Direct Sequence Spread Spectrum: Multiplies payload bits by high-speed chips.
-  enabled: true
-  
-  # Number of chips per bit. Higher factor = better jam-resistance but slower speed.
+  enabled: false           # DISABLED
   spreading_factor: 31
-  
-  # Chipping Sequence: Must be 1/-1. 31-bit M-Sequence provided below.
   chipping_code: [1, 1, 1, 1, 1, -1, -1, -1, -1, 1, 1, -1, 1, 1, 1, -1, 1, -1, -1, 1, -1, 1, -1, 1, 1, -1, -1, 1, 1, -1, -1] 
 
 hopping:
-  # Master toggle for Frequency Hopping Spread Spectrum.
-  enabled: true
-  
-  # Sync Strategy: 
-  #   "HANDSHAKE" -> Node A sends SYN packet with seed; Node B syncs and ACKs.
-  #   "TOD"       -> Precision Time-of-Day sync. Nodes derive freq from system clock. (STEALTH)
+  enabled: true            # Hopping still active
   sync_mode: "TOD"
-  
-  # Sequence Logic: 
-  #   "LFSR" -> Linear Feedback Shift Register (Predictable).
-  #   "AES"  -> AES-CTR Cryptographic Sequence (Secure TRANSEC).
   type: "AES"
-  
-  # AES-256 Key for TRANSEC sequence. Change this to change the hop set.
   aes_key: "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
-  
-  # Time on each frequency. Military standards use <10ms. Lab default is 200ms.
   dwell_time_ms: 200
-  
-  # Compensation for CPU/Hardware latency in TOD mode (milliseconds).
   lookahead_ms: 10
-  
-  # Number of available channels in the hopping band.
   num_channels: 50
-  
-  # Frequency separation between channels (Hz).
   channel_spacing: 150000
-  
-  # Initial seed for LFSR mode.
   initial_seed: 0xACE
 
 hardware:
-  # USRP Device Address. "type=b200" covers both B210 and B205mini.
   args: "type=b200"
-  
-  # Hardware sample rate. 2MHz is reliable for USB 3.0 throughput.
   samp_rate: 2000000
-  
-  # Gain settings (0 to 90 dB). Adjust based on distance.
   tx_gain: 50
   rx_gain: 50
-  
-  # Antenna selection. 
-  #   B210: "TX/RX" or "RX2"
-  #   B205mini: "TX/RX"
   tx_antenna: "TX/RX"
   rx_antenna: "TX/RX"

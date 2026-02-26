@@ -72,6 +72,8 @@ class depacketizer(gr.basic_block):
             if self.state == "SEARCH":
                 if self.bit_buf == self.syncword_bits or self.bit_buf == (0xFFFFFFFF ^ self.syncword_bits):
                     self.is_inverted = (self.bit_buf == (0xFFFFFFFF ^ self.syncword_bits))
+                    print(f"[Depacketizer] Syncword Found! (DSSS: {self.use_dsss}, NRZI: {self.use_nrzi})")
+                    sys.stdout.flush()
                     self.state = "COLLECT"
                     self.recovered_bits = []
                     self.nrzi.rx_state = 1 if self.is_inverted else 0
@@ -122,6 +124,7 @@ class depacketizer(gr.basic_block):
                     diag = pmt.dict_add(diag, pmt.intern("msg_type"), pmt.from_long(msg_type))
                     
                     if crc_ok:
+                        print(f"[Depacketizer] {self.crc_type} PASSED! Type: {msg_type}, Len: {plen}")
                         fec_payload = actual_packet[2 : 2+fec_len]
                         corrected_symbols = 0
                         if self.use_fec:
@@ -131,7 +134,6 @@ class depacketizer(gr.basic_block):
                                 nib = []
                                 for b in chunk: nib.extend([(b >> 4) & 0x0F, b & 0x0F])
                                 b1 = self.rs.decode(nib[:15]); b2 = self.rs.decode(nib[15:])
-                                # Heuristic symbol error count
                                 if b1 != nib[:11]: corrected_symbols += 1
                                 if b2 != nib[15:15+11]: corrected_symbols += 1
                                 for k in range(0, 22, 2): decoded += bytes([(b1[k] << 4) | b1[k+1]])
@@ -139,10 +141,18 @@ class depacketizer(gr.basic_block):
                         else:
                             payload = fec_payload
                         
+                        if corrected_symbols > 0:
+                            print(f"[Depacketizer] FEC Corrected {corrected_symbols} blocks.")
+                        
+                        print(f"[Depacketizer] RECOVERED: {payload}")
+                        sys.stdout.flush()
+                        
                         diag = pmt.dict_add(diag, pmt.intern("fec_corrections"), pmt.from_long(corrected_symbols))
                         self.message_port_pub(pmt.intern("diagnostics"), diag)
                         self.message_port_pub(pmt.intern("out"), pmt.cons(pmt.make_dict(), pmt.init_u8vector(len(payload), list(payload))))
                     else:
+                        print(f"[Depacketizer] {self.crc_type} FAILED: Calc 0x{calc_crc:04X} != Recv 0x{recv_crc:04X}")
+                        sys.stdout.flush()
                         self.message_port_pub(pmt.intern("diagnostics"), diag)
                     
                     self.state = "SEARCH"
