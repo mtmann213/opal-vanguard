@@ -1,40 +1,35 @@
-# Mission Hand-off: Project Opal Vanguard
+# Mission Hand-off: Project Opal Vanguard (FINAL)
 ## Session State: Tuesday, February 24, 2026
 
-### 1. Current Context
-*   **Active Branch:** `experimental/advanced-dsp`
-*   **GitHub Repository:** `mtmann213/opal-vanguard`
-*   **Mission Goal:** Military-grade modular FHSS messaging system for 900MHz ISM.
+### 1. Project Overview
+Project Opal Vanguard is a high-fidelity, military-grade FHSS messaging system designed for the USRP B210/B205mini platform. It features multi-layered signal protection and a unified configuration system for Electronic Warfare (EW) training.
 
-### 2. Technical Achievement Summary
-The system has transitioned from a basic loopback to a robust, protected datalink with the following layers (from top to bottom):
-1.  **Session Layer:** `session_manager.py` handles SYN/ACK handshakes and packet buffering.
-2.  **FEC Layer:** `rs_helper.py` implements Reed-Solomon (15,11) with brute-force error correction (fixes 2 symbols/block).
-3.  **Interleaving Layer:** `dsp_helper.py` (MatrixInterleaver) shuffles symbols to defeat burst noise.
-4.  **Whitening Layer:** $x^7 + x^4 + 1$ LFSR for DC balance.
-5.  **Stealth Layer (DSSS):** `dsp_helper.py` (DSSSProcessor) spreads bits using an 11-chip Barker code for LPD/LPI and processing gain.
-6.  **Physical Layer:** Calibrated GFSK ($h=1.0, BT=0.35$) at 10 MHz sample rate.
-7.  **FHSS Layer:** LFSR-based frequency hopping across 50 channels (150kHz spacing).
+### 2. Technical Stack
+*   **Physical Layer:** GFSK (h=1.0, BT=0.35), DSSS (31-chip M-sequence), Manchester Encoding, NRZ-I (Phase resilience).
+*   **Link Layer:** Reed-Solomon (15,11) FEC, Matrix Interleaving (8-row), CRC16/32, Whitening ($x^7+x^4+1$).
+*   **Hopping:** AES-CTR Counter-based sequence, 200ms Dwell (Configurable down to <10ms).
+*   **Sync:** Dual Mode - Asynchronous Handshake (SYN/ACK) or Precision Time-of-Day (TOD) Sync.
 
-### 3. Key Files
-*   `config.yaml`: The master toggle for all enhancements (DSSS, FEC, etc.).
-*   `src/top_block_gui.py`: The advanced wideband lab with real-time stress-test sliders.
-*   `OPAL_VANGUARD_FLOW.md`: The definitive technical architecture guide.
+### 3. Current Working State
+*   **Active Branch:** `hardware/usrp-integration`
+*   **Hardware Status:** Scaffolding complete for USRP B210/B205mini.
+*   **Lab Status:** 10MHz software simulation fully verified with 31-chip DSSS.
 
-### 4. Verification Benchmarks (Passed)
-*   **Handshake Reliability:** Node A buffers data until Node B syncs via SYN/ACK.
-*   **FEC/CRC Integrity:** Link survives ~0.12V AWGN noise without DSSS.
-*   **DSSS Processing Gain:** Link survives higher noise floor through correlation.
-*   **Inspectrum Analysis:** Syncword `0x3D4C5B6A` and Barker chips verified in `.cf32` captures.
+### 4. Primary Entry Points
+*   **`src/usrp_transceiver.py`**: The main hardware script. Supports `--role ALPHA/BRAVO` and `--serial <ID>`.
+*   **`config.yaml`**: The "Mission Manual." Every DSP and Hardware toggle is centrally controlled and documented here.
+*   **`src/top_block_gui.py`**: The wideband software simulation lab with real-time stress sliders.
 
-### 5. Next Mission Objectives (Pending)
-1.  **NRZ-I Encoding:** Implement in `dsp_helper.py` to protect against phase inversion.
-2.  **Fast Frequency Hopping:** Transition from LFSR to AES-CTR sequence and reduce dwell time to <10ms.
-3.  **Time-of-Day (TOD) Sync:** Move from asynchronous handshake to precision time alignment.
-4.  **Hardware Integration:** Integrate `gr-uhd` blocks for USRP B205mini/B210 deployment.
+### 5. Essential Documentation
+*   `OPAL_VANGUARD_FLOW.md`: Detailed DSP/RF signal chain architecture.
+*   `RANGE_SETUP_GUIDE.md`: Wiring diagrams and attenuator requirements for USRP tests.
+*   `PARTICIPANT_HANDBOOK.md`: Rules and tactical tips for the "Digital Duel" team competition.
+*   `RULES_OF_ENGAGEMENT.md`: Ramping difficulty levels for EW stress testing.
 
-### 6. Resumption Instructions for Gemini CLI
-1.  Clone/Pull the `experimental/advanced-dsp` branch.
-2.  Run `python3 src/test_loopback.py` to confirm the digital logic is intact.
-3.  Run `python3 src/top_block_gui.py` to demonstrate the current lab capabilities.
-4.  Review `OPAL_VANGUARD_FLOW.md` for logic implementation details.
+### 6. Resumption Steps for Gemini CLI
+1.  **Environment:** Ensure `gr-uhd` and `cryptography` are installed.
+2.  **Verify Digital Chain:** Run `python3 src/test_loopback.py`. It should pass with the current `config.yaml`.
+3.  **Hardware Launch:** 
+    *   Connect USRPs via SMA cables with **30dB attenuators**.
+    *   Run `python3 src/usrp_transceiver.py --role ALPHA` on the master PC.
+4.  **EW Range:** Use the sliders in `src/top_block_gui.py` to demonstrate the link's "Breaking Point" to the team.
