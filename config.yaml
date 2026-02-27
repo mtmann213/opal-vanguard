@@ -15,7 +15,7 @@ physical:
   # Center of the hopping band (Hz).
   center_freq: 915000000
   
-  # Modulation type. Only "GFSK" is currently supported.
+  # Modulation type. "GFSK" or "DBPSK" are currently supported.
   modulation: "GFSK"
   
   # Frequency Deviation (Hz). This is the 'width' of the shift for 1s and 0s.

@@ -79,10 +79,16 @@ class SignalViewer(gr.top_block, Qt.QWidget):
         self.pdu_src = blocks.message_strobe(pmt.cons(pmt.make_dict(), pmt.init_u8vector(len("DIAGNOSTIC"), list("DIAGNOSTIC".encode()))), 1000)
         self.p2s = pdu.pdu_to_tagged_stream(gr.types.byte_t, "packet_len")
         
-        # Calculate sensitivity from configured frequency deviation
-        freq_dev = self.cfg['physical'].get('freq_dev', 125000)
-        sensitivity = (2.0 * np.pi * freq_dev) / self.samp_rate
-        self.mod = digital.gfsk_mod(samples_per_symbol=8, sensitivity=sensitivity, bt=0.35)
+        mod_type = self.cfg['physical'].get('modulation', 'GFSK')
+        sps = self.cfg['physical'].get('samples_per_symbol', 8)
+        
+        if mod_type == "DBPSK":
+            self.mod = digital.dbpsk_mod(samples_per_symbol=sps, excess_bw=0.35)
+        else:
+            # GFSK Default
+            freq_dev = self.cfg['physical'].get('freq_dev', 125000)
+            sensitivity = (2.0 * np.pi * freq_dev) / self.samp_rate
+            self.mod = digital.gfsk_mod(samples_per_symbol=sps, sensitivity=sensitivity, bt=0.35)
         
         self.rot = blocks.rotator_cc(0)
         self.hop = tod_hop_generator(key=bytes.fromhex(hcfg['aes_key']), num_channels=hcfg['num_channels'], center_freq=self.center_freq, channel_spacing=hcfg['channel_spacing'], dwell_ms=hcfg['dwell_time_ms'])

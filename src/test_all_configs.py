@@ -73,11 +73,18 @@ def main():
     for name, l_cfg in tests:
         cfg = base_cfg.copy(); cfg['link_layer'] = l_cfg
         results.append(run_single_test(cfg, name))
-    cfg = base_cfg.copy()
-    cfg['link_layer'] = {'use_fec': True, 'use_interleaving': True, 'use_whitening': True, 'use_manchester': False, 'use_nrzi': True, 'crc_type': 'CRC16'}
-    cfg['dsss'] = {'enabled': True, 'spreading_factor': 31, 'chipping_code': [1]*31}
-    results.append(run_single_test(cfg, "DSSS Mode"))
-    print("="*30); print(f"FINAL REPORT: {sum(results)}/{len(results)} Passed"); print("="*30)
+        cfg = base_cfg.copy()
+        cfg['link_layer'] = {'use_fec': True, 'use_interleaving': True, 'use_whitening': True, 'use_manchester': False, 'use_nrzi': True, 'crc_type': 'CRC16'}
+        cfg['dsss'] = {'enabled': True, 'spreading_factor': 31, 'chipping_code': [1]*31}
+        results.append(run_single_test(cfg, "DSSS Mode"))
+    
+        # 3. Run DBPSK Test
+        cfg = base_cfg.copy()
+        cfg['physical']['modulation'] = "DBPSK"
+        cfg['link_layer'] = {'use_fec': True, 'use_interleaving': True, 'use_whitening': True, 'use_manchester': False, 'use_nrzi': True, 'crc_type': 'CRC16'}
+        results.append(run_single_test(cfg, "DBPSK Mode"))
+    
+        print("="*30); print(f"FINAL REPORT: {sum(results)}/{len(results)} Passed"); print("="*30)
     sys.exit(0 if all(results) else 1)
 
 if __name__ == "__main__":

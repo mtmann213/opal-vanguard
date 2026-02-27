@@ -98,20 +98,17 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
         self.pdu_src = blocks.message_strobe(pmt.cons(pmt.make_dict(), pmt.init_u8vector(len("MISSION DATA"), list("MISSION DATA".encode()))), 3000)
         self.p2s_a = pdu.pdu_to_tagged_stream(gr.types.byte_t, "packet_len")
         
-        # Calculate sensitivity from configured frequency deviation
-        freq_dev = self.cfg['physical'].get('freq_dev', 125000)
-        mod_sensitivity = (2.0 * np.pi * freq_dev) / self.samp_rate
-        self.mod_a = digital.gfsk_mod(samples_per_symbol=8, sensitivity=mod_sensitivity, bt=0.35)
+        mod_type = self.cfg['physical'].get('modulation', 'GFSK')
+        sps = self.cfg['physical'].get('samples_per_symbol', 8)
         
-        if hcfg['sync_mode'] == "TOD":
-            self.hop_ctrl = tod_hop_generator(key=bytes.fromhex(hcfg['aes_key']), num_channels=hcfg['num_channels'], center_freq=self.center_freq, channel_spacing=hcfg['channel_spacing'], dwell_ms=hcfg['dwell_time_ms'], lookahead_ms=hcfg['lookahead_ms'])
+        if mod_type == "DBPSK":
+            self.mod_a = digital.dbpsk_mod(samples_per_symbol=sps, excess_bw=0.35)
+            self.demod_b = digital.dbpsk_demod(samples_per_symbol=sps, excess_bw=0.35)
         else:
-            self.hop_ctrl = aes_hop_generator(key=bytes.fromhex(hcfg['aes_key']), num_channels=hcfg['num_channels'], center_freq=self.center_freq, channel_spacing=hcfg['channel_spacing'])
-
-        # RX Filter
-        lpf_taps = filter.firdes.low_pass(1.0, self.samp_rate, 500e3, 100e3)
-        self.rx_filter = filter.fir_filter_ccf(1, lpf_taps)
-        self.demod_b = digital.gfsk_demod(samples_per_symbol=8, gain_mu=0.1, mu=0.5, omega_relative_limit=0.005, freq_error=0.0)
+            freq_dev = self.cfg['physical'].get('freq_dev', 125000)
+            mod_sensitivity = (2.0 * np.pi * freq_dev) / self.samp_rate
+            self.mod_a = digital.gfsk_mod(samples_per_symbol=sps, sensitivity=mod_sensitivity, bt=0.35)
+            self.demod_b = digital.gfsk_demod(samples_per_symbol=sps, gain_mu=0.1, mu=0.5, omega_relative_limit=0.005, freq_error=0.0)
 
         # Connections
         self.msg_connect((self.pdu_src, "strobe"), (self.session_a, "data_in"))
