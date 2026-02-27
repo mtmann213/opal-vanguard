@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Opal Vanguard - Mission-Controlled Packetizer
+# Opal Vanguard - Mission-Controlled Packetizer (with Sequence Tracking)
 
 import numpy as np
 from gnuradio import gr
@@ -44,6 +44,7 @@ class packetizer(gr.basic_block):
         
         self.preamble = b'\xAA' * 8
         self.syncword = b'\x3D\x4C\x5B\x6A'
+        self.sequence = 0
 
     def calculate_crc(self, data):
         if self.crc_type == "CRC16":
@@ -63,6 +64,7 @@ class packetizer(gr.basic_block):
         if not pmt.is_pdu(msg): return
         meta = pmt.car(msg)
         payload_bytes = bytes(pmt.u8vector_elements(pmt.cdr(msg)))
+        
         msg_type = pmt.to_long(pmt.dict_ref(meta, pmt.intern("type"), pmt.from_long(0)))
 
         # 1. FEC (Reed-Solomon)
@@ -81,9 +83,13 @@ class packetizer(gr.basic_block):
         else:
             payload = payload_bytes
             
-        # 2. Add Header and CRC
-        data_block = struct.pack('BB', msg_type, len(payload_bytes) & 0xFF) + payload
+        # 2. Add Header (Type, Sequence, Length) and CRC
+        # Increased header to 3 bytes to support scoring
+        data_block = struct.pack('BBB', msg_type, self.sequence, len(payload_bytes) & 0xFF) + payload
         data_block += self.calculate_crc(data_block)
+        
+        # Increment sequence for tracking
+        self.sequence = (self.sequence + 1) & 0xFF
         
         # 3. Interleave
         if self.use_interleaving:
@@ -98,22 +104,22 @@ class packetizer(gr.basic_block):
         for b in data_block:
             for i in range(8): bits.append((b >> (7-i)) & 1)
             
-        # 6. NRZ-I (Differential Encoding) - Reset state for packet independence
+        # 6. NRZ-I
         if self.use_nrzi:
             self.nrzi.reset()
             bits = self.nrzi.encode(bits)
             
-        # 7. Manchester (DC Balance)
+        # 7. Manchester
         if self.use_manchester:
             self.manchester.reset()
             bits = self.manchester.encode(bits)
             
-        # 8. DSSS (Stealth / Processing Gain)
+        # 8. DSSS
         if self.use_dsss:
             chips = self.dsss.spread(bits)
             bits = [1 if c > 0 else 0 for c in chips]
 
-        # 9. Pack to Bytes for GFSK
+        # 9. Pack to Bytes
         packed_data = []
         current_byte = 0
         for i, bit in enumerate(bits):
