@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Opal Vanguard - Full FHSS Lab (Multi-Modulation Support)
+# Opal Vanguard - Full FHSS Lab (DSSS + NRZI + Multi-Mod + Config)
 
 import os
 import sys
@@ -121,7 +121,7 @@ class OpalVanguardVisualDemo(gr.top_block, Qt.QWidget):
         if mod_type == "DBPSK":
             self.mod_a = digital.psk_mod(
                 constellation_points=2,
-                mod_code=digital.mod_codes.GRAY,
+                mod_code=digital.mod_codes.GRAY_CODE,
                 differential=True,
                 samples_per_symbol=sps,
                 excess_bw=0.35,
@@ -134,13 +134,13 @@ class OpalVanguardVisualDemo(gr.top_block, Qt.QWidget):
                 excess_bw=0.35,
                 phase_bw=6.28/100.0,
                 timing_bw=6.28/100.0,
-                mod_code=digital.mod_codes.GRAY,
+                mod_code=digital.mod_codes.GRAY_CODE,
                 verbose=False,
                 log=False)
         else: # GFSK Default
             freq_dev = self.cfg['physical'].get('freq_dev', 125000)
-            sensitivity = (2.0 * np.pi * freq_dev) / self.samp_rate
-            self.mod_a = digital.gfsk_mod(samples_per_symbol=sps, sensitivity=sensitivity, bt=0.35)
+            mod_sensitivity = (2.0 * np.pi * freq_dev) / self.samp_rate
+            self.mod_a = digital.gfsk_mod(samples_per_symbol=sps, sensitivity=mod_sensitivity, bt=0.35)
             self.demod_b = digital.gfsk_demod(samples_per_symbol=sps, gain_mu=0.1, mu=0.5, omega_relative_limit=0.005, freq_error=0.0)
 
         self.rot_tx = blocks.rotator_cc(0)
@@ -149,7 +149,10 @@ class OpalVanguardVisualDemo(gr.top_block, Qt.QWidget):
         if hcfg['sync_mode'] == "TOD":
             self.hop_ctrl = tod_hop_generator(key=bytes.fromhex(hcfg['aes_key']), num_channels=hcfg['num_channels'], center_freq=self.center_freq, channel_spacing=hcfg['channel_spacing'], dwell_ms=hcfg['dwell_time_ms'], lookahead_ms=hcfg['lookahead_ms'])
         else:
-            self.hop_ctrl = aes_hop_generator(key=bytes.fromhex(hcfg['aes_key']), num_channels=hcfg['num_channels'], center_freq=self.center_freq, channel_spacing=hcfg['channel_spacing'])
+            if hcfg['type'] == "AES":
+                self.hop_ctrl = aes_hop_generator(key=bytes.fromhex(hcfg['aes_key']), num_channels=hcfg['num_channels'], center_freq=self.center_freq, channel_spacing=hcfg['channel_spacing'])
+            else:
+                self.hop_ctrl = lfsr_hop_generator(seed=hcfg['initial_seed'], num_channels=hcfg['num_channels'], center_freq=self.center_freq, channel_spacing=hcfg['channel_spacing'])
         
         self.channel = channels.channel_model(noise_voltage=0.0, frequency_offset=0.0, epsilon=1.0, taps=[1.0+0j])
         self.rot_rx = blocks.rotator_cc(0)

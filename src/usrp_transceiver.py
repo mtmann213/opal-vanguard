@@ -104,7 +104,7 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
         if mod_type == "DBPSK":
             self.mod_a = digital.psk_mod(
                 constellation_points=2,
-                mod_code=digital.mod_codes.GRAY,
+                mod_code=digital.mod_codes.GRAY_CODE,
                 differential=True,
                 samples_per_symbol=sps,
                 excess_bw=0.35,
@@ -117,14 +117,24 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
                 excess_bw=0.35,
                 phase_bw=6.28/100.0,
                 timing_bw=6.28/100.0,
-                mod_code=digital.mod_codes.GRAY,
+                mod_code=digital.mod_codes.GRAY_CODE,
                 verbose=False,
                 log=False)
         else:
+            # GFSK Default
             freq_dev = self.cfg['physical'].get('freq_dev', 125000)
             mod_sensitivity = (2.0 * np.pi * freq_dev) / self.samp_rate
             self.mod_a = digital.gfsk_mod(samples_per_symbol=sps, sensitivity=mod_sensitivity, bt=0.35)
             self.demod_b = digital.gfsk_demod(samples_per_symbol=sps, gain_mu=0.1, mu=0.5, omega_relative_limit=0.005, freq_error=0.0)
+
+        if hcfg['sync_mode'] == "TOD":
+            self.hop_ctrl = tod_hop_generator(key=bytes.fromhex(hcfg['aes_key']), num_channels=hcfg['num_channels'], center_freq=self.center_freq, channel_spacing=hcfg['channel_spacing'], dwell_ms=hcfg['dwell_time_ms'], lookahead_ms=hcfg['lookahead_ms'])
+        else:
+            self.hop_ctrl = aes_hop_generator(key=bytes.fromhex(hcfg['aes_key']), num_channels=hcfg['num_channels'], center_freq=self.center_freq, channel_spacing=hcfg['channel_spacing'])
+
+        # RX Filter
+        lpf_taps = filter.firdes.low_pass(1.0, self.samp_rate, 500e3, 100e3)
+        self.rx_filter = filter.fir_filter_ccf(1, lpf_taps)
 
         # Connections
         self.msg_connect((self.pdu_src, "strobe"), (self.session_a, "data_in"))
