@@ -46,6 +46,7 @@ class depacketizer(gr.basic_block):
         self.syncword_bits = 0x3D4C5B6A
         self.bit_buf = 0
         self.recovered_bits = []
+        self.active_pkt_len = 0
 
     def verify_crc(self, data):
         if self.crc_type == "NONE": return True, 0, 0
@@ -71,16 +72,18 @@ class depacketizer(gr.basic_block):
         in0 = input_items[0]
         for i in range(len(in0)):
             bit = int(in0[i]) & 1
-            self.bit_buf = ((self.bit_buf << 1) | bit) & 0xFFFFFFFF
             
             if self.state == "SEARCH":
+                self.bit_buf = ((self.bit_buf << 1) | bit) & 0xFFFFFFFF
                 if self.bit_buf == self.syncword_bits or self.bit_buf == (0xFFFFFFFF ^ self.syncword_bits):
                     self.is_inverted = (self.bit_buf == (0xFFFFFFFF ^ self.syncword_bits))
                     self.state = "COLLECT"
                     self.recovered_bits = []
-                    self.nrzi.reset() # Packet independence
+                    self.nrzi.reset()
                     if self.is_inverted: self.nrzi.rx_state = 1
                     self.chip_buf = []
+                    self.active_pkt_len = 0
+                    continue 
                     
             elif self.state == "COLLECT":
                 if self.use_dsss:
@@ -93,7 +96,40 @@ class depacketizer(gr.basic_block):
                 else:
                     self.recovered_bits.append(bit ^ (1 if self.is_inverted else 0))
 
-                target_bytes = 120 if self.use_interleaving else 64
+                # Dynamic Length Detection (Only if not interleaved)
+                if not self.use_interleaving and self.active_pkt_len == 0:
+                    needed_bits = 16 # Need 2 bytes for header
+                    if self.use_manchester: needed_bits *= 2
+                    if len(self.recovered_bits) >= needed_bits:
+                        header_bits = self.recovered_bits[:needed_bits]
+                        if self.use_manchester: header_bits = self.manchester.decode(header_bits)
+                        if self.use_nrzi: 
+                            # Peek requires its own NRZI state to not corrupt the main one
+                            temp_nrzi = NRZIEncoder()
+                            temp_nrzi.rx_state = 1 if self.is_inverted else 0
+                            header_bits = temp_nrzi.decode(header_bits)
+                        
+                        acc = 0; h_bytes = []
+                        for j, b in enumerate(header_bits):
+                            acc = (acc << 1) | b
+                            if (j + 1) % 8 == 0: h_bytes.append(acc); acc = 0
+                        h_data = bytes(h_bytes)
+                        if self.use_whitening: h_data = self.scrambler.process(h_data)
+                        
+                        try:
+                            m_type, plen = struct.unpack('BB', h_data)
+                            f_len = ((plen + 10) // 11) * 15 if self.use_fec else plen
+                            c_len = 4 if self.crc_type == "CRC32" else (2 if self.crc_type == "CRC16" else 0)
+                            self.active_pkt_len = 2 + f_len + c_len
+                        except:
+                            self.state = "SEARCH"; continue
+
+                # Determine target bits for the whole block
+                if self.use_interleaving:
+                    target_bytes = 120
+                else:
+                    target_bytes = self.active_pkt_len if self.active_pkt_len > 0 else 256 # Default max
+                
                 target_bits = target_bytes * 8
                 if self.use_manchester: target_bits *= 2
                 
@@ -115,40 +151,37 @@ class depacketizer(gr.basic_block):
                     if self.use_whitening: data_block = self.scrambler.process(data_block)
                     if self.use_interleaving: data_block = self.interleaver.deinterleave(data_block, len(data_block))
                     
-                    msg_type, plen = struct.unpack('BB', data_block[:2])
-                    fec_len = ((plen + 10) // 11) * 15 if self.use_fec else plen
-                    crc_len = 4 if self.crc_type == "CRC32" else (2 if self.crc_type == "CRC16" else 0)
-                    
-                    actual_packet = data_block[:2 + fec_len + crc_len]
-                    crc_ok, calc_crc, recv_crc = self.verify_crc(actual_packet)
-                    
-                    diag = pmt.make_dict()
-                    diag = pmt.dict_add(diag, pmt.intern("crc_ok"), pmt.from_bool(crc_ok))
-                    diag = pmt.dict_add(diag, pmt.intern("inverted"), pmt.from_bool(self.is_inverted))
-                    
-                    if crc_ok:
-                        fec_payload = actual_packet[2 : 2+fec_len]
-                        corrected_symbols = 0
-                        if self.use_fec:
-                            decoded = b''
-                            for j in range(0, len(fec_payload), 15):
-                                chunk_nibs = []
-                                for b in fec_payload[j:j+15]: chunk_nibs.extend([(b >> 4) & 0x0F, b & 0x0F])
-                                b1_rec = chunk_nibs[:15]; b2_rec = chunk_nibs[15:]
-                                b1_dec = self.rs.decode(b1_rec); b2_dec = self.rs.decode(b2_rec)
-                                if b1_dec != b1_rec[:11]: corrected_symbols += 1
-                                if b2_dec != b2_rec[:11]: corrected_symbols += 1
-                                all_nibs = b1_dec + b2_dec
-                                for k in range(0, len(all_nibs), 2): decoded += bytes([(all_nibs[k] << 4) | all_nibs[k+1]])
-                            payload = decoded[:plen]
-                        else: payload = fec_payload
+                    try:
+                        msg_type, plen = struct.unpack('BB', data_block[:2])
+                        fec_len = ((plen + 10) // 11) * 15 if self.use_fec else plen
+                        crc_len = 4 if self.crc_type == "CRC32" else (2 if self.crc_type == "CRC16" else 0)
                         
-                        diag = pmt.dict_add(diag, pmt.intern("fec_corrections"), pmt.from_long(corrected_symbols))
-                        self.message_port_pub(pmt.intern("diagnostics"), diag)
-                        self.message_port_pub(pmt.intern("out"), pmt.cons(pmt.make_dict(), pmt.init_u8vector(len(payload), list(payload))))
-                    else: self.message_port_pub(pmt.intern("diagnostics"), diag)
+                        actual_packet = data_block[:2 + fec_len + crc_len]
+                        crc_ok, _, _ = self.verify_crc(actual_packet)
+                        
+                        if crc_ok:
+                            fec_payload = actual_packet[2 : 2+fec_len]
+                            if self.use_fec:
+                                decoded = b''
+                                for j in range(0, len(fec_payload), 15):
+                                    chunk = fec_payload[j:j+15]
+                                    chunk_nibs = []
+                                    for b in chunk: chunk_nibs.extend([(b >> 4) & 0x0F, b & 0x0F])
+                                    b1_dec = self.rs.decode(chunk_nibs[:15])
+                                    b2_dec = self.rs.decode(chunk_nibs[15:])
+                                    all_nibs = b1_dec + b2_dec
+                                    for k in range(0, 22, 2):
+                                        decoded += bytes([(all_nibs[k] << 4) | all_nibs[k+1]])
+                                payload = decoded[:plen]
+                            else: payload = fec_payload
+                            
+                            print(f"[Depacketizer] {self.crc_type} PASSED! Type: {msg_type}, Len: {plen}")
+                            self.message_port_pub(pmt.intern("out"), pmt.cons(pmt.make_dict(), pmt.init_u8vector(len(payload), list(payload))))
+                    except Exception as e:
+                        pass
                     
                     self.state = "SEARCH"
+                    self.bit_buf = 0 
 
         self.consume(0, len(in0))
         return 0

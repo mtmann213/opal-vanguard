@@ -33,6 +33,13 @@ dsss:
   - -1
   enabled: true
   spreading_factor: 31
+hardware:
+  args: type=b200
+  rx_antenna: TX/RX
+  rx_gain: 50
+  samp_rate: 2000000
+  tx_antenna: TX/RX
+  tx_gain: 50
 hopping:
   aes_key: 000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f
   channel_spacing: 150000
