@@ -5,7 +5,7 @@
 import os
 import sys
 import numpy as np
-from gnuradio import gr, blocks, analog, digital, qtgui, filter, fft, channels
+from gnuradio import gr, blocks, analog, digital, qtgui, filter, fft, channels, pdu
 import pmt
 from PyQt5 import Qt
 from PyQt5.QtCore import pyqtSignal
@@ -131,7 +131,7 @@ class OpalVanguardVisualDemo(gr.top_block, Qt.QWidget):
         # ----------------------------------------------------------------------
         payload = "Opal Vanguard TOD-SYNC Active"
         self.pdu_src = blocks.message_strobe(pmt.cons(pmt.make_dict(), pmt.init_u8vector(len(payload), list(payload.encode()))), 3000)
-        self.p2s_a = blocks.pdu_to_tagged_stream(gr.types.byte_t, "packet_len")
+        self.p2s_a = pdu.pdu_to_tagged_stream(gr.types.byte_t, "packet_len")
         self.mod_a = digital.gfsk_mod(samples_per_symbol=8, sensitivity=(np.pi*1.0)/8.0, bt=0.35)
         self.rot_tx = blocks.rotator_cc(0)
         

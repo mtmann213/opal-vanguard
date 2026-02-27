@@ -5,7 +5,7 @@
 import os
 import sys
 import numpy as np
-from gnuradio import gr, blocks
+from gnuradio import gr, blocks, pdu
 import pmt
 import time
 
@@ -23,7 +23,7 @@ def test_loopback():
             
             # TX (PDU -> Bits)
             self.pkt = packetizer()
-            self.p2s = blocks.pdu_to_tagged_stream(gr.types.byte_t, "packet_len")
+            self.p2s = pdu.pdu_to_tagged_stream(gr.types.byte_t, "packet_len")
             self.unp = blocks.unpack_k_bits_bb(8)
             
             # RX (Bits -> PDU)
