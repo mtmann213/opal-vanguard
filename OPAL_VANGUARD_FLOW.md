@@ -9,7 +9,7 @@ Opal Vanguard is a high-fidelity GNU Radio implementation of a Frequency Hopping
 The system is designed for Electronic Warfare (EW) training, allowing operators to ramp up signal hardening layers to combat noise, jamming, and manipulation.
 
 ### Core Technical Stack:
-*   **Modulation:** GFSK (h=1.0, BT=0.35)
+*   **Modulation:** Dual-Mode support for **GFSK** (Non-coherent frequency shift) and **DBPSK** (Differential phase shift).
 *   **Hopping:** AES-CTR Counter-based frequency hopping (TRANSEC).
 *   **Sync:** Dual-Mode (Asynchronous SYN/ACK or Precision TOD-Sync).
 *   **Configuration:** Unified mission control via `config.yaml`.
@@ -36,7 +36,7 @@ The system is designed for Electronic Warfare (EW) training, allowing operators 
 
 ### Layer 5: Phase Resilience (NRZ-I)
 *   Differential encoding that represents data as transitions rather than absolute values.
-*   Provides immunity to 180-degree phase inversions often found in FM discriminators.
+*   Provides immunity to 180-degree phase inversions often found in hardware FM discriminators or PSK receivers.
 
 ### Layer 6: Stealth & Processing Gain (DSSS)
 *   Payload bits are multiplied by a high-speed 31-chip M-sequence.
@@ -53,7 +53,7 @@ The system is designed for Electronic Warfare (EW) training, allowing operators 
 6.  **NRZ-I:** Encodes differentially.
 7.  **Manchester:** (Optional) Encodes for DC balance.
 8.  **DSSS:** Spreads payload bits into high-speed chips.
-9.  **GFSK:** Modulates bits/chips to complex baseband.
+9.  **Modulation:** Modulates bits/chips to complex baseband (GFSK or DBPSK).
 10. **FHSS:** Digital rotation (or USRP tuning) hops the signal across the band.
 
 ---
