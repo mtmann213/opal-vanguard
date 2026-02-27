@@ -31,7 +31,6 @@ class packetizer(gr.basic_block):
         self.use_nrzi = l_cfg.get('use_nrzi', True)
         self.use_dsss = self.cfg['dsss'].get('enabled', True)
         
-        # Components
         self.rs = RS1511()
         self.interleaver = MatrixInterleaver(rows=l_cfg.get('interleaver_rows', 8))
         self.scrambler = Scrambler(mask=l_cfg.get('scrambler_mask', 0x48), seed=l_cfg.get('scrambler_seed', 0x7F))
@@ -64,7 +63,6 @@ class packetizer(gr.basic_block):
         if not pmt.is_pdu(msg): return
         meta = pmt.car(msg)
         payload_bytes = bytes(pmt.u8vector_elements(pmt.cdr(msg)))
-        
         msg_type = pmt.to_long(pmt.dict_ref(meta, pmt.intern("type"), pmt.from_long(0)))
 
         # 1. FEC (Reed-Solomon)
@@ -89,33 +87,30 @@ class packetizer(gr.basic_block):
         
         # 3. Interleave
         if self.use_interleaving:
-            # Pad to a fixed size for robust depacketization (120 bytes)
-            if len(data_block) < 120:
-                data_block += b'\x00' * (120 - len(data_block))
+            if len(data_block) < 120: data_block += b'\x00' * (120 - len(data_block))
             data_block = self.interleaver.interleave(data_block)
         
         # 4. Whiten (Scramble)
-        if self.use_whitening:
-            data_block = self.scrambler.process(data_block)
+        if self.use_whitening: data_block = self.scrambler.process(data_block)
             
         # 5. Bit-Level Processing
         bits = []
         for b in data_block:
             for i in range(8): bits.append((b >> (7-i)) & 1)
             
-        # 6. NRZ-I (Phase Inversion Resilience)
+        # 6. NRZ-I (Differential Encoding) - Reset state for packet independence
         if self.use_nrzi:
-            self.nrzi.tx_state = 0
+            self.nrzi.reset()
             bits = self.nrzi.encode(bits)
             
         # 7. Manchester (DC Balance)
         if self.use_manchester:
+            self.manchester.reset()
             bits = self.manchester.encode(bits)
             
         # 8. DSSS (Stealth / Processing Gain)
         if self.use_dsss:
             chips = self.dsss.spread(bits)
-            # Map -1/1 back to 0/1 bits for GFSK packing
             bits = [1 if c > 0 else 0 for c in chips]
 
         # 9. Pack to Bytes for GFSK
@@ -124,11 +119,10 @@ class packetizer(gr.basic_block):
         for i, bit in enumerate(bits):
             current_byte = (current_byte << 1) | bit
             if (i + 1) % 8 == 0:
-                packed_data.append(current_byte)
-                current_byte = 0
+                packed_data.append(current_byte); current_byte = 0
         if len(bits) % 8 != 0:
             packed_data.append(current_byte << (8 - (len(bits) % 8)))
         
-        # 10. Final Assembly (Preamble + Syncword are NEVER spread/coded)
+        # 10. Final Assembly
         packet = self.preamble + self.syncword + bytes(packed_data) + b'\x00' * 32
         self.message_port_pub(pmt.intern("out"), pmt.cons(meta, pmt.init_u8vector(len(packet), list(packet))))

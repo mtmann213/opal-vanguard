@@ -1,46 +1,60 @@
-# ==============================================================================
-# OPAL VANGUARD - MISSION CONFIGURATION (LEVEL 1: THE SOFT LINK)
-# ==============================================================================
-
-mission:
-  id: "DIGITAL_DUEL_LEVEL_1"
-  security_level: "MINIMAL"
-
-physical:
-  samp_rate: 10000000
-  center_freq: 915000000
-  modulation: "GFSK"
-  mod_index: 1.0
-  samples_per_symbol: 8
-
-link_layer:
-  crc_type: "CRC16"
-  use_fec: false           # DISABLED
-  use_interleaving: false  # DISABLED
-  use_whitening: false     # DISABLED
-  use_manchester: false    # DISABLED
-  use_nrzi: false          # DISABLED
-
 dsss:
-  enabled: false           # DISABLED
+  chipping_code:
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - -1
+  - -1
+  - -1
+  - -1
+  - 1
+  - 1
+  - -1
+  - 1
+  - 1
+  - 1
+  - -1
+  - 1
+  - -1
+  - -1
+  - 1
+  - -1
+  - 1
+  - -1
+  - 1
+  - 1
+  - -1
+  - -1
+  - 1
+  - 1
+  - -1
+  - -1
+  enabled: true
   spreading_factor: 31
-  chipping_code: [1, 1, 1, 1, 1, -1, -1, -1, -1, 1, 1, -1, 1, 1, 1, -1, 1, -1, -1, 1, -1, 1, -1, 1, 1, -1, -1, 1, 1, -1, -1] 
-
 hopping:
-  enabled: true            # Hopping still active
-  sync_mode: "TOD"
-  type: "AES"
-  aes_key: "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
+  aes_key: 000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f
+  channel_spacing: 150000
   dwell_time_ms: 200
+  enabled: false
+  initial_seed: 2766
   lookahead_ms: 10
   num_channels: 50
-  channel_spacing: 150000
-  initial_seed: 0xACE
-
-hardware:
-  args: "type=b200"
+  sync_mode: TOD
+  type: AES
+link_layer:
+  crc_type: CRC16
+  use_fec: true
+  use_interleaving: true
+  use_manchester: false
+  use_nrzi: true
+  use_whitening: true
+mission:
+  id: AUTO_TEST
+physical:
+  center_freq: 915000000
+  mod_index: 1.0
+  modulation: GFSK
   samp_rate: 2000000
-  tx_gain: 50
-  rx_gain: 50
-  tx_antenna: "TX/RX"
-  rx_antenna: "TX/RX"
+  samples_per_symbol: 8

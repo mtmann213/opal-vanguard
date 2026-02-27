@@ -32,7 +32,6 @@ class depacketizer(gr.basic_block):
         self.use_dsss = self.cfg['dsss'].get('enabled', True)
         self.sf = self.cfg['dsss'].get('spreading_factor', 31)
         
-        # Components
         self.rs = RS1511()
         self.interleaver = MatrixInterleaver(rows=l_cfg.get('interleaver_rows', 8))
         self.scrambler = Scrambler(mask=l_cfg.get('scrambler_mask', 0x48), seed=l_cfg.get('scrambler_seed', 0x7F))
@@ -61,6 +60,11 @@ class depacketizer(gr.basic_block):
                     else: crc = (crc << 1)
                     crc &= 0xFFFF
             return crc == received_crc, crc, received_crc
+        elif self.crc_type == "CRC32":
+            if len(data) < 4: return False, 0, 0
+            payload, received_crc = data[:-4], struct.unpack('>I', data[-4:])[0]
+            calc_crc = binascii.crc32(payload) & 0xFFFFFFFF
+            return calc_crc == received_crc, calc_crc, received_crc
         return False, 0, 0
 
     def general_work(self, input_items, output_items):
@@ -72,11 +76,10 @@ class depacketizer(gr.basic_block):
             if self.state == "SEARCH":
                 if self.bit_buf == self.syncword_bits or self.bit_buf == (0xFFFFFFFF ^ self.syncword_bits):
                     self.is_inverted = (self.bit_buf == (0xFFFFFFFF ^ self.syncword_bits))
-                    print(f"[Depacketizer] Syncword Found! (DSSS: {self.use_dsss}, NRZI: {self.use_nrzi})")
-                    sys.stdout.flush()
                     self.state = "COLLECT"
                     self.recovered_bits = []
-                    self.nrzi.rx_state = 1 if self.is_inverted else 0
+                    self.nrzi.reset() # Packet independence
+                    if self.is_inverted: self.nrzi.rx_state = 1
                     self.chip_buf = []
                     
             elif self.state == "COLLECT":
@@ -96,7 +99,9 @@ class depacketizer(gr.basic_block):
                 
                 if len(self.recovered_bits) >= target_bits:
                     bits = self.recovered_bits[:target_bits]
-                    if self.use_manchester: bits = self.manchester.decode(bits)
+                    if self.use_manchester: 
+                        self.manchester.reset()
+                        bits = self.manchester.decode(bits)
                     if self.use_nrzi: bits = self.nrzi.decode(bits)
                     
                     byte_list = []
@@ -112,48 +117,36 @@ class depacketizer(gr.basic_block):
                     
                     msg_type, plen = struct.unpack('BB', data_block[:2])
                     fec_len = ((plen + 10) // 11) * 15 if self.use_fec else plen
-                    crc_len = 2 # Hardcoded for now
+                    crc_len = 4 if self.crc_type == "CRC32" else (2 if self.crc_type == "CRC16" else 0)
                     
                     actual_packet = data_block[:2 + fec_len + crc_len]
                     crc_ok, calc_crc, recv_crc = self.verify_crc(actual_packet)
                     
-                    # --- Diagnostics ---
                     diag = pmt.make_dict()
                     diag = pmt.dict_add(diag, pmt.intern("crc_ok"), pmt.from_bool(crc_ok))
                     diag = pmt.dict_add(diag, pmt.intern("inverted"), pmt.from_bool(self.is_inverted))
-                    diag = pmt.dict_add(diag, pmt.intern("msg_type"), pmt.from_long(msg_type))
                     
                     if crc_ok:
-                        print(f"[Depacketizer] {self.crc_type} PASSED! Type: {msg_type}, Len: {plen}")
                         fec_payload = actual_packet[2 : 2+fec_len]
                         corrected_symbols = 0
                         if self.use_fec:
                             decoded = b''
                             for j in range(0, len(fec_payload), 15):
-                                chunk = fec_payload[j:j+15]
-                                nib = []
-                                for b in chunk: nib.extend([(b >> 4) & 0x0F, b & 0x0F])
-                                b1 = self.rs.decode(nib[:15]); b2 = self.rs.decode(nib[15:])
-                                if b1 != nib[:11]: corrected_symbols += 1
-                                if b2 != nib[15:15+11]: corrected_symbols += 1
-                                for k in range(0, 22, 2): decoded += bytes([(b1[k] << 4) | b1[k+1]])
+                                chunk_nibs = []
+                                for b in fec_payload[j:j+15]: chunk_nibs.extend([(b >> 4) & 0x0F, b & 0x0F])
+                                b1_rec = chunk_nibs[:15]; b2_rec = chunk_nibs[15:]
+                                b1_dec = self.rs.decode(b1_rec); b2_dec = self.rs.decode(b2_rec)
+                                if b1_dec != b1_rec[:11]: corrected_symbols += 1
+                                if b2_dec != b2_rec[:11]: corrected_symbols += 1
+                                all_nibs = b1_dec + b2_dec
+                                for k in range(0, len(all_nibs), 2): decoded += bytes([(all_nibs[k] << 4) | all_nibs[k+1]])
                             payload = decoded[:plen]
-                        else:
-                            payload = fec_payload
-                        
-                        if corrected_symbols > 0:
-                            print(f"[Depacketizer] FEC Corrected {corrected_symbols} blocks.")
-                        
-                        print(f"[Depacketizer] RECOVERED: {payload}")
-                        sys.stdout.flush()
+                        else: payload = fec_payload
                         
                         diag = pmt.dict_add(diag, pmt.intern("fec_corrections"), pmt.from_long(corrected_symbols))
                         self.message_port_pub(pmt.intern("diagnostics"), diag)
                         self.message_port_pub(pmt.intern("out"), pmt.cons(pmt.make_dict(), pmt.init_u8vector(len(payload), list(payload))))
-                    else:
-                        print(f"[Depacketizer] {self.crc_type} FAILED: Calc 0x{calc_crc:04X} != Recv 0x{recv_crc:04X}")
-                        sys.stdout.flush()
-                        self.message_port_pub(pmt.intern("diagnostics"), diag)
+                    else: self.message_port_pub(pmt.intern("diagnostics"), diag)
                     
                     self.state = "SEARCH"
 

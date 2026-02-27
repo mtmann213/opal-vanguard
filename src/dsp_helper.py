@@ -7,7 +7,6 @@ import numpy as np
 class MatrixInterleaver:
     def __init__(self, rows=8):
         self.rows = rows
-
     def interleave(self, data):
         data_len = len(data)
         cols = (data_len + self.rows - 1) // self.rows
@@ -15,7 +14,6 @@ class MatrixInterleaver:
         matrix = np.array(padded_data).reshape((self.rows, cols))
         interleaved = matrix.T.flatten()
         return bytes(interleaved.tolist())
-
     def deinterleave(self, data, original_len):
         data_len = len(data)
         cols = data_len // self.rows
@@ -27,25 +25,24 @@ class DSSSProcessor:
     def __init__(self, chipping_code=[1, -1]):
         self.code = np.array(chipping_code)
         self.sf = len(self.code)
-
     def spread(self, bits):
         chips = []
         for bit in bits:
             val = 1 if bit == 1 else -1
             chips.extend((val * self.code).tolist())
         return chips
-
     def despread(self, chips):
         bits = []
         for i in range(0, len(chips), self.sf):
-            chunk = np.array(chips[i:i+self.sf])
-            if len(chunk) < self.sf: break
-            correlation = np.sum(chunk * self.code)
+            chunk = np.array(chips[i:i+self.sf]); correlation = np.sum(chunk * self.code)
             bits.append(1 if correlation > 0 else 0)
         return bits
 
 class NRZIEncoder:
     def __init__(self):
+        self.tx_state = 0
+        self.rx_state = 0
+    def reset(self):
         self.tx_state = 0
         self.rx_state = 0
     def encode(self, bits):
@@ -64,12 +61,8 @@ class NRZIEncoder:
         return decoded
 
 class ManchesterEncoder:
-    """
-    Manchester Encoding (IEEE 802.3 standard):
-    1 -> [1, 0] (falling edge)
-    0 -> [0, 1] (rising edge)
-    Ensures perfect DC balance and clock recovery.
-    """
+    def reset(self):
+        pass
     def encode(self, bits):
         out = []
         for b in bits:
@@ -85,7 +78,6 @@ class ManchesterEncoder:
         return out
 
 class Scrambler:
-    """Generic LFSR Scrambler with custom taps."""
     def __init__(self, mask=0x48, seed=0x7F):
         self.mask = mask
         self.seed = seed
@@ -95,12 +87,9 @@ class Scrambler:
         for byte in data:
             new_byte = 0
             for i in range(8):
-                # Fibonacci LFSR based on mask bits
                 feedback = 0
                 for bit_pos in range(7):
-                    if (self.mask >> bit_pos) & 1:
-                        feedback ^= (state >> bit_pos) & 1
-                
+                    if (self.mask >> bit_pos) & 1: feedback ^= (state >> bit_pos) & 1
                 bit = (byte >> (7-i)) & 1
                 new_byte = (new_byte << 1) | (bit ^ (state & 1))
                 state = ((state << 1) & 0x7F) | (feedback & 1)
