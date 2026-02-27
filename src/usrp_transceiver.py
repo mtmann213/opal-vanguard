@@ -97,7 +97,11 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
         # DSP Chain
         self.pdu_src = blocks.message_strobe(pmt.cons(pmt.make_dict(), pmt.init_u8vector(len("MISSION DATA"), list("MISSION DATA".encode()))), 3000)
         self.p2s_a = pdu.pdu_to_tagged_stream(gr.types.byte_t, "packet_len")
-        self.mod_a = digital.gfsk_mod(samples_per_symbol=8, sensitivity=(np.pi*1.0)/8.0, bt=0.35)
+        
+        # Calculate sensitivity from configured frequency deviation
+        freq_dev = self.cfg['physical'].get('freq_dev', 125000)
+        mod_sensitivity = (2.0 * np.pi * freq_dev) / self.samp_rate
+        self.mod_a = digital.gfsk_mod(samples_per_symbol=8, sensitivity=mod_sensitivity, bt=0.35)
         
         if hcfg['sync_mode'] == "TOD":
             self.hop_ctrl = tod_hop_generator(key=bytes.fromhex(hcfg['aes_key']), num_channels=hcfg['num_channels'], center_freq=self.center_freq, channel_spacing=hcfg['channel_spacing'], dwell_ms=hcfg['dwell_time_ms'], lookahead_ms=hcfg['lookahead_ms'])
