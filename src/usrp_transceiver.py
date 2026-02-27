@@ -102,8 +102,24 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
         sps = self.cfg['physical'].get('samples_per_symbol', 8)
         
         if mod_type == "DBPSK":
-            self.mod_a = digital.dbpsk_mod(samples_per_symbol=sps, excess_bw=0.35)
-            self.demod_b = digital.dbpsk_demod(samples_per_symbol=sps, excess_bw=0.35)
+            self.mod_a = digital.psk_mod(
+                constellation_points=2,
+                mod_code=digital.mod_codes.GRAY,
+                differential=True,
+                samples_per_symbol=sps,
+                excess_bw=0.35,
+                verbose=False,
+                log=False)
+            self.demod_b = digital.psk_demod(
+                constellation_points=2,
+                differential=True,
+                samples_per_symbol=sps,
+                excess_bw=0.35,
+                phase_bw=6.28/100.0,
+                timing_bw=6.28/100.0,
+                mod_code=digital.mod_codes.GRAY,
+                verbose=False,
+                log=False)
         else:
             freq_dev = self.cfg['physical'].get('freq_dev', 125000)
             mod_sensitivity = (2.0 * np.pi * freq_dev) / self.samp_rate

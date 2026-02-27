@@ -16,7 +16,7 @@ physical:
   center_freq: 915000000
   
   # Modulation type. "GFSK" or "DBPSK" are currently supported.
-  modulation: "GFSK"
+  modulation: "DBPSK"
   
   # Frequency Deviation (Hz). This is the 'width' of the shift for 1s and 0s.
   # Peak-to-peak shift is 2 * freq_dev.

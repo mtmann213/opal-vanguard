@@ -83,9 +83,12 @@ class SignalViewer(gr.top_block, Qt.QWidget):
         sps = self.cfg['physical'].get('samples_per_symbol', 8)
         
         if mod_type == "DBPSK":
-            self.mod = digital.dbpsk_mod(samples_per_symbol=sps, excess_bw=0.35)
+            self.mod = digital.psk_mod(
+                constellation_points=2,
+                differential=True,
+                samples_per_symbol=sps,
+                excess_bw=0.35)
         else:
-            # GFSK Default
             freq_dev = self.cfg['physical'].get('freq_dev', 125000)
             sensitivity = (2.0 * np.pi * freq_dev) / self.samp_rate
             self.mod = digital.gfsk_mod(samples_per_symbol=sps, sensitivity=sensitivity, bt=0.35)
@@ -93,7 +96,6 @@ class SignalViewer(gr.top_block, Qt.QWidget):
         self.rot = blocks.rotator_cc(0)
         self.hop = tod_hop_generator(key=bytes.fromhex(hcfg['aes_key']), num_channels=hcfg['num_channels'], center_freq=self.center_freq, channel_spacing=hcfg['channel_spacing'], dwell_ms=hcfg['dwell_time_ms'])
         
-        # Sample-Accurate Gate (1 second * 10MHz = 10M samples)
         self.gate = SampleGate(10000000)
         self.gate.finished_callback = lambda: self.progress_signal.emit(100.0, 0.0)
         self.file_sink = blocks.file_sink(gr.sizeof_gr_complex, "signal_capture.cf32")
@@ -131,15 +133,12 @@ class SignalViewer(gr.top_block, Qt.QWidget):
         # ----------------------------------------------------------------------
         self.timer = QTimer(); self.timer.timeout.connect(lambda: self.hop.handle_trigger(pmt.PMT_T)); self.timer.start(hcfg['dwell_time_ms'])
         self.stats_timer = QTimer(); self.stats_timer.timeout.connect(self.update_stats); self.stats_timer.start(500)
-        
         self.progress_signal.connect(self.on_progress)
 
     def start_capture(self):
         print("[Viewer] Starting Sample-Accurate 1s Capture...")
-        self.gate.count = 0
-        self.gate.enabled = True
-        self.record_btn.setEnabled(False)
-        self.record_btn.setText("CAPTURING SAMPLES...")
+        self.gate.count = 0; self.gate.enabled = True
+        self.record_btn.setEnabled(False); self.record_btn.setText("CAPTURING SAMPLES...")
 
     def update_stats(self):
         if self.gate.enabled:
@@ -149,8 +148,7 @@ class SignalViewer(gr.top_block, Qt.QWidget):
     def on_progress(self, p, speed):
         self.progress_label.setText(f"Capture Progress: {p:.1f}%")
         if p >= 100.0:
-            self.record_btn.setEnabled(True)
-            self.record_btn.setText("CAPTURE EXACTLY 1s SIGNAL (Sim-Time)")
+            self.record_btn.setEnabled(True); self.record_btn.setText("CAPTURE EXACTLY 1s SIGNAL (Sim-Time)")
             print("[Viewer] Capture Complete.")
 
 def main():
