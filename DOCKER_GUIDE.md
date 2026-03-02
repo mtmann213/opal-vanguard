@@ -2,86 +2,102 @@
 
 Containerizing the Opal Vanguard environment ensures that anyone can run the project without having to fight OS-level dependencies, conflicting GNU Radio versions, or Python path issues.
 
-This guide explains how to build and run the Opal Vanguard environment using Docker.
-
 ---
 
-## Prerequisites
-1.  **Docker:** Ensure Docker is installed on your machine.
-2.  **Docker Compose:** (Optional but recommended) For easy USB passthrough and GUI rendering.
+## 🏗️ 1. Building the Environment (Requires Internet)
 
----
-
-## 1. Building the Environment
-
-The provided `Dockerfile` uses Ubuntu 22.04 as a base and installs GNU Radio 3.10, UHD drivers, and all required Python packages. It also downloads the UHD FPGA images automatically.
+The provided `Dockerfile` uses Ubuntu 22.04 as a base and installs GNU Radio 3.10, UHD drivers, and all required Python packages. It also downloads the UHD FPGA images automatically (~500MB).
 
 To build the image, run this from the root of the repository:
 ```bash
 docker build -t opal-vanguard .
 ```
-*(Note: This process may take 5-10 minutes as it installs GNU Radio and downloads the USRP firmware.)*
+*(Note: This process may take 5-10 minutes. The final image size is approximately 3.5 GB.)*
 
 ---
 
-## 2. Running with Docker Compose (Recommended)
+## 📦 2. Offline Deployment (Air-Gapped Systems)
 
-Because this project interacts with physical USB hardware (USRPs) and uses PyQt5 for visual dashboards, running the container requires specific permissions and volume mounts. 
+Follow these steps to move the entire environment to a computer with **zero internet access**.
 
-The included `docker-compose.yml` handles:
-*   USB Device Passthrough (`/dev/bus/usb`)
-*   X11 GUI Forwarding (`/tmp/.X11-unix`)
-*   Local Code Mounting (Changes to your code reflect instantly in the container)
+### Step A: Export the Image (On the Online PC)
+1. Build the image first (see Section 1).
+2. Save the image to a compressed tarball:
+   ```bash
+   docker save opal-vanguard | gzip > opal_vanguard_offline.tar.gz
+   ```
+3. Copy `opal_vanguard_offline.tar.gz` and the entire `opal-vanguard` source code folder to a USB drive.
+
+### Step B: Prepare the Offline PC
+1. **Docker Engine:** Ensure Docker is installed on the offline machine. (If it isn't, you must pre-download the `.deb` or `.rpm` packages for Docker and its dependencies).
+2. **USRP udev Rules:** The host needs to recognize the USRP. Run this on the offline machine:
+   ```bash
+   sudo cp /opt/opal-vanguard/SETUP_MISSION.sh /tmp/setup.sh
+   # (Manually ensure udev rules are set if SETUP_MISSION.sh fails due to no apt)
+   # Or run:
+   sudo libuhd-pkg/uhd_utils/uhd_udev_installer.py # If available
+   ```
+
+### Step C: Import and Run (On the Offline PC)
+1. Plug in the USB drive and copy the files to the machine.
+2. Load the image into Docker:
+   ```bash
+   docker load < opal_vanguard_offline.tar.gz
+   ```
+3. Verify the image is loaded:
+   ```bash
+   docker images # You should see 'opal-vanguard' in the list
+   ```
+4. Start the environment using the instructions in Section 3.
+
+---
+
+## 🚀 3. Running the Environment
+
+Because this project interacts with physical USB hardware (USRPs) and uses PyQt5 for visual dashboards, specific permissions and volume mounts are required.
 
 ### Step 1: Allow Local X11 Connections (Host Machine)
-To allow the Docker container to pop up GUI windows on your host's screen, you must allow local connections to your X server. Run this on your **host machine**:
+To allow the container to display GUI windows on your host's screen, run this on your **host machine**:
 ```bash
 xhost +local:docker
 ```
 
-### Step 2: Start the Container
+### Step 2: Start with Docker Compose (Recommended)
+The `docker-compose.yml` handles USB passthrough and X11 forwarding automatically.
 ```bash
 docker-compose run --rm opal-vanguard bash
 ```
-This drops you into an interactive bash shell *inside* the fully configured container.
 
-### Step 3: Verify Hardware inside Docker
-Once inside the container shell, verify it can see your plugged-in USRPs:
+### Step 3: Run a Mission
+Once inside the container shell, verify hardware and launch:
 ```bash
 uhd_find_devices
-```
-
-### Step 4: Run a Mission
-You can now run any command as if you were native. For example:
-```bash
-python3 src/usrp_transceiver.py --role ALPHA --serial 3449AC1 --config mission_configs/level1_soft_link.yaml
+python3 src/usrp_transceiver.py --role ALPHA --serial <SERIAL> --config mission_configs/level4_stealth.yaml
 ```
 
 ---
 
-## 3. Running with Raw Docker (Alternative)
+## ❓ Docker FAQ
 
-If you don't want to use Docker Compose, you can run the image using the standard Docker CLI. You still need to pass through the USB bus and display variables.
+**Q: Does the host computer need to be Ubuntu 22.04?**
+**A:** No. The host can be any modern Linux distribution (Ubuntu 20.04+, Fedora, Debian, etc.). The container handles its own internal Ubuntu 22.04 environment.
 
-```bash
-docker run -it --rm 
-  --privileged 
-  -v /dev/bus/usb:/dev/bus/usb 
-  -v /tmp/.X11-unix:/tmp/.X11-unix 
-  -e DISPLAY=$DISPLAY 
-  -v $(pwd):/opt/opal-vanguard 
-  opal-vanguard bash
-```
+**Q: Will Docker slow down my radio performance?**
+**A:** No. Docker shares the host's kernel. By using `--privileged` and `network_mode: host`, the overhead is negligible. You will get the same sample rates as a native install.
+
+**Q: Can I edit code while the container is running?**
+**A:** Yes. The repository folder is mounted as a "Volume." Any changes you make to files on your host machine are instantly updated inside the running container.
+
+**Q: Why do I need `xhost +local:docker`?**
+**A:** Linux security prevents unauthorized applications from drawing on your screen. This command gives the Docker engine permission to open the Opal Vanguard dashboard windows.
+
+**Q: How do I persist logs or captures?**
+**A:** All files created in `/opt/opal-vanguard/` (like `mission_history.log` or `.cf32` captures) are saved directly to your host's hard drive because of the volume mount.
 
 ---
 
 ## Troubleshooting
 
-**1. No USRPs Found (`uhd_find_devices` fails)**
-Ensure you ran the container with `--privileged` and mapped the volume `-v /dev/bus/usb:/dev/bus/usb`. Also ensure the USRPs are plugged into the host before starting the container.
-
-**2. Cannot Connect to X Server (GUI won't launch)**
-Ensure you ran `xhost +local:docker` on your host machine before starting the container. If you are using Wayland, X11 forwarding can be temperamental.
-
-**3. UHD Image Path Errors**
-The Dockerfile downloads the images to the default Ubuntu location (`/usr/share/uhd/images`). The `UHD_IMAGES_DIR` environment variable is automatically set in the Dockerfile to point to this location. You do not need to export it manually inside the container.
+1. **No USRPs Found:** Ensure you ran with `privileged: true` or `--privileged`. Check `lsusb` on the host to ensure the radio is connected.
+2. **GUI Error:** If the app crashes with "Could not connect to display," re-run `xhost +local:docker` on the host.
+3. **Permission Denied:** If Docker requires sudo, run `sudo docker-compose ...`.
