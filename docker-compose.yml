@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  opal-vanguard:
+    build: .
+    container_name: opal-vanguard-env
+    # Privilege and volumes needed to access USB devices (USRP B205mini)
+    privileged: true
+    volumes:
+      - .:/opt/opal-vanguard
+      - /dev/bus/usb:/dev/bus/usb
+      # X11 Forwarding to allow PyQt5 GUIs to render on the host display
+      - /tmp/.X11-unix:/tmp/.X11-unix
+    environment:
+      - DISPLAY=${DISPLAY}
+      # Required for Qt apps in some environments
+      - QT_X11_NO_MITSHM=1
+    # Keep container running if started in background
+    tty: true
+    stdin_open: true
+    # Ensures the host network stack is used, which is sometimes required for UHD broadcast discovery
+    network_mode: "host"
