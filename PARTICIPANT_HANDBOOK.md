@@ -9,18 +9,18 @@ Welcome to Project Opal Vanguard. You are tasked with operating or disrupting a 
 #### **Blue Team (The Operators)**
 *   **Objective:** Maintain a reliable data link between Alpha and Bravo nodes.
 *   **Success Metric:** Continuous throughput of "Mission Data" with zero CRC failures.
-*   **Your Tools:** You control the `config.yaml` file. You can toggle FEC, Interleaving, DSSS, and Hopping strategies to harden your signal.
+*   **Your Tools:** You control the configuration files in `mission_configs/`. You can launch different levels (e.g., `level4_stealth.yaml`) to toggle FEC, Interleaving, DSSS, and Hopping strategies to harden your signal.
 
 #### **Red Team (The Disruptors)**
 *   **Objective:** Disrupt, Deny, Degrade, or Manipulate the Blue Team's communications.
 *   **Success Metric:** Forcing the Blue Team terminal into an `IDLE` state or causing sustained "CRC FAIL" errors.
-*   **Your Tools:** You have a dedicated USRP and any GNU Radio flowgraph you can build. You may use broadband noise, swept-frequency tones, or pulsed jammers.
+*   **Your Tools:** You have a dedicated USRP and the `src/adversary_jammer.py` script. You may use broadband noise, swept-frequency tones, or pulsed jammers.
 
 ---
 
 ### 3. Rules of Engagement
 1.  **No Physical Tampering:** Do not touch the SMA cables, attenuators, or the other team's hardware.
-2.  **Config Lock:** Blue Team may only change `config.yaml` *between* rounds, not while a round is active.
+2.  **Config Lock:** Blue Team may only change configurations *between* rounds, not while a round is active.
 3.  **Frequency Discipline:** All activity must remain within the agreed-upon 900MHz ISM band.
 
 ---

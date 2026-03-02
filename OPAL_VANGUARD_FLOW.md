@@ -12,7 +12,7 @@ The system is designed for Electronic Warfare (EW) training, allowing operators 
 *   **Modulation:** Dual-Mode support for **GFSK** (Non-coherent frequency shift) and **DBPSK** (Differential phase shift).
 *   **Hopping:** AES-CTR Counter-based frequency hopping (TRANSEC).
 *   **Sync:** Dual-Mode (Asynchronous SYN/ACK or Precision TOD-Sync).
-*   **Configuration:** Unified mission control via `config.yaml`.
+*   **Configuration:** Tiered mission control via YAML files in `mission_configs/`.
 
 ---
 

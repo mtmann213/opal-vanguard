@@ -12,6 +12,7 @@ from PyQt5.QtCore import pyqtSignal, QTimer
 import sip
 import yaml
 import time
+import argparse
 
 # Add src to path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -62,10 +63,10 @@ class OpalVanguardVisualDemo(gr.top_block, Qt.QWidget):
     status_signal = pyqtSignal(str, str)
     data_signal = pyqtSignal(str)
 
-    def __init__(self, config_path="config.yaml"):
+    def __init__(self, config_path="mission_configs/level1_soft_link.yaml"):
         gr.top_block.__init__(self, "Opal Vanguard Lab")
         Qt.QWidget.__init__(self)
-        self.setWindowTitle("Opal Vanguard - Wideband 10MHz Lab")
+        self.setWindowTitle(f"Opal Vanguard Lab - [{config_path}]")
         
         with open(config_path, 'r') as f:
             self.cfg = yaml.safe_load(f)
@@ -196,7 +197,11 @@ class OpalVanguardVisualDemo(gr.top_block, Qt.QWidget):
         self.connect(self.channel, self.viz_throttle, self.snk_waterfall)
         self.connect(self.rot_rx, self.snk_rx_freq)
 
-        self.timer = Qt.QTimer(); self.timer.timeout.connect(lambda: self.hop_ctrl.handle_trigger(pmt.PMT_T)); self.timer.start(hcfg['dwell_time_ms'])
+        self.timer = Qt.QTimer()
+        self.timer.timeout.connect(lambda: self.hop_ctrl.handle_trigger(pmt.PMT_T))
+        if hcfg.get('enabled', True):
+            self.timer.start(hcfg['dwell_time_ms'])
+            
         self.status_signal.connect(self.on_status_change)
         self.data_signal.connect(lambda p: self.text_out.append(f"<b>[RX]:</b> {p}"))
 
@@ -216,5 +221,9 @@ class OpalVanguardVisualDemo(gr.top_block, Qt.QWidget):
         if sa == "CONNECTED": self.status_label.setStyleSheet("color: green; font-weight: bold;")
 
 def main():
-    qapp = Qt.QApplication(sys.argv); tb = OpalVanguardVisualDemo(); tb.start(); tb.show(); qapp.exec_()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", default="mission_configs/level1_soft_link.yaml")
+    args = parser.parse_args()
+    qapp = Qt.QApplication(sys.argv); tb = OpalVanguardVisualDemo(config_path=args.config); tb.start(); tb.show(); qapp.exec_()
+
 if __name__ == '__main__': main()

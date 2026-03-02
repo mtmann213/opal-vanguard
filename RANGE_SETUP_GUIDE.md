@@ -44,26 +44,27 @@ To prevent hardware damage and ensure repeatable results, all testing should be 
 
 **Step 1: Blue Alpha (Master)**
 ```bash
-python3 src/usrp_transceiver.py --role ALPHA --serial <SERIAL_A>
+sudo -E python3 src/usrp_transceiver.py --role ALPHA --serial <SERIAL_A> --config mission_configs/level1_soft_link.yaml
 ```
 
 **Step 2: Blue Bravo (Slave)**
 ```bash
-python3 src/usrp_transceiver.py --role BRAVO --serial <SERIAL_B>
+sudo -E python3 src/usrp_transceiver.py --role BRAVO --serial <SERIAL_B> --config mission_configs/level1_soft_link.yaml
 ```
 
 **Step 3: Verification**
-Observe the dashboard on both Blue PCs. The status should change to `CONNECTED` and "Mission Data" should begin to scroll.
+Observe the console output on both Blue PCs. The status should report `[DATA RX]` and "Mission Data" should begin to appear.
 
 ---
 
 ## 3. Red Team Setup (The Jammer)
-The Red Team does not use the Opal Vanguard source code (to simulate a real-world adversary). They should use standard GNU Radio blocks to generate interference.
+The Red Team uses the dedicated jammer script to generate precise interference against the Blue Team.
 
-### Recommended Red Team Flowgraph:
-1.  **Noise Source:** For wideband Denial of Service.
-2.  **Signal Source (Sawtooth/Square):** For swept-frequency jamming.
-3.  **UHD Sink:** Set to the same center frequency (915MHz) and sample rate (2MHz) as the Blue Team.
+### Launching the Jammer:
+```bash
+sudo -E python3 src/adversary_jammer.py --serial <SERIAL_R> --mode NOISE --gain 75
+```
+Options for mode include `NOISE`, `SWEEP`, and `PULSE`.
 
 ---
 

@@ -48,6 +48,7 @@ class tod_hop_generator(gr.basic_block):
         channel_idx = rand_val % self.num_channels
         freq = self.center_freq + (channel_idx - (self.num_channels // 2)) * self.channel_spacing
         
+        print(f"[TOD Hop] Epoch: {epoch} | Chan: {channel_idx} | Freq: {freq/1e6:.3f} MHz")
         self.message_port_pub(pmt.intern("freq"), pmt.from_double(freq))
 
     def work(self, input_items, output_items):

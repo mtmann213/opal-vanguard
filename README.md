@@ -16,28 +16,32 @@ Opal Vanguard is a Python-based GNU Radio framework for a modular Frequency Hopp
   - **CRC16-CCITT:** For error detection
 
 ## Project Structure
-- **/src**: Contains Python Out-Of-Tree (OOT) blocks (Packetizer, Depacketizer, Hop Controller, Whitener, RS Helper).
-- **/grc**: Contains GNU Radio Companion (GRC) block definitions (`.block.yml`) and the full loopback flowgraph (`.grc`).
+- **/src**: Contains Python Out-Of-Tree (OOT) blocks and hardware transceiver logic (`usrp_transceiver.py`, `adversary_jammer.py`).
+- **/mission_configs**: Contains tiered YAML configuration files (`level1_soft_link.yaml` to `level6_link16.yaml`) defining the datalink parameters.
+- **/grc**: Contains GNU Radio Companion (GRC) block definitions (`.block.yml`) and legacy loopback flowgraphs.
 
 ## Quick Start
 
-### 1. Set GRC Block Path
-To use the custom blocks in GNU Radio Companion, add the `grc/` directory to your configuration or set the environment variable:
+### 1. Hardware Field Test (USRP B200/B205mini)
+To run a physical RF test between two USRPs, use the transceiver script and point to a specific difficulty level:
 ```bash
-export GRC_BLOCK_PATH=$(pwd)/grc
-gnuradio-companion grc/opal_vanguard_loopback.grc
+# Terminal 1 (Alpha)
+sudo -E python3 src/usrp_transceiver.py --role ALPHA --serial <SERIAL_1> --config mission_configs/level1_soft_link.yaml
+
+# Terminal 2 (Bravo)
+sudo -E python3 src/usrp_transceiver.py --role BRAVO --serial <SERIAL_2> --config mission_configs/level1_soft_link.yaml
 ```
 
-### 2. Run Interactive Demo
-A standalone Python demo is provided to verify the digital logic without GRC:
+### 2. Contested Environment (Red Team)
+To test the datalink's resilience against jamming, launch the adversary script on a third USRP:
 ```bash
-python3 interactive_demo.py
+sudo -E python3 src/adversary_jammer.py --serial <SERIAL_3> --mode NOISE --gain 75
 ```
 
-### 3. Run Visual Demo
-The project includes a full QT GUI flowgraph implemented directly in Python:
+### 3. Run Visual Demo (Simulation)
+The project includes a full QT GUI flowgraph implemented directly in Python for testing without hardware:
 ```bash
-python3 src/top_block_gui.py
+python3 src/top_block_gui.py --config mission_configs/level4_stealth.yaml
 ```
 
 ## Technical Specifications

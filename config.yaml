@@ -1,105 +1,68 @@
-# ==============================================================================
-# OPAL VANGUARD - MISSION COMMAND CONFIGURATION
-# ==============================================================================
-# Use this file to define the datalink characteristics and EW hardening levels.
-# Changes take effect upon restarting the 'top_block_gui.py', 'usrp_transceiver.py', or test scripts.
-
-mission:
-  id: "OPAL_VANGUARD_FIELD_READY"
-  security_level: "MAX"
-
-physical:
-  # Base sample rate (Hz). 2,000,000 is optimized for real-time USRP stability.
-  samp_rate: 2000000
-  
-  # Center of the hopping band (Hz).
-  center_freq: 915000000
-  
-  # Modulation type. "GFSK" or "DBPSK" are currently supported.
-  modulation: "DBPSK"
-  
-  # Frequency Deviation (Hz). This is the 'width' of the shift for 1s and 0s.
-  # Peak-to-peak shift is 2 * freq_dev.
-  freq_dev: 125000
-  
-  # Over-sampling factor. 8 is recommended for stable clock recovery.
-  samples_per_symbol: 8
-
-link_layer:
-  # Error Detection: "NONE", "CRC16" (standard), or "CRC32" (high-reliability).
-  crc_type: "CRC16"
-  
-  # Error Correction: Enable/Disable Reed-Solomon (15,11). Fixes up to 2 symbols per block.
-  use_fec: true
-  
-  # Burst Resilience: Shuffles data symbols to spread concentrated noise damage.
-  use_interleaving: true
-  interleaver_rows: 8
-  
-  # Data Scrambling: Ensures DC balance and high transition density for clock recovery.
-  use_whitening: true
-  scrambler_mask: 0x48    # x^7 + x^4 + 1 polynomial
-  scrambler_seed: 0x7F
-  
-  # Manchester Encoding: Ensures perfect DC balance but cuts data rate by 50%.
-  use_manchester: false
-  
-  # Differential Encoding (NRZ-I): Protects against bit-flips caused by phase inversion.
-  use_nrzi: true
-
 dsss:
-  # Direct Sequence Spread Spectrum: Multiplies payload bits by high-speed chips.
+  chipping_code:
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
   enabled: true
-  
-  # Number of chips per bit. Higher factor = better jam-resistance but slower speed.
   spreading_factor: 31
-  
-  # Chipping Sequence: Must be 1/-1. 31-bit M-Sequence provided below.
-  chipping_code: [1, 1, 1, 1, 1, -1, -1, -1, -1, 1, 1, -1, 1, 1, 1, -1, 1, -1, -1, 1, -1, 1, -1, 1, 1, -1, -1, 1, 1, -1, -1] 
-
-hopping:
-  # Master toggle for Frequency Hopping Spread Spectrum.
-  enabled: true
-  
-  # Sync Strategy: 
-  #   "HANDSHAKE" -> Node A sends SYN packet with seed; Node B syncs and ACKs.
-  #   "TOD"       -> Precision Time-of-Day sync via absolute system clock. (STEALTH)
-  sync_mode: "TOD"
-  
-  # Sequence Logic: 
-  #   "LFSR" -> Linear Feedback Shift Register (Basic).
-  #   "AES"  -> AES-CTR Cryptographic Sequence (Secure TRANSEC).
-  type: "AES"
-  
-  # AES-256 Key for TRANSEC sequence. 32-bytes in hex.
-  aes_key: "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
-  
-  # Dwell Time: Time on each frequency (milliseconds).
-  dwell_time_ms: 200
-  
-  # Compensation for CPU/Hardware latency in TOD mode (milliseconds).
-  lookahead_ms: 10
-  
-  # Number of available channels in the hopping band.
-  num_channels: 50
-  
-  # Frequency separation between channels (Hz). 40kHz fits all 50 channels in 2MHz.
-  channel_spacing: 40000
-  
-  # Initial seed for LFSR mode.
-  initial_seed: 0xACE
-
 hardware:
-  # USRP Device Address. "type=b200" covers both B210 and B205mini.
-  args: "type=b200"
-  
-  # Hardware sample rate. 2MHz is reliable for USB 3.0.
-  samp_rate: 2000000
-  
-  # Gain settings (0 to 90 dB). Adjust based on distance.
-  tx_gain: 50
+  args: type=b200
+  rx_antenna: TX/RX
   rx_gain: 50
-  
-  # Antenna selection. 
-  tx_antenna: "TX/RX"
-  rx_antenna: "TX/RX"
+  samp_rate: 2000000
+  tx_antenna: TX/RX
+  tx_gain: 50
+hopping:
+  aes_key: 000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f
+  channel_spacing: 150000
+  dwell_time_ms: 200
+  enabled: false
+  initial_seed: 2766
+  lookahead_ms: 10
+  num_channels: 50
+  sync_mode: TOD
+  type: AES
+link_layer:
+  crc_type: CRC16
+  use_fec: true
+  use_interleaving: true
+  use_manchester: false
+  use_nrzi: true
+  use_whitening: true
+mission:
+  id: AUTO_TEST
+physical:
+  center_freq: 915000000
+  freq_dev: 125000
+  mod_index: 1.0
+  modulation: DBPSK
+  samp_rate: 2000000
+  samples_per_symbol: 8

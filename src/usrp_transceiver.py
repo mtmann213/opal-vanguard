@@ -27,7 +27,7 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
     data_signal = pyqtSignal(str)
     diag_signal = pyqtSignal(dict)
 
-    def __init__(self, role="ALPHA", serial="", config_path="config.yaml"):
+    def __init__(self, role="ALPHA", serial="", config_path="mission_configs/level1_soft_link.yaml"):
         gr.top_block.__init__(self, f"Opal Vanguard - {role}")
         Qt.QWidget.__init__(self)
         self.setWindowTitle(f"Opal Vanguard Field Terminal - {role} [{serial}]")
@@ -88,14 +88,15 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
             print(f"FATAL: USRP ERROR: {e}"); sys.exit(1)
 
         # Nodes
-        self.session_a = session_manager(initial_seed=hcfg['initial_seed'])
-        self.session_b = session_manager(initial_seed=hcfg['initial_seed'])
-        if hcfg['sync_mode'] == "TOD": self.session_a.state = "CONNECTED"; self.session_b.state = "CONNECTED"
+        self.session = session_manager(initial_seed=hcfg.get('initial_seed', 0xACE))
+        self.session.state = "CONNECTED" # Disable the software handshake for physical field testing
         self.pkt_a = packetizer(config_path=config_path)
         self.depkt_b = depacketizer(config_path=config_path)
 
-        # DSP Chain
-        self.pdu_src = blocks.message_strobe(pmt.cons(pmt.make_dict(), pmt.init_u8vector(len("MISSION DATA"), list("MISSION DATA".encode()))), 3000)
+        # DSP Chain: ALPHA sends every 1s, BRAVO every 1.2s to prevent persistent collisions
+        interval = 1000 if role == "ALPHA" else 1200
+        payload_text = f"MISSION DATA FROM {role}"
+        self.pdu_src = blocks.message_strobe(pmt.cons(pmt.make_dict(), pmt.init_u8vector(len(payload_text), list(payload_text.encode()))), interval)
         self.p2s_a = pdu.pdu_to_tagged_stream(gr.types.byte_t, "packet_len")
         
         mod_type = self.cfg['physical'].get('modulation', 'GFSK')
@@ -127,23 +128,22 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
             self.mod_a = digital.gfsk_mod(samples_per_symbol=sps, sensitivity=mod_sensitivity, bt=0.35)
             self.demod_b = digital.gfsk_demod(samples_per_symbol=sps, gain_mu=0.1, mu=0.5, omega_relative_limit=0.005, freq_error=0.0)
 
-        if hcfg['sync_mode'] == "TOD":
-            self.hop_ctrl = tod_hop_generator(key=bytes.fromhex(hcfg['aes_key']), num_channels=hcfg['num_channels'], center_freq=self.center_freq, channel_spacing=hcfg['channel_spacing'], dwell_ms=hcfg['dwell_time_ms'], lookahead_ms=hcfg['lookahead_ms'])
+        if hcfg.get('sync_mode', 'NONE') == "TOD":
+            self.hop_ctrl = tod_hop_generator(key=bytes.fromhex(hcfg.get('aes_key', '00'*32)), num_channels=hcfg.get('num_channels', 50), center_freq=self.center_freq, channel_spacing=hcfg.get('channel_spacing', 150000), dwell_ms=hcfg.get('dwell_time_ms', 200), lookahead_ms=hcfg.get('lookahead_ms', 0))
         else:
-            self.hop_ctrl = aes_hop_generator(key=bytes.fromhex(hcfg['aes_key']), num_channels=hcfg['num_channels'], center_freq=self.center_freq, channel_spacing=hcfg['channel_spacing'])
+            self.hop_ctrl = aes_hop_generator(key=bytes.fromhex(hcfg.get('aes_key', '00'*32)), num_channels=hcfg.get('num_channels', 50), center_freq=self.center_freq, channel_spacing=hcfg.get('channel_spacing', 150000))
 
         # RX Filter
         lpf_taps = filter.firdes.low_pass(1.0, self.samp_rate, 500e3, 100e3)
         self.rx_filter = filter.fir_filter_ccf(1, lpf_taps)
 
         # Connections
-        self.msg_connect((self.pdu_src, "strobe"), (self.session_a, "data_in"))
-        self.msg_connect((self.session_a, "pkt_out"), (self.pkt_a, "in"))
+        self.msg_connect((self.pdu_src, "strobe"), (self.session, "data_in"))
+        self.msg_connect((self.session, "pkt_out"), (self.pkt_a, "in"))
         self.msg_connect((self.pkt_a, "out"), (self.p2s_a, "pdus"))
         self.connect(self.p2s_a, self.mod_a, self.usrp_sink)
         self.connect(self.usrp_source, self.rx_filter, self.demod_b, self.depkt_b)
-        self.msg_connect((self.depkt_b, "out"), (self.session_b, "msg_in"))
-        self.msg_connect((self.session_b, "pkt_out"), (self.session_a, "msg_in"))
+        self.msg_connect((self.depkt_b, "out"), (self.session, "msg_in"))
 
         # Hardware Handlers
         class UHDHandler(gr.basic_block):
@@ -153,8 +153,11 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
             def handle(self, msg):
                 try: self.parent.usrp_sink.set_center_freq(pmt.to_double(msg)); self.parent.usrp_source.set_center_freq(pmt.to_double(msg))
                 except: pass
+            def work(self, input_items, output_items): return 0
         
-        self.uhd_h = UHDHandler(self); self.msg_connect((self.hop_ctrl, "freq"), (self.uhd_h, "msg"))
+        self.uhd_h = UHDHandler(self)
+        if hcfg.get('enabled', True):
+            self.msg_connect((self.hop_ctrl, "freq"), (self.uhd_h, "msg"))
 
         # GUI Proxy
         class DiagProxy(gr.basic_block):
@@ -162,19 +165,46 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
                 gr.basic_block.__init__(self, "DiagProxy", None, None); self.parent = parent
                 self.message_port_register_in(pmt.intern("msg")); self.set_msg_handler(pmt.intern("msg"), self.handle)
             def handle(self, msg):
-                d = {pmt.symbol_to_string(k): (pmt.to_bool(v) if pmt.is_bool(v) else pmt.to_long(v)) for k,v in pmt.dict_to_alist(msg)}
-                self.parent.diag_signal.emit(d)
+                try:
+                    d = {}
+                    if pmt.dict_has_key(msg, pmt.intern("crc_ok")): d["crc_ok"] = pmt.to_bool(pmt.dict_ref(msg, pmt.intern("crc_ok"), pmt.PMT_NIL))
+                    if pmt.dict_has_key(msg, pmt.intern("fec_corrections")): d["fec_corrections"] = pmt.to_long(pmt.dict_ref(msg, pmt.intern("fec_corrections"), pmt.PMT_NIL))
+                    if pmt.dict_has_key(msg, pmt.intern("inverted")): d["inverted"] = pmt.to_bool(pmt.dict_ref(msg, pmt.intern("inverted"), pmt.PMT_NIL))
+                    self.parent.diag_signal.emit(d)
+                except Exception as e: print(f"DiagProxy Error: {e}")
+            def work(self, input_items, output_items): return 0
         
         self.dp = DiagProxy(self); self.msg_connect((self.depkt_b, "diagnostics"), (self.dp, "msg"))
         self.diag_signal.connect(self.on_diag)
         self.data_signal.connect(lambda p: self.text_out.append(f"<b>[RX]:</b> {p}"))
+        
+        # Console Data Feedback
+        class ConsoleDataLogger(gr.basic_block):
+            def __init__(self, parent):
+                gr.basic_block.__init__(self, "ConsoleLogger", None, None); self.parent = parent
+                self.message_port_register_in(pmt.intern("msg")); self.set_msg_handler(pmt.intern("msg"), self.handle)
+            def handle(self, msg):
+                try:
+                    p = bytes(pmt.u8vector_elements(pmt.cdr(msg))).decode('utf-8', 'ignore')
+                    print(f"\033[94m[DATA RX]: {p}\033[0m")
+                    self.parent.data_signal.emit(p)
+                except: pass
+            def work(self, input_items, output_items): return 0
+        self.logger = ConsoleDataLogger(self)
+        self.msg_connect((self.session, "data_out"), (self.logger, "msg"))
 
         # Viz
         self.snk_waterfall = qtgui.waterfall_sink_c(2048, fft.window.WIN_BLACKMAN_HARRIS, self.center_freq, self.samp_rate, "USRP RF Spectrum", 1)
         self.viz_panel.addWidget(sip.wrapinstance(self.snk_waterfall.qwidget(), Qt.QWidget))
         self.connect(self.usrp_source, self.snk_waterfall)
 
-        self.timer = Qt.QTimer(); self.timer.timeout.connect(lambda: self.hop_ctrl.handle_trigger(pmt.PMT_T)); self.timer.start(hcfg['dwell_time_ms'])
+        self.timer = Qt.QTimer()
+        self.timer.timeout.connect(lambda: self.hop_ctrl.handle_trigger(pmt.PMT_T))
+        if hcfg.get('enabled', True):
+            print(f"[Terminal] Hopping ENABLED ({hcfg['dwell_time_ms']}ms)")
+            self.timer.start(hcfg['dwell_time_ms'])
+        else:
+            print("[Terminal] Hopping DISABLED (Fixed Frequency)")
 
     def update_hardware(self):
         self.usrp_sink.set_gain(self.tx_gain_slider.value(), 0); self.usrp_source.set_gain(self.rx_gain_slider.value(), 0)
@@ -189,9 +219,10 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--role", default="ALPHA", choices=["ALPHA", "BRAVO"])
     parser.add_argument("--serial", default="")
+    parser.add_argument("--config", default="mission_configs/level1_soft_link.yaml")
     args = parser.parse_args()
     qapp = Qt.QApplication(sys.argv)
-    tb = OpalVanguardUSRP(role=args.role, serial=args.serial)
+    tb = OpalVanguardUSRP(role=args.role, serial=args.serial, config_path=args.config)
     tb.start(); tb.show(); qapp.exec_()
 
 if __name__ == '__main__': main()

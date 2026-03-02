@@ -3,12 +3,13 @@ __pycache__/
 *.py[cod]
 *$py.class
 
-# Data files (recorded signals, binary dumps)
+# Data files (recorded signals, binary dumps, logs)
 *.bin
 *.cf32
 *.fc32
 *.cfile
 *.dat
+*.log
 binary
 
 # Temporary and build files

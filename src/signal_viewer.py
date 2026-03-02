@@ -50,7 +50,7 @@ class SampleGate(gr.sync_block):
 class SignalViewer(gr.top_block, Qt.QWidget):
     progress_signal = pyqtSignal(float, float)
 
-    def __init__(self, config_path="config.yaml"):
+    def __init__(self, config_path="mission_configs/level1_soft_link.yaml"):
         gr.top_block.__init__(self, "Opal Vanguard Signal Viewer")
         Qt.QWidget.__init__(self)
         self.setWindowTitle("Opal Vanguard - RF Diagnostic Viewer")

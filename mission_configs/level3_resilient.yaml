@@ -1,0 +1,28 @@
+mission:
+  id: "LEVEL_3_RESILIENT"
+physical:
+  samp_rate: 2000000
+  center_freq: 915000000
+  modulation: "GFSK"
+  freq_dev: 125000
+  samples_per_symbol: 8
+link_layer:
+  crc_type: "CRC16"
+  use_fec: true
+  use_interleaving: true
+  interleaver_rows: 8
+  use_whitening: true
+  use_nrzi: true
+  use_manchester: false
+dsss:
+  enabled: false
+  spreading_factor: 1
+hopping:
+  enabled: false
+hardware:
+  args: "type=b200"
+  samp_rate: 2000000
+  tx_gain: 70
+  rx_gain: 70
+  tx_antenna: "TX/RX"
+  rx_antenna: "TX/RX"
