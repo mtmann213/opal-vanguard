@@ -69,7 +69,7 @@ The Red Team uses the dedicated jammer script to generate precise interference a
 ```bash
 sudo -E python3 src/adversary_jammer.py --serial <SERIAL_R> --mode NOISE --gain 75
 ```
-Options for mode include `NOISE`, `SWEEP`, and `PULSE`.
+Options for mode include `NOISE`, `SWEEP`, `PULSE`, and `FOLLOWER`.
 
 ---
 

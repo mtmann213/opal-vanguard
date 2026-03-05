@@ -14,7 +14,7 @@ def main():
     parser.add_argument("--freq", type=float, default=915e6, help="Center Frequency (Hz)")
     parser.add_argument("--rate", type=float, default=2e6, help="Sample Rate (Hz)")
     parser.add_argument("--gain", type=float, default=70, help="TX Gain (0-90 dB)")
-    parser.add_argument("--mode", choices=["NOISE", "SWEEP", "PULSE"], default="NOISE", help="Jamming Mode")
+    parser.add_argument("--mode", choices=["NOISE", "SWEEP", "PULSE", "FOLLOWER"], default="NOISE", help="Jamming Mode")
     parser.add_argument("--sweep-rate", type=float, default=10.0, help="Sweep frequency (Hz)")
     parser.add_argument("--pulse-ms", type=float, default=100.0, help="Pulse dwell time (ms)")
     args = parser.parse_args()
@@ -64,6 +64,68 @@ def main():
         tb.connect(f2c, (mult, 1))
         tb.connect(mult, sink)
         print(f"[*] MODE: Pulsed NOISE Jammer (Dwell: {args.pulse_ms}ms)")
+    elif args.mode == "FOLLOWER":
+        try:
+            source = uhd.usrp_source(uhd_args, uhd.stream_args(cpu_format="fc32", channels=[0]))
+            source.set_samp_rate(args.rate)
+            source.set_center_freq(args.freq, 0)
+            source.set_gain(args.gain, 0)
+            source.set_antenna("TX/RX", 0)
+        except Exception as e:
+            print(f"FATAL: USRP RX ERROR: {e}"); sys.exit(1)
+            
+        tb.sig_gen = analog.sig_source_c(args.rate, analog.GR_COS_WAVE, 0, 1.0)
+        tb.multiplier = blocks.multiply_const_cc(0.0)
+        tb.pulse_ms = args.pulse_ms
+        
+        fft_size = 1024
+        s2v = blocks.stream_to_vector(gr.sizeof_gr_complex, fft_size)
+        
+        class FollowerLogic(gr.sync_block):
+            def __init__(self, samp_rate, fft_size, parent):
+                gr.sync_block.__init__(self, name="FollowerLogic", in_sig=[(np.complex64, fft_size)], out_sig=None)
+                self.samp_rate = samp_rate
+                self.fft_size = fft_size
+                self.parent = parent
+                self.state = "LOOKING"
+                self.timer = 0
+                self.skip = 0
+                
+            def work(self, input_items, output_items):
+                for vec in input_items[0]:
+                    if self.state == "JAMMING":
+                        self.timer -= 1
+                        if self.timer <= 0:
+                            self.parent.multiplier.set_k(0.0)
+                            self.state = "FLUSHING"
+                            self.timer = 10
+                    elif self.state == "FLUSHING":
+                        self.timer -= 1
+                        if self.timer <= 0:
+                            self.state = "LOOKING"
+                    elif self.state == "LOOKING":
+                        self.skip += 1
+                        if self.skip % 2 != 0: continue
+                        
+                        spectrum = np.fft.fftshift(np.fft.fft(vec))
+                        power = np.abs(spectrum)**2
+                        max_idx = np.argmax(power)
+                        max_pwr = power[max_idx]
+                        avg_pwr = np.mean(power)
+                        
+                        if max_pwr > avg_pwr * 15 and max_pwr > 0.5:
+                            offset_hz = (max_idx - self.fft_size / 2) * (self.samp_rate / self.fft_size)
+                            print(f"\033[91m[FOLLOWER] Target Lock: {offset_hz/1000:.1f} kHz\033[0m")
+                            self.parent.sig_gen.set_frequency(offset_hz)
+                            self.parent.multiplier.set_k(1.0)
+                            self.state = "JAMMING"
+                            self.timer = int((self.parent.pulse_ms / 1000.0) * (self.samp_rate / self.fft_size))
+                return len(input_items[0])
+                
+        follower = FollowerLogic(args.rate, fft_size, tb)
+        tb.connect(source, s2v, follower)
+        tb.connect(tb.sig_gen, tb.multiplier, sink)
+        print(f"[*] MODE: Autonomous Follower Jammer (Dwell: {args.pulse_ms}ms)")
 
     print(f"[*] TARGET: {args.freq/1e6:.2f} MHz @ {args.rate/1e6:.2f} Msps")
     print("[!] CTRL+C to stop jamming.")

@@ -58,7 +58,7 @@ Opal Vanguard operates on a **"Digital Duel"** framework, dividing participants 
 ### The Red Team (Adversary)
 *   **Nodes:** Operates the **JAMMER** terminal (`adversary_jammer.py`).
 *   **Objective:** Disrupt, Deny, Degrade, or Manipulate the Blue Team's datalink.
-*   **Capabilities:** Red Team does not decode the data; their goal is destruction. They utilize broadband noise (Denial of Service), swept-frequency tones (Scanning attacks), and pulsed bursts to attack vulnerabilities in the Blue Team's current configuration.
+*   **Capabilities:** Red Team does not decode the data; their goal is destruction. They utilize broadband noise (Denial of Service), swept-frequency tones (Scanning attacks), pulsed bursts, and an autonomous "Follower AI" that dynamically hunts for power peaks to exploit vulnerabilities in the Blue Team's active configuration.
 
 ---
 

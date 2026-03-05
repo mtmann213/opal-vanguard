@@ -14,7 +14,7 @@ Welcome to Project Opal Vanguard. You are tasked with operating or disrupting a 
 #### **Red Team (The Disruptors)**
 *   **Objective:** Disrupt, Deny, Degrade, or Manipulate the Blue Team's communications.
 *   **Success Metric:** Forcing the Blue Team terminal into an `IDLE` state or causing sustained "CRC FAIL" errors.
-*   **Your Tools:** You have a dedicated USRP and the `src/adversary_jammer.py` script. You may use broadband noise, swept-frequency tones, or pulsed jammers.
+*   **Your Tools:** You have a dedicated USRP and the `src/adversary_jammer.py` script. You may use broadband noise, swept-frequency tones, pulsed jammers, or the autonomous `FOLLOWER` AI.
 
 ---
 
