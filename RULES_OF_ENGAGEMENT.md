@@ -41,3 +41,10 @@ This document outlines the ramping difficulty levels for the team competition. T
 *   **Red Team Objective:** **Total Denial.**
     *   With hardened RS(31,15) FEC and CCSK spreading, the signal is extremely resilient. Red Team must use high-power wideband noise to disrupt the link.
 *   **Lesson:** Professional tactical links combine multiple layers of time, frequency, and code-space protection to ensure survival.
+
+## Level 7: The "OFDM Master" Challenge
+*   **Config:** `mission_configs/level7_ofdm_master.yaml`
+*   **Hardening:** Wideband OFDM modulation with 64 subcarriers, fast AFH, and 1PPS nanosecond-accurate hardware triggering.
+*   **Red Team Objective:** **Surgical Strike.**
+    *   OFDM spreads data across many subcarriers. Red Team must attempt to surgically jam specific sub-bands or overpower the entire 2MHz channel.
+*   **Lesson:** Orthogonal frequency division provides massive throughput while natively resisting narrowband interference.

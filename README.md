@@ -7,9 +7,9 @@ Opal Vanguard is a Python-based GNU Radio framework for a modular Frequency Hopp
 - **Frequency Hopping:** AES-CTR and TOD-based hopping across 50+ channels in the 900MHz ISM band.
 - **Forward Error Correction (FEC):** Reed-Solomon (15, 11) and (31, 15) for high-reliability links.
 - **Advanced Spreading:** Supports standard **DSSS** (31-chip) and authentic Link-16 **CCSK** (32-chip symbol mapping).
-- **Multi-Modulation:** Support for **GFSK, MSK, DBPSK, DQPSK, and D8PSK**.
+- **Multi-Modulation:** Support for **GFSK, MSK, DBPSK, DQPSK, D8PSK, and OFDM**.
 - **Scrambling/Whitening:** Fibonacci LFSR whitening using the $x^7 + x^4 + 1$ polynomial.
-- **Standardized Missions:** Tiered mission configurations (`level1` to `level6`) for progressive difficulty.
+- **Standardized Missions:** Tiered mission configurations (`level1` to `level7`) for progressive difficulty.
 
 ## Project Structure
 - **/src**: Contains Python Out-Of-Tree (OOT) blocks and hardware transceiver logic (`usrp_transceiver.py`, `adversary_jammer.py`).

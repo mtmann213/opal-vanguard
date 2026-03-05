@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Opal Vanguard - AES-CTR Hop Generator (TRANSEC)
+# Opal Vanguard - AES-CTR Hop Generator (TRANSEC with AFH)
 
 import numpy as np
 from gnuradio import gr
@@ -18,6 +18,7 @@ class aes_hop_generator(gr.basic_block):
         self.channel_spacing = channel_spacing
         self.key = key
         self.counter = 0
+        self.blacklist = []
         
         # Cipher Setup
         self.backend = default_backend()
@@ -29,6 +30,9 @@ class aes_hop_generator(gr.basic_block):
         self.message_port_register_in(pmt.intern("set_seed")) # Seed acts as initial counter
         self.set_msg_handler(pmt.intern("set_seed"), self.handle_set_seed)
         
+        self.message_port_register_in(pmt.intern("blacklist"))
+        self.set_msg_handler(pmt.intern("blacklist"), self.handle_blacklist)
+        
         self.message_port_register_out(pmt.intern("freq"))
 
     def handle_set_seed(self, msg):
@@ -36,26 +40,35 @@ class aes_hop_generator(gr.basic_block):
         self.counter = new_seed
         print(f"[HopAES] Counter synced to: {self.counter}")
 
+    def handle_blacklist(self, msg):
+        if pmt.is_vector_obj(msg):
+            self.blacklist = list(pmt.u8vector_elements(msg))
+            print(f"[AFH-AES] Blacklist updated: {self.blacklist}")
+
     def handle_trigger(self, msg):
-        # 1. Prepare 16-byte nonce/counter block
-        # We'll use the 64-bit self.counter at the end of the block
         nonce = struct.pack(">QQ", 0, self.counter)
-        
-        # 2. AES-ECB of the counter block (effectively CTR keystream generation)
         cipher = Cipher(algorithms.AES(self.key), modes.ECB(), backend=self.backend)
         encryptor = cipher.encryptor()
         keystream = encryptor.update(nonce) + encryptor.finalize()
         
-        # 3. Take first 4 bytes as a random index
         rand_val = struct.unpack(">I", keystream[:4])[0]
+        raw_idx = rand_val % self.num_channels
         
-        # 4. Map to channel
-        channel_idx = rand_val % self.num_channels
-        freq = self.center_freq + (channel_idx - (self.num_channels // 2)) * self.channel_spacing
+        # AFH Remapping
+        final_idx = raw_idx
+        if self.blacklist and final_idx in self.blacklist:
+            for i in range(1, self.num_channels):
+                candidate = (raw_idx + i) % self.num_channels
+                if candidate not in self.blacklist:
+                    final_idx = candidate
+                    break
         
+        freq = self.center_freq + (final_idx - (self.num_channels // 2)) * self.channel_spacing
+        
+        if final_idx != raw_idx:
+            print(f"\033[96m[AFH-AES] EVADED {raw_idx} -> Moved to {final_idx}\033[0m")
+            
         self.message_port_pub(pmt.intern("freq"), pmt.from_double(freq))
-        
-        # 5. Increment
         self.counter = (self.counter + 1) & 0xFFFFFFFFFFFFFFFF
 
     def work(self, input_items, output_items):

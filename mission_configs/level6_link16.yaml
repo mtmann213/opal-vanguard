@@ -6,6 +6,10 @@ physical:
   modulation: "MSK"
   freq_dev: 125000
   samples_per_symbol: 8
+mac_layer:
+  arq_enabled: true
+  max_retries: 3
+
 link_layer:
   crc_type: "CRC16"
   use_fec: true

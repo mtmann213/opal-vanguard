@@ -1,35 +1,32 @@
 mission:
-  id: "LEVEL_5_BLACKOUT"
+  id: "LEVEL_7_OFDM_MASTER"
 physical:
   samp_rate: 2000000
   center_freq: 915000000
-  modulation: "GFSK"
-  freq_dev: 125000
+  modulation: "OFDM"
   samples_per_symbol: 8
-mac_layer:
-  arq_enabled: true
-  max_retries: 3
-
 link_layer:
-  crc_type: "CRC16"
+  crc_type: "CRC32"
   use_fec: true
   use_interleaving: true
-  interleaver_rows: 8
+  interleaver_rows: 32
   use_whitening: true
   use_nrzi: true
   use_manchester: false
+mac_layer:
+  arq_enabled: true
+  afh_enabled: true
+  max_retries: 5
 dsss:
-  enabled: true
-  spreading_factor: 31
-  chipping_code: [1, 1, 1, 1, 1, -1, -1, -1, -1, 1, 1, -1, 1, 1, 1, -1, 1, -1, -1, 1, -1, 1, -1, 1, 1, -1, -1, 1, 1, -1, -1]
+  enabled: false
 hopping:
   enabled: true
   type: "AES"
   sync_mode: "TOD"
-  dwell_time_ms: 500
+  dwell_time_ms: 1000
   lookahead_ms: 50
-  num_channels: 50
-  channel_spacing: 150000
+  num_channels: 20
+  channel_spacing: 500000
   aes_key: "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
   initial_seed: 0xACE
 hardware:
@@ -39,3 +36,4 @@ hardware:
   rx_gain: 70
   tx_antenna: "TX/RX"
   rx_antenna: "TX/RX"
+  sync: "pc_clock" # Can be set to 'external' if GPSDO is attached
