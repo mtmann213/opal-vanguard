@@ -8,7 +8,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y python3 python3-pip gnuradio uhd-host libuhd-dev python3-pyqt5 usbutils && rm -rf /var/lib/apt/lists/*
 
 # Install Python requirements
-RUN pip3 install pyyaml cryptography numpy
+RUN pip3 install pyyaml cryptography numpy flask
 
 # Download UHD FPGA images so they are baked into the container
 RUN uhd_images_downloader

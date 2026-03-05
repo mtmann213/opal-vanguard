@@ -41,6 +41,13 @@ The project includes a full QT GUI flowgraph implemented directly in Python for 
 python3 src/top_block_gui.py --config mission_configs/level4_stealth.yaml
 ```
 
+### 4. Mission Commander Dashboard (Telemetry)
+The project includes a web-based dashboard for real-time mission telemetry. To launch the dashboard, run the Flask app from the `dashboard/` directory:
+```bash
+python3 dashboard/app.py
+```
+Then navigate to `http://localhost:5000` in your web browser.
+
 ## Technical Specifications
 - **Spectrum:** 902-928 MHz (ISM Band)
 - **Modulation:** GFSK

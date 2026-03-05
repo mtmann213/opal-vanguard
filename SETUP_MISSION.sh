@@ -20,7 +20,7 @@ fi
 
 # 2. Python Dependencies
 echo "--- [2/5] Installing Python Dependencies ---"
-pip install pyyaml cryptography numpy --quiet
+pip install pyyaml cryptography numpy flask --quiet
 
 # 3. UHD FPGA Images
 echo "--- [3/5] Setting up UHD Images ---"

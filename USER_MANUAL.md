@@ -128,6 +128,13 @@ sudo -E python3 src/usrp_transceiver.py --role BRAVO --serial <SERIAL_B> --confi
 sudo -E python3 src/adversary_jammer.py --serial <SERIAL_J> --mode SWEEP --gain 75
 ```
 
+### Mission Commander Dashboard
+To visualize mission telemetry in real-time, launch the web dashboard on any Blue Team PC:
+```bash
+python3 dashboard/app.py
+```
+Open a browser and navigate to `http://localhost:5000`. This will display live graphs of Signal Confidence, Mission Success Rate, and an Adaptive Frequency Hopping (AFH) channel health heatmap.
+
 ---
 
 ## 7. Glossary & Acronyms
