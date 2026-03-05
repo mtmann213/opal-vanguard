@@ -111,6 +111,60 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
             self.pdu_src = ChatSender()
             self.chat_btn.clicked.connect(self.on_chat_send)
             self.chat_input.returnPressed.connect(self.on_chat_send)
+        elif self.payload_type == 'file':
+            import threading
+            self.file_layout = Qt.QHBoxLayout()
+            self.file_path_input = Qt.QLineEdit()
+            self.file_path_input.setPlaceholderText("Path to file...")
+            self.file_browse_btn = Qt.QPushButton("Browse")
+            self.file_send_btn = Qt.QPushButton("Send File")
+            self.file_layout.addWidget(self.file_path_input)
+            self.file_layout.addWidget(self.file_browse_btn)
+            self.file_layout.addWidget(self.file_send_btn)
+            self.ctrl_panel.addLayout(self.file_layout)
+            
+            self.file_progress = Qt.QProgressBar()
+            self.file_progress.setRange(0, 100)
+            self.file_progress.setValue(0)
+            self.ctrl_panel.addWidget(self.file_progress)
+            
+            class FileSender(gr.basic_block):
+                def __init__(self, parent):
+                    gr.basic_block.__init__(self, "FileSender", None, None)
+                    self.parent = parent
+                    self.message_port_register_out(pmt.intern("out"))
+                    self.file_id = np.random.randint(0, 65535)
+                    self.sending = False
+                def send_file(self, filepath):
+                    if self.sending: return
+                    self.sending = True
+                    threading.Thread(target=self._send_thread, args=(filepath,), daemon=True).start()
+                def _send_thread(self, filepath):
+                    try:
+                        with open(filepath, 'rb') as f:
+                            data = f.read()
+                        chunk_size = 64
+                        total_chunks = (len(data) + chunk_size - 1) // chunk_size
+                        self.file_id = (self.file_id + 1) & 0xFFFF
+                        filename = os.path.basename(filepath)
+                        self.parent.data_signal.emit(f"<b>[TX FILE]:</b> Started {filename} ({total_chunks} chunks)")
+                        
+                        for i in range(total_chunks):
+                            chunk = data[i*chunk_size : (i+1)*chunk_size]
+                            header = b'FTP!' + struct.pack('>HHH', self.file_id, i, total_chunks)
+                            payload = header + chunk
+                            self.message_port_pub(pmt.intern("out"), pmt.cons(pmt.make_dict(), pmt.init_u8vector(len(payload), list(payload))))
+                            time.sleep(0.4) # pace it
+                        self.parent.data_signal.emit(f"<b>[TX FILE]:</b> Completed {filename}")
+                    except Exception as e:
+                        print(f"File send error: {e}")
+                    finally:
+                        self.sending = False
+                def work(self, input_items, output_items): return 0
+                
+            self.pdu_src = FileSender(self)
+            self.file_browse_btn.clicked.connect(self.on_file_browse)
+            self.file_send_btn.clicked.connect(self.on_file_send)
         else:
             interval = 1000 if role == "ALPHA" else 1200
             payload_text = f"MISSION DATA FROM {role}"
@@ -180,7 +234,7 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
         self.rx_filter = filter.fir_filter_ccf(1, lpf_taps)
 
         # Connections
-        if self.payload_type == 'chat':
+        if self.payload_type in ['chat', 'file']:
             self.msg_connect((self.pdu_src, "out"), (self.session, "data_in"))
         else:
             self.msg_connect((self.pdu_src, "strobe"), (self.session, "data_in"))
@@ -255,18 +309,44 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
         
         self.dp = DiagProxy(self); self.msg_connect((self.depkt_b, "diagnostics"), (self.dp, "msg"))
         self.diag_signal.connect(self.on_diag)
-        self.data_signal.connect(lambda p: self.text_out.append(f"<b>[RX]:</b> {p}"))
+        self.data_signal.connect(lambda p: self.text_out.append(p))
         
         # Console Logger
         class ConsoleDataLogger(gr.basic_block):
             def __init__(self, parent):
                 gr.basic_block.__init__(self, "ConsoleLogger", None, None); self.parent = parent
                 self.message_port_register_in(pmt.intern("msg")); self.set_msg_handler(pmt.intern("msg"), self.handle)
+                self.file_buffers = {}
             def handle(self, msg):
                 try:
-                    p = bytes(pmt.u8vector_elements(pmt.cdr(msg))).decode('utf-8', 'ignore')
-                    print(f"\033[94m[DATA RX]: {p}\033[0m")
-                    self.parent.data_signal.emit(p)
+                    p = bytes(pmt.u8vector_elements(pmt.cdr(msg)))
+                    if p.startswith(b'FTP!'):
+                        file_id, chunk_idx, total_chunks = struct.unpack('>HHH', p[4:10])
+                        chunk_data = p[10:]
+                        if file_id not in self.file_buffers:
+                            self.file_buffers[file_id] = {'chunks': {}, 'total': total_chunks}
+                            self.parent.data_signal.emit(f"<b>[RX]:</b> Incoming File Transfer ({total_chunks} chunks)")
+                        
+                        fb = self.file_buffers[file_id]
+                        if chunk_idx not in fb['chunks']:
+                            fb['chunks'][chunk_idx] = chunk_data
+                            if hasattr(self.parent, 'file_progress'):
+                                progress = int(len(fb['chunks']) / total_chunks * 100)
+                                self.parent.file_progress.setValue(progress)
+                            
+                            if len(fb['chunks']) == total_chunks:
+                                out_data = b''
+                                for i in range(total_chunks):
+                                    out_data += fb['chunks'][i]
+                                out_path = f"rx_file_{file_id}.dat"
+                                with open(out_path, 'wb') as f:
+                                    f.write(out_data)
+                                self.parent.data_signal.emit(f"<b>[RX]:</b> <span style='color:green'>File Transfer Complete -> {out_path}</span>")
+                                del self.file_buffers[file_id]
+                    else:
+                        text = p.decode('utf-8', 'ignore')
+                        print(f"\033[94m[DATA RX]: {text}\033[0m")
+                        self.parent.data_signal.emit(f"<b>[RX]:</b> {text}")
                 except: pass
             def work(self, input_items, output_items): return 0
         self.logger = ConsoleDataLogger(self); self.msg_connect((self.session, "data_out"), (self.logger, "msg"))
@@ -335,6 +415,16 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
             self.pdu_src.send_msg(text)
             self.chat_input.clear()
 
+    def on_file_browse(self):
+        filename, _ = Qt.QFileDialog.getOpenFileName(self, "Select File to Send")
+        if filename:
+            self.file_path_input.setText(filename)
+
+    def on_file_send(self):
+        filepath = self.file_path_input.text()
+        if os.path.exists(filepath):
+            self.pdu_src.send_file(filepath)
+            
     def update_hardware(self):
         if not self.ghost_mode or self.ghost_timer.isActive():
             self.usrp_sink.set_gain(self.tx_gain_slider.value(), 0)

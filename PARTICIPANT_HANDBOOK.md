@@ -30,7 +30,7 @@ Welcome to Project Opal Vanguard. You are tasked with operating or disrupting a 
 #### **For Blue Team:**
 *   **Stealth:** Use **DSSS** or **CCSK**. DSSS spreads your energy across the band, while CCSK provides the high-correlation symbol mapping used in military tactical links.
 *   **Repair:** If you see "FEC Repairs" increasing on your dashboard, your link is under attack but surviving. Link-16 mode (Level 6) uses **RS(31,15)** which can survive losing nearly 50% of the packet symbols.
-*   **Modulation:** MSK (Minimum Shift Keying) provides better spectral efficiency and a smoother phase transition than GFSK, making it harder to detect at the band edges.
+*   **Payload Types:** The `mission_configs` support different application layers via the `payload_type` setting (`heartbeat`, `chat`, or `file`). Use `chat` for real-time tactical messaging, and `file` to transmit images or documents piece-by-piece, demonstrating the power of ARQ to reconstruct missing data.
 *   **Adaptive Resilience (AMC):** If you are running a high-tier mission config and the Red Team begins a massive jamming campaign, do not panic if the link drops momentarily. The MAC layer monitors Link Quality (LQI). If it detects 5 consecutive failures, it will automatically execute a **Fallback Reboot**, rapidly restarting your terminal into the ultra-resilient Level 4 Stealth configuration to save the link.
 *   **Ghost Mode (LPI/LPD):** Enabled by default on Level 4 and above. The transmitter's physical hardware amplifier drops to absolute zero between bursts. To a Red Team spectrum analyzer, your radio appears turned off until the exact millisecond a packet is fired.
 
