@@ -65,7 +65,9 @@ Opal Vanguard operates on a **"Digital Duel"** framework, dividing participants 
 ## 4. System Architecture & Capabilities
 Opal Vanguard's resilience is built on a "defense-in-depth" architecture. 
 
+*   **Application Layer:** Supports configurable payload types including automated `heartbeat` strobes, interactive real-time `chat`, and dynamic `file` transfer with chunked delivery.
 *   **Modulation Suite:** Converts digital bits into analog waves. Supports GFSK (Gaussian Frequency Shift Keying), MSK (Minimum Shift Keying), Phase Shift Keying (DBPSK, DQPSK, D8PSK), and wideband OFDM (Orthogonal Frequency Division Multiplexing).
+*   **COMSEC (Communications Security):** Utilizes AES-256-GCM authenticated encryption with anti-replay sequence nonces to secure the physical payload bytes against interception.
 *   **Spreading (Stealth):** Uses DSSS (Direct Sequence Spread Spectrum) and CCSK (Cyclic Code Shift Keying) to expand the signal's bandwidth, lowering its power density to hide it below the noise floor (LPI/LPD).
 *   **Ghost Mode (Power Control):** Dynamically drops the physical RF transmit amplifier to zero between bursts, making the transmitter invisible to spectrum analyzers when idle.
 *   **Forward Error Correction (FEC):** Uses mathematical algorithms, specifically Reed-Solomon (RS 15,11 and RS 31,15), to reconstruct corrupted data without needing a retransmission.

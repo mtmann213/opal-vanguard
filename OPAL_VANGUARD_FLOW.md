@@ -42,16 +42,19 @@ The system is designed for Electronic Warfare (EW) training, allowing operators 
 ---
 
 ## 3. Data Flow (TX Chain)
-1.  **Session:** Controls state and message buffering.
-2.  **FEC:** Encodes data into Reed-Solomon blocks (5-bit or 4-bit symbols).
-3.  **Header:** Assembles Type, Sequence, and Length metadata.
-4.  **Interleave:** Shuffles the full data block based on mission level.
-5.  **Whiten:** Scrambles the block using a synchronized LFSR.
-6.  **Spreading:**
+1.  **Application Layer:** Generates payload (Heartbeat strobe, Chat message, or FTP file chunk).
+2.  **Session (MAC):** Controls state, ARQ history buffering, and AFH blacklist tracking.
+3.  **COMSEC:** Encrypts payload bytes using AES-256-GCM with sequence-based nonces.
+4.  **FEC:** Encodes data into Reed-Solomon blocks (5-bit or 4-bit symbols).
+5.  **Header:** Assembles Type, Sequence, and Length metadata.
+6.  **Interleave:** Shuffles the full data block based on mission level.
+7.  **Whiten:** Scrambles the block using a synchronized LFSR.
+8.  **Spreading:**
     *   **CCSK Path:** Maps 5-bit symbols directly to 32-chip sequences.
     *   **DSSS Path:** Spreads serialized bits into 31-chip sequences.
-7.  **Modulation:** Converts bits/chips to complex baseband (MSK, GFSK, or PSK).
-8.  **UHD Sink:** Transmits bursts via USRP hardware with TOD frequency control.
+9.  **Modulation:** Converts bits/chips to complex baseband (MSK, GFSK, PSK, or OFDM).
+10. **LPI/LPD Controller:** Triggers hardware "Ghost Mode" to instantly spike/cut TX power.
+11. **UHD Sink:** Transmits bursts via USRP hardware with nanosecond TOD frequency control.
 
 ---
 
