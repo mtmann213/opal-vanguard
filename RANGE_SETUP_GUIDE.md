@@ -6,31 +6,36 @@ This guide details the physical and software configuration required to host the 
 ---
 
 ## 1. Physical Architecture (The "Arena")
-To prevent hardware damage and ensure repeatable results, all testing should be conducted over SMA coaxial cables.
+The project supports two primary deployment models: **Bench Verification** and **Exercise Employment**.
 
-### Hardware Required:
-*   3x USRP B210 or B205mini (2 for Blue Team, 1 for Red Team).
-*   3x SMA-to-SMA Coaxial Cables.
-*   3x 20dB or 30dB Fixed Attenuators (Mandatory).
-*   1x 3-Port SMA Power Splitter/Combiner.
-*   3x Linux PCs with UHD and GNU Radio 3.10 installed.
+### Model A: Bench Verification (Single-Host)
+*   **Purpose:** Initial setup, debugging, and code verification.
+*   **Setup:** All 3 USRPs are connected to a single high-performance Linux PC.
+*   **Execution:** Run 3 separate terminal windows. This confirms the logic and RF path are sound before distributing the hardware.
 
-### Wiring Diagram:
+### Model B: Exercise Employment (Multi-Host)
+*   **Purpose:** Live "Digital Duel" training and tactical simulation.
+*   **Setup:** Three separate PCs, each with its own USRP and local instance of the repository.
+*   **Execution:** Nodes are physically separated, requiring teams to coordinate timing and strategy over the RF link.
+
+---
+
+## 2. RF Configuration & Sniffing
+To ensure the **Red Team (Jammer)** can behave reactively, the wiring must allow the Jammer to "see" the exchanges between Alpha and Bravo.
+
+### Wiring Diagram (The "Star" Config):
 ```text
-[BLUE ALPHA PC] --(USB 3.0)-- [USRP A]
-                                 |
-                          [30dB Attenuator]
-                                 |
-                          [COMBINER PORT 1]
-                                 |
-[RED TEAM PC]   --(USB 3.0)-- [USRP R] -- [30dB Attenuator] -- [COMBINER PORT 2]
-                                 |
-                          [COMBINER PORT 3]
-                                 |
-                          [30dB Attenuator]
-                                 |
-[BLUE BRAVO PC] --(USB 3.0)-- [USRP B]
+[BLUE ALPHA TX] ---- [30dB Attenuator] ---- [SPLITTER PORT 1]
+                                                   |
+[RED JAMMER TRX] --- [30dB Attenuator] ---- [SPLITTER PORT 2] (Sniffer/Injector)
+                                                   |
+[BLUE BRAVO RX] ---- [30dB Attenuator] ---- [SPLITTER PORT 3]
 ```
+
+### Technical Note on Reactive Jamming:
+*   **Sniffing:** In this configuration, the signal from Alpha (Port 1) is coupled to Port 2. Even with standard splitter isolation (typically 20-30dB), the Jammer USRP will "hear" Alpha's transmission.
+*   **Reaction:** The Red Team can use this "sniffed" signal to trigger a **Reactive Jam**. By detecting the preamble of an Alpha packet, the Jammer can immediately switch to Transmit mode and inject interference before the packet finishes. 
+*   **Validation:** This setup perfectly replicates a "Follow-On" jammer scenario where the adversary is geographically positioned to intercept the transmitter's sidelobes.
 
 ---
 

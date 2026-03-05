@@ -88,13 +88,20 @@ The system includes predefined configurations that incrementally introduce these
 
 ## 6. Operator's Guide
 ### Physical Setup
-1. Deploy three Linux PCs, each connected to one USRP (Universal Software Radio Peripheral) via USB 3.0.
-2. Connect the RF ports using SMA cables and **at least 60dB of attenuation** to prevent hardware damage. 
-3. Use an RF Combiner/Splitter to merge the signals:
-   * **Node 1 (Blue Alpha):** Connects to Port 1 of the combiner.
-   * **Node 3 (Red Jammer):** Connects to Port 2 of the combiner.
-   * **Node 2 (Blue Bravo):** Connects to the combined Port 3.
-   * *This ensures the receiver (Bravo) sees both the legitimate signal and the jamming interference simultaneously.*
+Project Opal Vanguard supports two deployment stages:
+
+**Stage 0: Bench Verification (Single-Host)**
+*   Connect all three USRPs to one high-power Linux PC. Use three terminal windows to launch the ALPHA, BRAVO, and JAMMER nodes. This stage is mandatory for verifying code changes and ensuring the RF path is healthy before field distribution.
+
+**Stage 1: Field Employment (Multi-Host)**
+*   Deploy three separate Linux PCs, each connected to one USRP (Universal Software Radio Peripheral) via USB 3.0. This is the intended configuration for the "Digital Duel" competition.
+
+**The "Star" RF Configuration:**
+To merge the signals while allowing for **Reactive Jamming**, use an RF Combiner/Splitter:
+*   **Node 1 (Blue Alpha TX):** Connects to Port 1.
+*   **Node 3 (Red Jammer TRX):** Connects to Port 2. 
+*   **Node 2 (Blue Bravo RX):** Connects to Port 3.
+*   *Note: Because Port 1 and Port 2 are coupled, the Jammer can "sniff" the Alpha signal to trigger autonomous, reactive interference, mimicking a real-world follow-on jammer.*
 
 ### Environment Bootstrap
 Run the setup script to install all dependencies and verify the digital logic:
