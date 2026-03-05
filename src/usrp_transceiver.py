@@ -102,9 +102,10 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
         mod_type = self.cfg['physical'].get('modulation', 'GFSK')
         sps = self.cfg['physical'].get('samples_per_symbol', 8)
         
-        if mod_type == "DBPSK":
+        if mod_type in ["DBPSK", "DQPSK", "D8PSK"]:
+            const_points = 2 if "BPSK" in mod_type else (4 if "QPSK" in mod_type else 8)
             self.mod_a = digital.psk_mod(
-                constellation_points=2,
+                constellation_points=const_points,
                 mod_code=digital.mod_codes.GRAY_CODE,
                 differential=True,
                 samples_per_symbol=sps,
@@ -112,7 +113,7 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
                 verbose=False,
                 log=False)
             self.demod_b = digital.psk_demod(
-                constellation_points=2,
+                constellation_points=const_points,
                 differential=True,
                 samples_per_symbol=sps,
                 excess_bw=0.35,
@@ -121,6 +122,9 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
                 mod_code=digital.mod_codes.GRAY_CODE,
                 verbose=False,
                 log=False)
+        elif mod_type == "MSK":
+            self.mod_a = digital.msk_mod(samples_per_symbol=sps, bt=0.5)
+            self.demod_b = digital.msk_demod(samples_per_symbol=sps, gain_mu=0.1, mu=0.5, omega_relative_limit=0.005, freq_error=0.0)
         else:
             # GFSK Default
             freq_dev = self.cfg['physical'].get('freq_dev', 125000)

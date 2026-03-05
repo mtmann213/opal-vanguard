@@ -3,7 +3,7 @@ mission:
 physical:
   samp_rate: 2000000
   center_freq: 915000000
-  modulation: "GFSK"
+  modulation: "MSK"
   freq_dev: 125000
   samples_per_symbol: 8
 link_layer:
@@ -16,8 +16,8 @@ link_layer:
   use_manchester: false
 dsss:
   enabled: true
-  spreading_factor: 31
-  chipping_code: [1, 1, 1, 1, 1, -1, -1, 1, 1, -1, 1, -1, -1, 1, -1, -1, -1, -1, 1, -1, 1, -1, 1, 1, 1, -1, 1, 1, -1, -1, -1]
+  type: "CCSK"
+  spreading_factor: 32
 hopping:
   enabled: true
   type: "AES"

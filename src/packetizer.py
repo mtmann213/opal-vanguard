@@ -13,7 +13,7 @@ import binascii
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from rs_helper import RS1511, RS3115
-from dsp_helper import MatrixInterleaver, DSSSProcessor, NRZIEncoder, ManchesterEncoder, Scrambler
+from dsp_helper import MatrixInterleaver, DSSSProcessor, NRZIEncoder, ManchesterEncoder, Scrambler, CCSKProcessor
 
 class packetizer(gr.basic_block):
     def __init__(self, config_path="mission_configs/level1_soft_link.yaml"):
@@ -30,6 +30,7 @@ class packetizer(gr.basic_block):
         self.use_manchester = l_cfg.get('use_manchester', False)
         self.use_nrzi = l_cfg.get('use_nrzi', True)
         self.use_dsss = self.cfg['dsss'].get('enabled', True)
+        self.dsss_type = self.cfg['dsss'].get('type', "DSSS")
         
         self.fec_mode = self.cfg.get('mission', {}).get('id', "")
         self.rs1511 = RS1511()
@@ -39,7 +40,8 @@ class packetizer(gr.basic_block):
         self.scrambler = Scrambler(mask=l_cfg.get('scrambler_mask', 0x48), seed=l_cfg.get('scrambler_seed', 0x7F))
         self.manchester = ManchesterEncoder()
         self.nrzi = NRZIEncoder()
-        self.dsss = DSSSProcessor(chipping_code=self.cfg['dsss']['chipping_code'])
+        self.dsss = DSSSProcessor(chipping_code=self.cfg['dsss'].get('chipping_code', [1,-1]))
+        self.ccsk = CCSKProcessor()
         
         self.message_port_register_in(pmt.intern("in"))
         self.set_msg_handler(pmt.intern("in"), self.handle_msg)
@@ -73,14 +75,13 @@ class packetizer(gr.basic_block):
         self.sequence = (self.sequence + 1) & 0xFF
         
         if self.use_fec:
-            if "LINK-16" in self.fec_mode:
+            if "LINK-16" in self.fec_mode or "LEVEL_6" in self.fec_mode:
                 pad_len = (15 - (len(payload_bytes) % 15)) % 15
                 padded = payload_bytes + b'\x00' * pad_len
                 p_bits = []
                 for b in padded:
                     for i in range(8): p_bits.append((b >> (7-i)) & 1)
                 
-                # Encode in 75-bit blocks (15 symbols x 5 bits)
                 out_bits = []
                 for i in range(0, len(p_bits), 75):
                     chunk = p_bits[i:i+75]
@@ -89,12 +90,9 @@ class packetizer(gr.basic_block):
                         s = 0
                         for k in range(5): s = (s << 1) | chunk[j*5+k]
                         symbols.append(s)
-                    # If the chunk was exactly 75 bits, we have 15 symbols.
-                    # If it was less (shouldn't happen with our padding), symbols < 15.
-                    # But RS3115.encode expects 15.
                     if len(symbols) < 15: symbols.extend([0] * (15 - len(symbols)))
                     
-                    encoded = self.rs3115.encode(symbols) # 31 symbols
+                    encoded = self.rs3115.encode(symbols)
                     for s in encoded:
                         for k in range(5): out_bits.append((s >> (4-k)) & 1)
                 
@@ -122,7 +120,7 @@ class packetizer(gr.basic_block):
         data_block += self.calculate_crc(data_block)
         
         if self.use_interleaving:
-            target_len = 256 if "LINK-16" in self.fec_mode or "LEVEL_6" in self.fec_mode else 120
+            target_len = 320 if "LINK-16" in self.fec_mode or "LEVEL_6" in self.fec_mode else 120
             if len(data_block) < target_len: data_block += b'\x00' * (target_len - len(data_block))
             data_block = self.interleaver.interleave(data_block)
         
@@ -131,10 +129,25 @@ class packetizer(gr.basic_block):
         final_bits = []
         for b in data_block:
             for i in range(8): final_bits.append((b >> (7-i)) & 1)
-        if self.use_nrzi: self.nrzi.reset(); final_bits = self.nrzi.encode(final_bits)
-        if self.use_manchester: self.manchester.reset(); final_bits = self.manchester.encode(final_bits)
+        
         if self.use_dsss:
-            chips = self.dsss.spread(final_bits); final_bits = [1 if c > 0 else 0 for c in chips]
+            if self.dsss_type == "CCSK":
+                # CCSK mapping: 5 bits -> 32 chips
+                chips = []
+                for i in range(0, len(final_bits), 5):
+                    chunk = final_bits[i:i+5]
+                    if len(chunk) < 5: chunk.extend([0]*(5-len(chunk)))
+                    sym = 0
+                    for b in chunk: sym = (sym << 1) | b
+                    chips.extend(self.ccsk.encode_symbol(sym))
+                final_bits = chips
+            else:
+                if self.use_nrzi: self.nrzi.reset(); final_bits = self.nrzi.encode(final_bits)
+                if self.use_manchester: self.manchester.reset(); final_bits = self.manchester.encode(final_bits)
+                chips = self.dsss.spread(final_bits); final_bits = [1 if c > 0 else 0 for c in chips]
+        else:
+            if self.use_nrzi: self.nrzi.reset(); final_bits = self.nrzi.encode(final_bits)
+            if self.use_manchester: self.manchester.reset(); final_bits = self.manchester.encode(final_bits)
 
         packed_out = []
         acc = 0; bc = 0

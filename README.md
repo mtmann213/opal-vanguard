@@ -4,16 +4,12 @@
 Opal Vanguard is a Python-based GNU Radio framework for a modular Frequency Hopping Spread Spectrum (FHSS) messaging system. It implements a complete digital communication chain with Forward Error Correction (FEC), scrambling, and real-time frequency hopping control.
 
 ## Key Features
-- **Frequency Hopping:** Fibonacci LFSR-based hopping across 50 channels in the 900MHz ISM band.
-- **Forward Error Correction (FEC):** Reed-Solomon (15, 11) encoding and decoding on 4-bit nibbles.
-- **Scrambling/Whitening:** Fibonacci LFSR whitening using the $x^7 + x^4 + 1$ polynomial, integrated into the packet framing.
-- **GFSK Modulation:** Gaussian Frequency Shift Keying with Gaussian pulse shaping (`bt=0.35`).
-- **Packet Structure:** 
-  - **Preamble:** `0xAAAA`
-  - **Syncword:** `0x3D4C5B6A`
-  - **Length Header:** 1 byte
-  - **Payload:** FEC-protected and whitened
-  - **CRC16-CCITT:** For error detection
+- **Frequency Hopping:** AES-CTR and TOD-based hopping across 50+ channels in the 900MHz ISM band.
+- **Forward Error Correction (FEC):** Reed-Solomon (15, 11) and (31, 15) for high-reliability links.
+- **Advanced Spreading:** Supports standard **DSSS** (31-chip) and authentic Link-16 **CCSK** (32-chip symbol mapping).
+- **Multi-Modulation:** Support for **GFSK, MSK, DBPSK, DQPSK, and D8PSK**.
+- **Scrambling/Whitening:** Fibonacci LFSR whitening using the $x^7 + x^4 + 1$ polynomial.
+- **Standardized Missions:** Tiered mission configurations (`level1` to `level6`) for progressive difficulty.
 
 ## Project Structure
 - **/src**: Contains Python Out-Of-Tree (OOT) blocks and hardware transceiver logic (`usrp_transceiver.py`, `adversary_jammer.py`).

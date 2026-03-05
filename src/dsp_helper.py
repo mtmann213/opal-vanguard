@@ -77,6 +77,35 @@ class ManchesterEncoder:
             out.append(1 if pair == [1, 0] else 0)
         return out
 
+class CCSKProcessor:
+    def __init__(self):
+        # Standard Link-16 32-chip base sequence
+        self.base_sequence = np.array([
+            0, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 0, 1, 0, 0, 1,
+            0, 0, 0, 0, 1, 0, 1, 0, 1, 1, 1, 0, 1, 1, 0, 0
+        ])
+        # Convert to bipolar (+1, -1) for correlation
+        self.base_bipolar = np.where(self.base_sequence == 1, 1, -1)
+
+    def encode_symbol(self, symbol):
+        """Maps a 5-bit symbol (0-31) to a cyclic shift of the base sequence."""
+        shift = symbol % 32
+        return np.roll(self.base_sequence, -shift).tolist()
+
+    def decode_chips(self, chips):
+        """Finds the shift with the highest correlation to recover the 5-bit symbol."""
+        if len(chips) < 32: return 0, 0.0
+        chip_bipolar = np.where(np.array(chips[:32]) == 1, 1, -1)
+        
+        correlations = []
+        for shift in range(32):
+            ref = np.roll(self.base_bipolar, -shift)
+            correlations.append(np.sum(chip_bipolar * ref))
+        
+        best_shift = np.argmax(correlations)
+        confidence = correlations[best_shift] / 32.0
+        return best_shift, confidence
+
 class Scrambler:
     def __init__(self, mask=0x48, seed=0x7F):
         self.mask = mask

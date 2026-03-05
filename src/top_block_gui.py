@@ -116,12 +116,13 @@ class OpalVanguardVisualDemo(gr.top_block, Qt.QWidget):
 
         self.pdu_src = blocks.message_strobe(pmt.cons(pmt.make_dict(), pmt.init_u8vector(len("MISSION DATA"), list("MISSION DATA".encode()))), 3000)
         self.p2s_a = pdu.pdu_to_tagged_stream(gr.types.byte_t, "packet_len")
-        
-        # --- Modulation Switching ---
+        mod_type = self.cfg['physical'].get('modulation', 'GFSK')
         sps = self.cfg['physical'].get('samples_per_symbol', 8)
-        if mod_type == "DBPSK":
+
+        if mod_type in ["DBPSK", "DQPSK", "D8PSK"]:
+            const_points = 2 if "BPSK" in mod_type else (4 if "QPSK" in mod_type else 8)
             self.mod_a = digital.psk_mod(
-                constellation_points=2,
+                constellation_points=const_points,
                 mod_code=digital.mod_codes.GRAY_CODE,
                 differential=True,
                 samples_per_symbol=sps,
@@ -129,7 +130,7 @@ class OpalVanguardVisualDemo(gr.top_block, Qt.QWidget):
                 verbose=False,
                 log=False)
             self.demod_b = digital.psk_demod(
-                constellation_points=2,
+                constellation_points=const_points,
                 differential=True,
                 samples_per_symbol=sps,
                 excess_bw=0.35,
@@ -138,12 +139,15 @@ class OpalVanguardVisualDemo(gr.top_block, Qt.QWidget):
                 mod_code=digital.mod_codes.GRAY_CODE,
                 verbose=False,
                 log=False)
-        else: # GFSK Default
+        elif mod_type == "MSK":
+            self.mod_a = digital.msk_mod(samples_per_symbol=sps, bt=0.5)
+            self.demod_b = digital.msk_demod(samples_per_symbol=sps, gain_mu=0.1, mu=0.5, omega_relative_limit=0.005, freq_error=0.0)
+        else:
+            # GFSK Default
             freq_dev = self.cfg['physical'].get('freq_dev', 125000)
-            mod_sensitivity = (2.0 * np.pi * freq_dev) / self.samp_rate
+            mod_sensitivity = (2.0 * np.pi * freq_dev) / 2e6 # Default samp_rate
             self.mod_a = digital.gfsk_mod(samples_per_symbol=sps, sensitivity=mod_sensitivity, bt=0.35)
             self.demod_b = digital.gfsk_demod(samples_per_symbol=sps, gain_mu=0.1, mu=0.5, omega_relative_limit=0.005, freq_error=0.0)
-
         self.rot_tx = blocks.rotator_cc(0)
         
         # Hop Controller

@@ -14,7 +14,7 @@ import time
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from rs_helper import RS1511, RS3115
-from dsp_helper import MatrixInterleaver, DSSSProcessor, NRZIEncoder, ManchesterEncoder, Scrambler
+from dsp_helper import MatrixInterleaver, DSSSProcessor, NRZIEncoder, ManchesterEncoder, Scrambler, CCSKProcessor
 
 class depacketizer(gr.basic_block):
     def __init__(self, config_path="mission_configs/level1_soft_link.yaml"):
@@ -31,6 +31,7 @@ class depacketizer(gr.basic_block):
         self.use_manchester = l_cfg.get('use_manchester', False)
         self.use_nrzi = l_cfg.get('use_nrzi', True)
         self.use_dsss = self.cfg['dsss'].get('enabled', True)
+        self.dsss_type = self.cfg['dsss'].get('type', "DSSS")
         self.sf = self.cfg['dsss'].get('spreading_factor', 31)
         
         self.fec_mode = self.cfg.get('mission', {}).get('id', "")
@@ -41,7 +42,8 @@ class depacketizer(gr.basic_block):
         self.scrambler = Scrambler(mask=l_cfg.get('scrambler_mask', 0x48), seed=l_cfg.get('scrambler_seed', 0x7F))
         self.manchester = ManchesterEncoder()
         self.nrzi = NRZIEncoder()
-        self.dsss = DSSSProcessor(chipping_code=self.cfg['dsss']['chipping_code'])
+        self.dsss = DSSSProcessor(chipping_code=self.cfg['dsss'].get('chipping_code', [1,-1]))
+        self.ccsk = CCSKProcessor()
         
         self.message_port_register_out(pmt.intern("out"))
         self.message_port_register_out(pmt.intern("diagnostics"))
@@ -99,14 +101,25 @@ class depacketizer(gr.basic_block):
                     
             if self.state == "COLLECT":
                 if self.use_dsss:
-                    chip = 1 if bit == 1 else -1
-                    if self.is_inverted: chip *= -1
-                    self.chip_buf.append(chip)
-                    if len(self.chip_buf) == self.sf:
-                        chunk = np.array(self.chip_buf); corr = np.sum(chunk * self.dsss.code)
-                        self.correlation_sum += abs(corr); self.bits_processed += 1
-                        self.recovered_bits.append(1 if corr > 0 else 0)
-                        self.chip_buf = []
+                    if self.dsss_type == "CCSK":
+                        self.chip_buf.append(bit)
+                        if len(self.chip_buf) == 32:
+                            sym, conf = self.ccsk.decode_chips(self.chip_buf)
+                            self.correlation_sum += conf * 32
+                            self.bits_processed += 5
+                            # Add the 5 bits recovered from the symbol
+                            for j in range(5):
+                                self.recovered_bits.append((sym >> (4-j)) & 1)
+                            self.chip_buf = []
+                    else:
+                        chip = 1 if bit == 1 else -1
+                        if self.is_inverted: chip *= -1
+                        self.chip_buf.append(chip)
+                        if len(self.chip_buf) == self.sf:
+                            chunk = np.array(self.chip_buf); corr = np.sum(chunk * self.dsss.code)
+                            self.correlation_sum += abs(corr); self.bits_processed += 1
+                            self.recovered_bits.append(1 if corr > 0 else 0)
+                            self.chip_buf = []
                 else:
                     self.recovered_bits.append(bit ^ (1 if self.is_inverted else 0))
 
@@ -131,7 +144,10 @@ class depacketizer(gr.basic_block):
                         try:
                             m_type, seq, plen = struct.unpack('BBB', h_data[:3])
                             if self.use_fec:
-                                if "LINK-16" in self.fec_mode: f_len = (((((plen + 14) // 15) * 15) * 8 + 74) // 75) * 31 * 5 // 8
+                                if "LINK-16" in self.fec_mode or "LEVEL_6" in self.fec_mode:
+                                    padded_plen = ((plen + 14) // 15) * 15
+                                    num_blocks = (padded_plen * 8 + 74) // 75
+                                    f_len = (num_blocks * 31 * 5 + 7) // 8
                                 else: f_len = ((plen + 10) // 11) * 15
                             else: f_len = plen
                             c_len = 4 if self.crc_type == "CRC32" else (2 if self.crc_type == "CRC16" else 0)
@@ -140,17 +156,19 @@ class depacketizer(gr.basic_block):
 
                 # Determine target bits for processing
                 if self.use_interleaving:
-                    target_bytes = 256 if "LINK-16" in self.fec_mode or "LEVEL_6" in self.fec_mode else 120
+                    target_bytes = 320 if "LINK-16" in self.fec_mode or "LEVEL_6" in self.fec_mode else 120
                 else:
                     target_bytes = self.active_pkt_len if self.active_pkt_len > 0 else 2048 # Fallback
                 
                 target_bits = target_bytes * 8
-                if self.use_manchester: target_bits *= 2
+                if self.use_manchester and not (self.use_dsss and self.dsss_type == "CCSK"): target_bits *= 2
                 
                 if len(self.recovered_bits) >= target_bits:
                     bits = self.recovered_bits[:target_bits]
-                    if self.use_manchester: self.manchester.reset(); bits = self.manchester.decode(bits)
-                    if self.use_nrzi: bits = self.nrzi.decode(bits)
+                    # If CCSK is used, we already have the despread bits, and NRZI/Manchester were bypassed
+                    if not (self.use_dsss and self.dsss_type == "CCSK"):
+                        if self.use_manchester: self.manchester.reset(); bits = self.manchester.decode(bits)
+                        if self.use_nrzi: bits = self.nrzi.decode(bits)
                     
                     bytes_data = []
                     acc = 0; bc = 0
@@ -165,7 +183,7 @@ class depacketizer(gr.basic_block):
                     try:
                         m_type, seq, plen = struct.unpack('BBB', data_block[:3])
                         if self.use_fec:
-                            if "LINK-16" in self.fec_mode:
+                            if "LINK-16" in self.fec_mode or "LEVEL_6" in self.fec_mode:
                                 padded_plen = ((plen + 14) // 15) * 15
                                 num_blocks = (padded_plen * 8 + 74) // 75
                                 f_len = (num_blocks * 31 * 5 + 7) // 8
@@ -176,12 +194,15 @@ class depacketizer(gr.basic_block):
                         full_packet_len = 3 + f_len + c_len
                         packet_for_crc = data_block[:full_packet_len]
                         
-                        conf = (self.correlation_sum / self.bits_processed / self.sf * 100.0) if self.bits_processed > 0 else 100.0
+                        if self.use_dsss and self.dsss_type == "CCSK":
+                            conf = (self.correlation_sum / (self.bits_processed / 5 * 32) * 100.0) if self.bits_processed > 0 else 100.0
+                        else:
+                            conf = (self.correlation_sum / self.bits_processed / self.sf * 100.0) if self.bits_processed > 0 else 100.0
                         
                         if self.verify_crc(packet_for_crc):
                             fec_payload = packet_for_crc[3:3+f_len]
                             if self.use_fec:
-                                if "LINK-16" in self.fec_mode:
+                                if "LINK-16" in self.fec_mode or "LEVEL_6" in self.fec_mode:
                                     p_bits = []
                                     for b in fec_payload:
                                         for k in range(8): p_bits.append((b >> (7-k)) & 1)

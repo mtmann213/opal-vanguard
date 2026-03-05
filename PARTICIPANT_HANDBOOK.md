@@ -28,8 +28,9 @@ Welcome to Project Opal Vanguard. You are tasked with operating or disrupting a 
 ### 4. Tactical Tips
 
 #### **For Blue Team:**
-*   **Stealth:** Use **DSSS** (Direct Sequence Spread Spectrum). It spreads your energy across the band, making it harder for the Red Team to see exactly where you are hopping.
-*   **Repair:** If you see "FEC Repairs" increasing on your dashboard, your link is under attack but surviving. If you see "CRC FAIL," you need more processing gain or deeper interleaving.
+*   **Stealth:** Use **DSSS** or **CCSK**. DSSS spreads your energy across the band, while CCSK provides the high-correlation symbol mapping used in military tactical links.
+*   **Repair:** If you see "FEC Repairs" increasing on your dashboard, your link is under attack but surviving. Link-16 mode (Level 6) uses **RS(31,15)** which can survive losing nearly 50% of the packet symbols.
+*   **Modulation:** MSK (Minimum Shift Keying) provides better spectral efficiency and a smoother phase transition than GFSK, making it harder to detect at the band edges.
 *   **Phase Resilience:** If the Red Team uses frequency offsets, ensure **NRZ-I** is enabled to protect against bit-flips.
 
 #### **For Red Team:**

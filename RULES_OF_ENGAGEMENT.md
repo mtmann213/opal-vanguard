@@ -37,6 +37,7 @@ This document outlines the ramping difficulty levels for the team competition. T
 
 ## Level 6: The "Link 16" Challenge
 *   **Config:** `mission_configs/level6_link16.yaml`
+*   **Hardening:** 1s TOD-Synced Hopping, RS(31,15) FEC, **32-chip CCSK symbol mapping**, **MSK Modulation**.
 *   **Red Team Objective:** **Total Denial.**
-    *   With 1s dwell times and hardened RS(31,15) FEC, the signal is extremely resilient. Red Team must use high-power wideband noise to disrupt the link.
+    *   With hardened RS(31,15) FEC and CCSK spreading, the signal is extremely resilient. Red Team must use high-power wideband noise to disrupt the link.
 *   **Lesson:** Professional tactical links combine multiple layers of time, frequency, and code-space protection to ensure survival.
