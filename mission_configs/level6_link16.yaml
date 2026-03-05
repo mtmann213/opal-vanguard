@@ -11,6 +11,8 @@ mac_layer:
   max_retries: 3
 
 link_layer:
+  use_comsec: true
+  comsec_key: "5365637265744f70616c4b6579313233"
   crc_type: "CRC16"
   use_fec: true
   use_interleaving: true

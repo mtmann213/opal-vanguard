@@ -12,6 +12,7 @@ import yaml
 import binascii
 import time
 import json
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from rs_helper import RS1511, RS3115
@@ -31,6 +32,12 @@ class depacketizer(gr.basic_block):
         self.use_whitening = l_cfg.get('use_whitening', True)
         self.use_manchester = l_cfg.get('use_manchester', False)
         self.use_nrzi = l_cfg.get('use_nrzi', True)
+        self.use_comsec = l_cfg.get('use_comsec', False)
+        
+        if self.use_comsec:
+            key_hex = l_cfg.get('comsec_key', "5365637265744f70616c4b6579313233")
+            self.aesgcm = AESGCM(bytes.fromhex(key_hex))
+        
         self.use_dsss = self.cfg['dsss'].get('enabled', True)
         self.dsss_type = self.cfg['dsss'].get('type', "DSSS")
         self.sf = self.cfg['dsss'].get('spreading_factor', 31)
@@ -226,8 +233,19 @@ class depacketizer(gr.basic_block):
                                     payload = decoded[:plen]
                             else: payload = fec_payload[:plen]
                             
-                            print(f"\033[92m[OK]\033[0m ID: {seq:03} | Conf: {conf:5.1f}% | RX: {payload}")
-                            self.message_port_pub(pmt.intern("out"), pmt.cons(pmt.make_dict(), pmt.init_u8vector(len(payload), list(payload))))
+                            comsec_fail = False
+                            if self.use_comsec and m_type == 0:
+                                try:
+                                    nonce = struct.pack(">Q", seq) + b'\x00' * 4
+                                    payload = self.aesgcm.decrypt(nonce, payload, associated_data=None)
+                                except Exception as e:
+                                    print(f"\033[91m[FAIL]\033[0m COMSEC Decryption Error: {e}")
+                                    comsec_fail = True
+                                    crc_pass = False # Force NACK if decryption fails
+                            
+                            if not comsec_fail:
+                                print(f"\033[92m[OK]\033[0m ID: {seq:03} | Conf: {conf:5.1f}% | RX: {payload}")
+                                self.message_port_pub(pmt.intern("out"), pmt.cons(pmt.make_dict(), pmt.init_u8vector(len(payload), list(payload))))
                         else:
                             print(f"\033[91m[FAIL]\033[0m CRC Error | Conf: {conf:5.1f}%")
 

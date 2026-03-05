@@ -6,6 +6,8 @@ physical:
   modulation: "OFDM"
   samples_per_symbol: 8
 link_layer:
+  use_comsec: true
+  comsec_key: "5365637265744f70616c4b6579313233"
   crc_type: "CRC32"
   use_fec: true
   use_interleaving: true

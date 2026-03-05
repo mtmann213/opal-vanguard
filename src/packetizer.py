@@ -10,6 +10,7 @@ import os
 import sys
 import yaml
 import binascii
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from rs_helper import RS1511, RS3115
@@ -29,6 +30,12 @@ class packetizer(gr.basic_block):
         self.use_whitening = l_cfg.get('use_whitening', True)
         self.use_manchester = l_cfg.get('use_manchester', False)
         self.use_nrzi = l_cfg.get('use_nrzi', True)
+        self.use_comsec = l_cfg.get('use_comsec', False)
+        
+        if self.use_comsec:
+            key_hex = l_cfg.get('comsec_key', "5365637265744f70616c4b6579313233")
+            self.aesgcm = AESGCM(bytes.fromhex(key_hex))
+        
         self.use_dsss = self.cfg['dsss'].get('enabled', True)
         self.dsss_type = self.cfg['dsss'].get('type', "DSSS")
         
@@ -71,6 +78,13 @@ class packetizer(gr.basic_block):
         payload_bytes = bytes(pmt.u8vector_elements(pmt.cdr(msg)))
         
         msg_type = pmt.to_long(pmt.dict_ref(meta, pmt.intern("type"), pmt.from_long(0)))
+        
+        # COMSEC (Encryption) before FEC and framing
+        if self.use_comsec and msg_type == 0: # Only encrypt actual payload data
+            # Use the sequence number as part of the nonce to prevent replay attacks
+            nonce = struct.pack(">Q", self.sequence) + b'\x00' * 4
+            payload_bytes = self.aesgcm.encrypt(nonce, payload_bytes, associated_data=None)
+            
         header = struct.pack('BBB', msg_type, self.sequence, len(payload_bytes) & 0xFF)
         self.sequence = (self.sequence + 1) & 0xFF
         
