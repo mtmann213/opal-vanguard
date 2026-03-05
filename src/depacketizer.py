@@ -257,6 +257,9 @@ class depacketizer(gr.basic_block):
                             "sequence": seq,
                             "fec_repairs": repairs
                         }
+                        if not crc_pass:
+                            telemetry["trigger_iq"] = True
+                        
                         self.telemetry_file.write(json.dumps(telemetry) + "\n")
                         self.telemetry_file.flush()
 

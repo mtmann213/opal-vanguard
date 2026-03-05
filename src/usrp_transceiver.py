@@ -9,6 +9,10 @@ from gnuradio import gr, blocks, analog, digital, qtgui, filter, fft, uhd, pdu
 import pmt
 import time
 import struct
+import socket
+import threading
+import base64
+import json
 from PyQt5 import Qt
 from PyQt5.QtCore import pyqtSignal
 import sip
@@ -24,6 +28,42 @@ from hop_generator_aes import aes_hop_generator
 from hop_generator_tod import tod_hop_generator
 from session_manager import session_manager
 from config_validator import validate_config
+
+# ----------------------------------------------------------------------
+# DASHBOARD EXTENSIONS: IQ & REMOTE CONTROL
+# ----------------------------------------------------------------------
+class IQDiagnosticProbe(gr.sync_block):
+    def __init__(self, parent):
+        gr.sync_block.__init__(self, name="IQProbe", in_sig=[np.complex64], out_sig=None)
+        self.parent = parent
+        self.buffer = []
+        self.capturing = False
+    def start_capture(self):
+        self.buffer = []; self.capturing = True
+    def work(self, input_items, output_items):
+        if self.capturing:
+            self.buffer.extend(input_items[0][:512])
+            if len(self.buffer) >= 1024:
+                self.capturing = False
+                self.parent.save_iq_snapshot(self.buffer)
+        return len(input_items[0])
+
+class RemoteControlListener(threading.Thread):
+    def __init__(self, parent, port=9999):
+        threading.Thread.__init__(self, daemon=True); self.parent = parent; self.port = port
+    def run(self):
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.bind(('127.0.0.1', self.port))
+        while True:
+            try:
+                data, addr = sock.recvfrom(1024)
+                cmd = json.loads(data.decode())
+                if cmd['type'] == 'SET_GAIN':
+                    Qt.QMetaObject.invokeMethod(self.parent.tx_gain_slider, "setValue", Qt.Qt.QueuedConnection, Qt.Q_ARG(int, int(cmd['tx'])))
+                    Qt.QMetaObject.invokeMethod(self.parent.rx_gain_slider, "setValue", Qt.Qt.QueuedConnection, Qt.Q_ARG(int, int(cmd['rx'])))
+                elif cmd['type'] == 'SET_CONFIG':
+                    self.parent.amc_h.handle(pmt.intern(cmd['config']))
+            except: pass
 
 class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
     status_signal = pyqtSignal(str, str)
@@ -217,7 +257,10 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
             def handle(self, msg):
                 try:
                     d = {}
-                    if pmt.dict_has_key(msg, pmt.intern("crc_ok")): d["crc_ok"] = pmt.to_bool(pmt.dict_ref(msg, pmt.intern("crc_ok"), pmt.PMT_NIL))
+                    if pmt.dict_has_key(msg, pmt.intern("crc_ok")): 
+                        ok = pmt.to_bool(pmt.dict_ref(msg, pmt.intern("crc_ok"), pmt.PMT_NIL))
+                        d["crc_ok"] = ok
+                        if not ok: self.parent.iq_probe.start_capture()
                     if pmt.dict_has_key(msg, pmt.intern("confidence")): d["confidence"] = pmt.to_double(pmt.dict_ref(msg, pmt.intern("confidence"), pmt.PMT_NIL))
                     if pmt.dict_has_key(msg, pmt.intern("fec_repairs")): d["fec_repairs"] = pmt.to_long(pmt.dict_ref(msg, pmt.intern("fec_repairs"), pmt.PMT_NIL))
                     if pmt.dict_has_key(msg, pmt.intern("inverted")): d["inverted"] = pmt.to_bool(pmt.dict_ref(msg, pmt.intern("inverted"), pmt.PMT_NIL))
@@ -244,17 +287,39 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
             def work(self, input_items, output_items): return 0
         self.logger = ConsoleDataLogger(self); self.msg_connect((self.session, "data_out"), (self.logger, "msg"))
 
-        # Viz
         self.snk_waterfall = qtgui.waterfall_sink_c(2048, fft.window.WIN_BLACKMAN_HARRIS, self.center_freq, self.samp_rate, "USRP RF Spectrum", 1)
         self.viz_panel.addWidget(sip.wrapinstance(self.snk_waterfall.qwidget(), Qt.QWidget))
         self.connect(self.usrp_source, self.snk_waterfall)
+
+        # New Diagnostic Probe
+        self.iq_probe = IQDiagnosticProbe(self)
+        self.connect(self.usrp_source, self.iq_probe)
+
+        # Start Remote Listener
+        self.ctrl_listen = RemoteControlListener(self)
+        self.ctrl_listen.start()
 
         self.timer = Qt.QTimer(); self.timer.timeout.connect(lambda: self.hop_ctrl.handle_trigger(pmt.PMT_T))
         if hcfg.get('enabled', True):
             print(f"[Terminal] Hopping ENABLED ({hcfg['dwell_time_ms']}ms)"); self.timer.start(hcfg['dwell_time_ms'])
         else: print("[Terminal] Hopping DISABLED (Fixed Frequency)")
 
-    def update_hardware(self):
+        def save_iq_snapshot(self, iq_buffer):
+        """Saves base64 encoded IQ data to telemetry for dashboard visualization."""
+        try:
+            # Convert complex list to flattened float list
+            flat = []
+            for c in iq_buffer: flat.extend([float(c.real), float(c.imag)])
+            # Encode as base64 to minimize JSON bloat
+            b64_data = base64.b64encode(np.array(flat, dtype=np.float32).tobytes()).decode()
+            with open("mission_telemetry.jsonl", "a") as f:
+                f.write(json.dumps({"timestamp": time.time(), "event": "IQ_SNAPSHOT", "data": b64_data}) + "\n")
+                f.flush()
+            print("\033[93m[DIAG] Captured IQ Snapshot for dashboard.\033[0m")
+        except: pass
+
+        def on_chat_send(self):
+
         self.usrp_sink.set_gain(self.tx_gain_slider.value(), 0); self.usrp_source.set_gain(self.rx_gain_slider.value(), 0)
 
     def on_diag(self, d):

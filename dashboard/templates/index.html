@@ -39,6 +39,32 @@
             <div id="total-packets" class="metric-value">0</div>
         </div>
 
+        <!-- NEW: Remote Mission Control -->
+        <div class="card span-full" style="display: flex; gap: 20px; align-items: center; justify-content: space-around; background: #1a1a24;">
+            <div style="flex: 1;">
+                <h4 style="margin:0 0 5px 0; color: #0088aa;">REMOTE GAIN</h4>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span>TX:</span> <input type="range" id="tx-gain-remote" min="0" max="90" value="50" style="flex:1"> <span id="tx-gain-val">50</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span>RX:</span> <input type="range" id="rx-gain-remote" min="0" max="90" value="50" style="flex:1"> <span id="rx-gain-val">50</span>
+                </div>
+            </div>
+            <div style="flex: 1; text-align: center;">
+                <h4 style="margin:0 0 5px 0; color: #0088aa;">MISSION SELECT</h4>
+                <select id="mission-remote" style="background: #0a0a0c; color: #00ffcc; border: 1px solid #00ffcc; padding: 5px; width: 80%;">
+                    <option value="mission_configs/level1_soft_link.yaml">Level 1: Soft Link</option>
+                    <option value="mission_configs/level2_repairable.yaml">Level 2: Repairable</option>
+                    <option value="mission_configs/level3_resilient.yaml">Level 3: Resilient</option>
+                    <option value="mission_configs/level4_stealth.yaml">Level 4: Stealth</option>
+                    <option value="mission_configs/level5_blackout.yaml">Level 5: Blackout</option>
+                    <option value="mission_configs/level6_link16.yaml">Level 6: Link-16</option>
+                    <option value="mission_configs/level7_ofdm_master.yaml">Level 7: OFDM Master</option>
+                </select>
+                <button id="apply-mission" style="background: #00ffcc; color: #0a0a0c; border:none; padding: 5px 15px; cursor: pointer; font-weight: bold; margin-left: 10px;">APPLY</button>
+            </div>
+        </div>
+
         <!-- Main Charts -->
         <div class="card chart-container">
             <h3>SIGNAL CONFIDENCE OVER TIME</h3>
@@ -46,6 +72,11 @@
         </div>
 
         <div class="card chart-container">
+            <h3>IQ CONSTELLATION (DIAGNOSTIC)</h3>
+            <canvas id="constellationChart" width="300" height="300" style="display: block; margin: auto; background: #000; border: 1px solid #333;"></canvas>
+        </div>
+
+        <div class="card chart-container span-full">
             <h3>CHANNEL ACTIVITY & HEALTH (AFH)</h3>
             <canvas id="channelChart"></canvas>
         </div>
@@ -111,28 +142,44 @@
             data: {
                 labels: Array.from({length: 51}, (_, i) => i),
                 datasets: [
-                    {
-                        label: 'Successful Packets',
-                        data: Array(51).fill(0),
-                        backgroundColor: 'rgba(0, 255, 204, 0.8)',
-                    },
-                    {
-                        label: 'Failed Packets',
-                        data: Array(51).fill(0),
-                        backgroundColor: 'rgba(255, 51, 51, 0.8)',
-                    }
+                    { label: 'Successful Packets', data: Array(51).fill(0), backgroundColor: 'rgba(0, 255, 204, 0.8)' },
+                    { label: 'Failed Packets', data: Array(51).fill(0), backgroundColor: 'rgba(255, 51, 51, 0.8)' }
                 ]
             },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                scales: {
-                    x: { stacked: true, grid: { color: 'rgba(0, 255, 204, 0.1)' } },
-                    y: { stacked: true, beginAtZero: true, grid: { color: 'rgba(0, 255, 204, 0.1)' } }
-                },
-                animation: { duration: 0 }
-            }
+            options: { responsive: true, maintainAspectRatio: false, scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true } }, animation: { duration: 0 } }
         });
+
+        // Constellation Canvas
+        const constCanvas = document.getElementById('constellationChart');
+        const constCtx = constCanvas.getContext('2d');
+
+        function drawConstellation(b64data) {
+            const binary = atob(b64data);
+            const bytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+            const floats = new Float32Array(bytes.buffer);
+            
+            constCtx.clearRect(0, 0, constCanvas.width, constCanvas.height);
+            constCtx.strokeStyle = "#00ffcc";
+            constCtx.fillStyle = "#00ffcc";
+            
+            const center = constCanvas.width / 2;
+            const scale = (constCanvas.width / 2) * 0.8;
+            
+            for (let i = 0; i < floats.length; i += 2) {
+                const x = center + floats[i] * scale;
+                const y = center - floats[i+1] * scale;
+                constCtx.fillRect(x, y, 2, 2);
+            }
+        }
+
+        function sendCommand(cmd) {
+            fetch('/api/command', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(cmd)
+            });
+        }
 
         // Data processing variables
         let lastProcessedTimestamp = 0;
@@ -166,14 +213,16 @@
                     let newLogsHtml = '';
 
                     data.forEach(event => {
+                        if (event.event === "IQ_SNAPSHOT") {
+                            drawConstellation(event.data);
+                            return;
+                        }
+
                         if (event.source === 'red_team') {
                             if (event.event === "TARGET_LOCK") {
                                 const timeStr = new Date(event.timestamp*1000).toLocaleTimeString();
-                                // We push the jammer strike to the nearest label. 
-                                // Since labels are generated dynamically by Blue Team packets, we just approximate it to appear on the chart.
                                 confLabels.push(timeStr);
-                                jammerData.push({x: timeStr, y: 50}); // Plot it in the middle of the graph
-                                
+                                jammerData.push({x: timeStr, y: 50});
                                 if (event.timestamp > lastProcessedTimestamp) {
                                     newLogsHtml = `<div class="log-entry error">[${timeStr}] RED TEAM: Target Lock at ${(event.freq_hz/1000000).toFixed(3)} MHz</div>` + newLogsHtml;
                                 }
@@ -182,7 +231,6 @@
                         }
 
                         if (event.event === "START") {
-                            // Reset everything on new mission
                             totalProcessed = 0; totalSuccess = 0; totalRepairs = 0; confSum = 0;
                             chanSuccess.fill(0); chanFail.fill(0);
                             newLogsHtml += `<div class="log-entry info">[${new Date(event.timestamp*1000).toLocaleTimeString()}] MISSION START: ${event.mission_id || 'UNKNOWN'}</div>`;
@@ -221,47 +269,54 @@
                         const sr = (totalSuccess / totalProcessed * 100).toFixed(1);
                         document.getElementById('success-rate').innerText = `${sr}%`;
                         document.getElementById('success-rate').style.color = sr > 80 ? '#00ffcc' : (sr > 50 ? '#ffcc00' : '#ff3333');
-                        
                         document.getElementById('avg-confidence').innerText = `${(confSum / totalProcessed).toFixed(1)}%`;
                     }
                     document.getElementById('total-repairs').innerText = totalRepairs;
                     document.getElementById('total-packets').innerText = totalProcessed;
 
                     // Update Charts
-                    // Keep only last 50 points for line chart
                     confidenceChart.data.labels = confLabels.slice(-50);
                     confidenceChart.data.datasets[0].data = confData.slice(-50);
-                    confidenceChart.data.datasets[1].data = jammerData.slice(-10); // Keep last 10 jammer strikes visible
+                    confidenceChart.data.datasets[1].data = jammerData.slice(-10);
                     confidenceChart.update();
 
                     channelChart.data.datasets[0].data = chanSuccess;
                     channelChart.data.datasets[1].data = chanFail;
                     channelChart.update();
 
-                    // Update Logs
                     if (newLogsHtml) {
                         logWindow.innerHTML = newLogsHtml + logWindow.innerHTML;
-                        // Limit log history
                         const logs = logWindow.getElementsByClassName('log-entry');
-                        while (logs.length > 100) {
-                            logWindow.removeChild(logs[logs.length - 1]);
-                        }
+                        while (logs.length > 100) logWindow.removeChild(logs[logs.length - 1]);
                     }
 
-                    if (data.length > 0) {
-                        lastProcessedTimestamp = data[data.length - 1].timestamp;
-                    }
+                    if (data.length > 0) lastProcessedTimestamp = data[data.length - 1].timestamp;
                 })
                 .catch(err => {
                     document.getElementById('connection-status').className = 'status-indicator offline';
                     document.getElementById('connection-status').innerText = 'OFFLINE';
-                    console.error("Dashboard fetch error:", err);
                 });
         }
 
         // Poll every 1 second
         setInterval(updateDashboard, 1000);
         updateDashboard(); // Initial load
+
+        // Remote Control Listeners
+        document.getElementById('tx-gain-remote').addEventListener('change', (e) => {
+            document.getElementById('tx-gain-val').innerText = e.target.value;
+            sendCommand({ type: 'SET_GAIN', tx: e.target.value, rx: document.getElementById('rx-gain-remote').value });
+        });
+        document.getElementById('rx-gain-remote').addEventListener('change', (e) => {
+            document.getElementById('rx-gain-val').innerText = e.target.value;
+            sendCommand({ type: 'SET_GAIN', tx: document.getElementById('tx-gain-remote').value, rx: e.target.value });
+        });
+        document.getElementById('apply-mission').addEventListener('click', () => {
+            const cfg = document.getElementById('mission-remote').value;
+            if (confirm(`Switch to ${cfg}?`)) {
+                sendCommand({ type: 'SET_CONFIG', config: cfg });
+            }
+        });
 
         document.getElementById('clear-btn').addEventListener('click', () => {
             if (confirm("Wipe all telemetry data? This cannot be undone.")) {

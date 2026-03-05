@@ -1,6 +1,7 @@
 import os
 import json
-from flask import Flask, render_template, jsonify
+import socket
+from flask import Flask, render_template, jsonify, request
 
 app = Flask(__name__)
 
@@ -55,6 +56,16 @@ def clear_telemetry():
             os.remove(TELEMETRY_FILE)
         if os.path.exists(JAMMER_TELEMETRY_FILE):
             os.remove(JAMMER_TELEMETRY_FILE)
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/api/command', methods=['POST'])
+def send_command():
+    try:
+        cmd = request.json
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.sendto(json.dumps(cmd).encode(), ('127.0.0.1', 9999))
         return jsonify({"status": "success"})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
