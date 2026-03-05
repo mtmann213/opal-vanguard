@@ -1,6 +1,7 @@
 mission:
   id: LEVEL_4_STEALTH
 physical:
+  ghost_mode: true
   samp_rate: 2000000
   center_freq: 915000000
   modulation: GFSK

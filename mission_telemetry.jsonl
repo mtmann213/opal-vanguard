@@ -142,3 +142,39 @@
 {"timestamp": 1772738681.7572958, "channel": 0, "crc_ok": true, "confidence": 100.0}
 {"timestamp": 1772738681.8905053, "event": "START", "mission_id": "AUTO_TEST"}
 {"timestamp": 1772738682.0066094, "channel": 0, "crc_ok": true, "confidence": 100.0}
+{"timestamp": 1772739281.3610723, "event": "START", "mission_id": "AUTO_TEST"}
+{"timestamp": 1772739281.373309, "channel": 0, "crc_ok": true, "confidence": 100.0}
+{"timestamp": 1772739281.509532, "event": "START", "mission_id": "AUTO_TEST"}
+{"timestamp": 1772739281.5125496, "channel": 0, "crc_ok": true, "confidence": 100.0}
+{"timestamp": 1772739281.6391935, "event": "START", "mission_id": "AUTO_TEST"}
+{"timestamp": 1772739281.6455035, "channel": 0, "crc_ok": true, "confidence": 100.0}
+{"timestamp": 1772739281.7861083, "event": "START", "mission_id": "AUTO_TEST"}
+{"timestamp": 1772739281.792133, "channel": 0, "crc_ok": true, "confidence": 100.0}
+{"timestamp": 1772739281.9142044, "event": "START", "mission_id": "AUTO_TEST"}
+{"timestamp": 1772739281.9179585, "channel": 0, "crc_ok": true, "confidence": 100.0}
+{"timestamp": 1772739282.0425725, "event": "START", "mission_id": "AUTO_TEST"}
+{"timestamp": 1772739282.0469704, "channel": 0, "crc_ok": true, "confidence": 100.0}
+{"timestamp": 1772739282.176258, "event": "START", "mission_id": "AUTO_TEST"}
+{"timestamp": 1772739282.1881826, "channel": 0, "crc_ok": true, "confidence": 100.0}
+{"timestamp": 1772739282.3101373, "event": "START", "mission_id": "AUTO_TEST"}
+{"timestamp": 1772739282.3323433, "channel": 0, "crc_ok": true, "confidence": 100.0}
+{"timestamp": 1772739282.452383, "event": "START", "mission_id": "AUTO_TEST"}
+{"timestamp": 1772739282.601411, "channel": 0, "crc_ok": true, "confidence": 100.0}
+{"timestamp": 1772739282.7090414, "event": "START", "mission_id": "AUTO_TEST"}
+{"timestamp": 1772739282.7125273, "channel": 0, "crc_ok": true, "confidence": 100.0}
+{"timestamp": 1772739282.8518958, "event": "START", "mission_id": "AUTO_TEST"}
+{"timestamp": 1772739282.862615, "channel": 0, "crc_ok": true, "confidence": 100.0}
+{"timestamp": 1772739282.9828615, "event": "START", "mission_id": "AUTO_TEST"}
+{"timestamp": 1772739282.9880266, "channel": 0, "crc_ok": true, "confidence": 100.0}
+{"timestamp": 1772739283.108121, "event": "START", "mission_id": "AUTO_TEST"}
+{"timestamp": 1772739283.112754, "channel": 0, "crc_ok": true, "confidence": 100.0}
+{"timestamp": 1772739283.2356493, "event": "START", "mission_id": "AUTO_TEST"}
+{"timestamp": 1772739283.239167, "channel": 0, "crc_ok": true, "confidence": 100.0}
+{"timestamp": 1772739283.3637145, "event": "START", "mission_id": "AUTO_TEST"}
+{"timestamp": 1772739283.3707497, "channel": 0, "crc_ok": true, "confidence": 100.0}
+{"timestamp": 1772739283.4902246, "event": "START", "mission_id": "AUTO_TEST"}
+{"timestamp": 1772739283.5003529, "channel": 0, "crc_ok": true, "confidence": 100.0}
+{"timestamp": 1772739283.617105, "event": "START", "mission_id": "AUTO_TEST"}
+{"timestamp": 1772739283.6275532, "channel": 0, "crc_ok": true, "confidence": 100.0}
+{"timestamp": 1772739283.7450833, "event": "START", "mission_id": "AUTO_TEST"}
+{"timestamp": 1772739283.860086, "channel": 0, "crc_ok": true, "confidence": 100.0}

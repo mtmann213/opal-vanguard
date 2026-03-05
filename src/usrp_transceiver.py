@@ -271,6 +271,37 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
             def work(self, input_items, output_items): return 0
         self.logger = ConsoleDataLogger(self); self.msg_connect((self.session, "data_out"), (self.logger, "msg"))
         
+        # Ghost Mode Controller
+        self.ghost_mode = self.cfg['physical'].get('ghost_mode', False)
+        class GhostController(gr.basic_block):
+            def __init__(self, parent):
+                gr.basic_block.__init__(self, "GhostController", None, None); self.parent = parent
+                self.message_port_register_in(pmt.intern("msg")); self.set_msg_handler(pmt.intern("msg"), self.handle)
+                self.active_gain = parent.tx_gain_slider.value()
+                if self.parent.ghost_mode:
+                    print("\033[90m[PHY] Ghost Mode ENABLED: TX Power will drop to 0 between bursts.\033[0m")
+                    # Set initial hardware state to silent
+                    self.parent.usrp_sink.set_gain(0, 0)
+            def handle(self, msg):
+                if not self.parent.ghost_mode: return
+                try:
+                    # Packet starts, spike the gain
+                    self.active_gain = self.parent.tx_gain_slider.value()
+                    self.parent.usrp_sink.set_gain(self.active_gain, 0)
+                    
+                    # Packet duration estimate (rough calculation based on len + padding)
+                    # 3000 bytes at 2Msps is about ~12ms. Give it 150ms buffer to be safe.
+                    self.parent.ghost_timer.start(150)
+                except: pass
+            def work(self, input_items, output_items): return 0
+            
+        self.ghost_timer = Qt.QTimer()
+        self.ghost_timer.setSingleShot(True)
+        self.ghost_timer.timeout.connect(lambda: self.usrp_sink.set_gain(0, 0) if self.ghost_mode else None)
+        
+        self.ghost_ctrl = GhostController(self)
+        self.msg_connect((self.pkt_a, "out"), (self.ghost_ctrl, "msg"))
+
         # AMC Fallback Handler
         class AMCHandler(gr.basic_block):
             def __init__(self, parent):
@@ -305,7 +336,9 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
             self.chat_input.clear()
 
     def update_hardware(self):
-        self.usrp_sink.set_gain(self.tx_gain_slider.value(), 0); self.usrp_source.set_gain(self.rx_gain_slider.value(), 0)
+        if not self.ghost_mode or self.ghost_timer.isActive():
+            self.usrp_sink.set_gain(self.tx_gain_slider.value(), 0)
+        self.usrp_source.set_gain(self.rx_gain_slider.value(), 0)
 
     def on_diag(self, d):
         self.crc_led.setText(f"CRC: {'PASS' if d.get('crc_ok') else 'FAIL'}")

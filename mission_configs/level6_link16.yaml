@@ -1,6 +1,7 @@
 mission:
   id: LEVEL_6_LINK16
 physical:
+  ghost_mode: true
   samp_rate: 2000000
   center_freq: 915000000
   modulation: MSK

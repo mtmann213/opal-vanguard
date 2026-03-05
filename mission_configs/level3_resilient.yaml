@@ -1,6 +1,7 @@
 mission:
   id: LEVEL_3_RESILIENT
 physical:
+  ghost_mode: false
   samp_rate: 2000000
   center_freq: 915000000
   modulation: GFSK
