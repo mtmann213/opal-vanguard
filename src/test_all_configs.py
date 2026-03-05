@@ -23,8 +23,8 @@ def run_single_test(config_dict, test_name):
         yaml.dump(config_dict, f)
     
     tb = gr.top_block()
-    pkt = packetizer(config_path="config.yaml")
-    depkt = depacketizer(config_path="config.yaml")
+    pkt = packetizer(config_path="config.yaml", src_id=0)
+    depkt = depacketizer(config_path="config.yaml", src_id=0, ignore_self=False)
     p2s = pdu.pdu_to_tagged_stream(gr.types.byte_t, "packet_len")
     unp = blocks.unpack_k_bits_bb(8) 
     msg_debug = blocks.message_debug()

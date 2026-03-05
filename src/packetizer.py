@@ -16,9 +16,10 @@ from rs_helper import RS1511, RS3115
 from dsp_helper import MatrixInterleaver, DSSSProcessor, NRZIEncoder, ManchesterEncoder, Scrambler, CCSKProcessor
 
 class packetizer(gr.basic_block):
-    def __init__(self, config_path="mission_configs/level1_soft_link.yaml"):
+    def __init__(self, config_path="mission_configs/level1_soft_link.yaml", src_id=0):
         gr.basic_block.__init__(self, name="packetizer", in_sig=None, out_sig=None)
         
+        self.src_id = src_id
         with open(config_path, 'r') as f:
             self.cfg = yaml.safe_load(f)
             
@@ -71,7 +72,7 @@ class packetizer(gr.basic_block):
         payload_bytes = bytes(pmt.u8vector_elements(pmt.cdr(msg)))
         
         msg_type = pmt.to_long(pmt.dict_ref(meta, pmt.intern("type"), pmt.from_long(0)))
-        header = struct.pack('BBB', msg_type, self.sequence, len(payload_bytes) & 0xFF)
+        header = struct.pack('BBBB', self.src_id, msg_type, self.sequence, len(payload_bytes) & 0xFF)
         self.sequence = (self.sequence + 1) & 0xFF
         
         if self.use_fec:

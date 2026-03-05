@@ -40,6 +40,7 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
         
         self.setWindowTitle(f"Opal Vanguard Field Terminal - {role} [{serial}]")
         with open(config_path, 'r') as f: self.cfg = yaml.safe_load(f)
+        print(f"--- [OPAL VANGUARD] LAUNCHING {self.cfg['mission']['id']} ---")
             
         hcfg = self.cfg['hopping']
         hw_cfg = self.cfg['hardware']
@@ -106,10 +107,14 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
         except Exception as e: print(f"FATAL: USRP ERROR: {e}"); sys.exit(1)
 
         # Core Logic
+        sid = 1 if role == "ALPHA" else 2
+        print(f"--- [PHY] Role: {role} | SID: {sid} | MOD: {self.cfg['physical']['modulation']} ---")
+        print(f"--- [LINK] FEC: {self.cfg['link_layer']['use_fec']} | DSSS: {self.cfg['dsss']['enabled']} ---")
+
         self.session = session_manager(initial_seed=hcfg.get('initial_seed', 0xACE), config_path=config_path)
         self.session.state = "CONNECTED" 
-        self.pkt_a = packetizer(config_path=config_path)
-        self.depkt_b = depacketizer(config_path=config_path)
+        self.pkt_a = packetizer(config_path=config_path, src_id=sid)
+        self.depkt_b = depacketizer(config_path=config_path, src_id=sid, ignore_self=True)
 
         # DSP Chain
         interval = 1000 if role == "ALPHA" else 1200
