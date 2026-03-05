@@ -19,18 +19,19 @@ Opal Vanguard is a Python-based GNU Radio framework for a modular Frequency Hopp
 ## Quick Start
 
 ### 1. Hardware Field Test (USRP B200/B205mini)
-To run a physical RF test between two USRPs, use the transceiver script and point to a specific difficulty level:
+To run a physical RF test between two separate nodes, use the transceiver script on each respective computer:
 ```bash
-# Terminal 1 (Alpha)
+# Computer 1 (Alpha)
 sudo -E python3 src/usrp_transceiver.py --role ALPHA --serial <SERIAL_1> --config mission_configs/level1_soft_link.yaml
 
-# Terminal 2 (Bravo)
+# Computer 2 (Bravo)
 sudo -E python3 src/usrp_transceiver.py --role BRAVO --serial <SERIAL_2> --config mission_configs/level1_soft_link.yaml
 ```
 
 ### 2. Contested Environment (Red Team)
-To test the datalink's resilience against jamming, launch the adversary script on a third USRP:
+To test the datalink's resilience against jamming, launch the adversary script on a third computer:
 ```bash
+# Computer 3 (Jammer)
 sudo -E python3 src/adversary_jammer.py --serial <SERIAL_3> --mode NOISE --gain 75
 ```
 

@@ -88,8 +88,13 @@ The system includes predefined configurations that incrementally introduce these
 
 ## 6. Operator's Guide
 ### Physical Setup
-1. Connect three USRPs (Universal Software Radio Peripherals) to the host PC via USB 3.0.
-2. Connect the RF ports using SMA cables and **at least 60dB of attenuation** to prevent hardware damage, using a splitter to combine the ALPHA and JAMMER signals into the BRAVO receiver.
+1. Deploy three Linux PCs, each connected to one USRP (Universal Software Radio Peripheral) via USB 3.0.
+2. Connect the RF ports using SMA cables and **at least 60dB of attenuation** to prevent hardware damage. 
+3. Use an RF Combiner/Splitter to merge the signals:
+   * **Node 1 (Blue Alpha):** Connects to Port 1 of the combiner.
+   * **Node 3 (Red Jammer):** Connects to Port 2 of the combiner.
+   * **Node 2 (Blue Bravo):** Connects to the combined Port 3.
+   * *This ensures the receiver (Bravo) sees both the legitimate signal and the jamming interference simultaneously.*
 
 ### Environment Bootstrap
 Run the setup script to install all dependencies and verify the digital logic:
@@ -99,19 +104,19 @@ Run the setup script to install all dependencies and verify the digital logic:
 *(Alternatively, deploy using the `DOCKER_GUIDE.md` instructions for an isolated environment).*
 
 ### Executing a Mission
-Open three terminal windows.
+The mission requires three separate command instances, typically run on their respective hardware-connected PCs.
 
-**Terminal 1 (Blue Alpha):**
+**Computer 1 (Blue Alpha):**
 ```bash
 sudo -E python3 src/usrp_transceiver.py --role ALPHA --serial <SERIAL_A> --config mission_configs/level4_stealth.yaml
 ```
 
-**Terminal 2 (Blue Bravo):**
+**Computer 2 (Blue Bravo):**
 ```bash
 sudo -E python3 src/usrp_transceiver.py --role BRAVO --serial <SERIAL_B> --config mission_configs/level4_stealth.yaml
 ```
 
-**Terminal 3 (Red Jammer):**
+**Computer 3 (Red Jammer):**
 ```bash
 sudo -E python3 src/adversary_jammer.py --serial <SERIAL_J> --mode SWEEP --gain 75
 ```
