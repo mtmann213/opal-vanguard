@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Opal Vanguard - Commander Dashboard</title>
+    <script src="{{ url_for('static', filename='chart.js') }}"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="header">
+        <h1>OPAL VANGUARD // COMMANDER DASHBOARD</h1>
+        <div style="display: flex; align-items: center; gap: 15px;">
+            <button id="clear-btn" class="status-indicator offline" style="background: transparent; cursor: pointer; font-size: 14px; font-family: inherit;">WIPE TELEMETRY</button>
+            <div id="connection-status" class="status-indicator online">LIVE</div>
+        </div>
+    </div>
+
+    <div class="dashboard-grid">
+        <!-- Top Metrics Row -->
+        <div class="card metric-card">
+            <h3>MISSION SUCCESS RATE</h3>
+            <div id="success-rate" class="metric-value">--%</div>
+        </div>
+        
+        <div class="card metric-card">
+            <h3>AVERAGE CONFIDENCE</h3>
+            <div id="avg-confidence" class="metric-value">--%</div>
+        </div>
+
+        <div class="card metric-card">
+            <h3>TOTAL FEC REPAIRS</h3>
+            <div id="total-repairs" class="metric-value">0</div>
+        </div>
+        
+        <div class="card metric-card">
+            <h3>PACKETS ANALYZED</h3>
+            <div id="total-packets" class="metric-value">0</div>
+        </div>
+
+        <!-- Main Charts -->
+        <div class="card chart-container">
+            <h3>SIGNAL CONFIDENCE OVER TIME</h3>
+            <canvas id="confidenceChart"></canvas>
+        </div>
+
+        <div class="card chart-container">
+            <h3>CHANNEL ACTIVITY & HEALTH (AFH)</h3>
+            <canvas id="channelChart"></canvas>
+        </div>
+
+        <!-- Event Log -->
+        <div class="card log-container span-full">
+            <h3>TACTICAL EVENT LOG</h3>
+            <div class="log-window" id="event-log">
+                <!-- Logs injected here -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Chart Configuration
+        Chart.defaults.color = '#00ffcc';
+        Chart.defaults.font.family = "'Share Tech Mono', monospace";
+        
+        const confCtx = document.getElementById('confidenceChart').getContext('2d');
+        const confidenceChart = new Chart(confCtx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [
+                    {
+                        label: 'Confidence %',
+                        data: [],
+                        borderColor: '#00ffcc',
+                        backgroundColor: 'rgba(0, 255, 204, 0.1)',
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.3,
+                        pointRadius: 0,
+                        yAxisID: 'y'
+                    },
+                    {
+                        label: 'Jammer Strikes',
+                        type: 'scatter',
+                        data: [],
+                        backgroundColor: '#ff3333',
+                        pointStyle: 'crossRot',
+                        pointRadius: 8,
+                        pointBorderWidth: 3,
+                        borderColor: '#ff3333',
+                        yAxisID: 'y'
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: { min: 0, max: 100, grid: { color: 'rgba(0, 255, 204, 0.1)' } },
+                    x: { display: false, grid: { color: 'rgba(0, 255, 204, 0.1)' } }
+                },
+                animation: { duration: 0 }
+            }
+        });
+
+        const chanCtx = document.getElementById('channelChart').getContext('2d');
+        const channelChart = new Chart(chanCtx, {
+            type: 'bar',
+            data: {
+                labels: Array.from({length: 51}, (_, i) => i),
+                datasets: [
+                    {
+                        label: 'Successful Packets',
+                        data: Array(51).fill(0),
+                        backgroundColor: 'rgba(0, 255, 204, 0.8)',
+                    },
+                    {
+                        label: 'Failed Packets',
+                        data: Array(51).fill(0),
+                        backgroundColor: 'rgba(255, 51, 51, 0.8)',
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: { stacked: true, grid: { color: 'rgba(0, 255, 204, 0.1)' } },
+                    y: { stacked: true, beginAtZero: true, grid: { color: 'rgba(0, 255, 204, 0.1)' } }
+                },
+                animation: { duration: 0 }
+            }
+        });
+
+        // Data processing variables
+        let lastProcessedTimestamp = 0;
+        let totalProcessed = 0;
+        let totalSuccess = 0;
+        let totalRepairs = 0;
+        let confSum = 0;
+
+        function updateDashboard() {
+            fetch('/api/telemetry')
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('connection-status').className = 'status-indicator online';
+                    document.getElementById('connection-status').innerText = 'LIVE';
+                    
+                    if (data.length === 0) return;
+
+                    // Reset aggregates if we are reading the whole file on refresh
+                    totalProcessed = 0;
+                    totalSuccess = 0;
+                    totalRepairs = 0;
+                    confSum = 0;
+                    
+                    const confLabels = [];
+                    const confData = [];
+                    const jammerData = [];
+                    const chanSuccess = Array(51).fill(0);
+                    const chanFail = Array(51).fill(0);
+                    
+                    const logWindow = document.getElementById('event-log');
+                    let newLogsHtml = '';
+
+                    data.forEach(event => {
+                        if (event.source === 'red_team') {
+                            if (event.event === "TARGET_LOCK") {
+                                const timeStr = new Date(event.timestamp*1000).toLocaleTimeString();
+                                // We push the jammer strike to the nearest label. 
+                                // Since labels are generated dynamically by Blue Team packets, we just approximate it to appear on the chart.
+                                confLabels.push(timeStr);
+                                jammerData.push({x: timeStr, y: 50}); // Plot it in the middle of the graph
+                                
+                                if (event.timestamp > lastProcessedTimestamp) {
+                                    newLogsHtml = `<div class="log-entry error">[${timeStr}] RED TEAM: Target Lock at ${(event.freq_hz/1000000).toFixed(3)} MHz</div>` + newLogsHtml;
+                                }
+                            }
+                            return;
+                        }
+
+                        if (event.event === "START") {
+                            // Reset everything on new mission
+                            totalProcessed = 0; totalSuccess = 0; totalRepairs = 0; confSum = 0;
+                            chanSuccess.fill(0); chanFail.fill(0);
+                            newLogsHtml += `<div class="log-entry info">[${new Date(event.timestamp*1000).toLocaleTimeString()}] MISSION START: ${event.mission_id || 'UNKNOWN'}</div>`;
+                            return;
+                        }
+
+                        if (event.event === "PACKET") {
+                            totalProcessed++;
+                            confSum += event.confidence || 0;
+                            totalRepairs += event.fec_repairs || 0;
+                            
+                            const timeStr = new Date(event.timestamp*1000).toLocaleTimeString();
+                            confLabels.push(timeStr);
+                            confData.push(event.confidence || 0);
+
+                            if (event.channel !== undefined && event.channel >= 0 && event.channel < 51) {
+                                if (event.crc_ok) chanSuccess[event.channel]++;
+                                else chanFail[event.channel]++;
+                            }
+
+                            if (event.crc_ok) {
+                                totalSuccess++;
+                                if (event.timestamp > lastProcessedTimestamp) {
+                                    newLogsHtml = `<div class="log-entry success">[${timeStr}] RX OK | Seq: ${event.sequence} | Conf: ${event.confidence}% | Repairs: ${event.fec_repairs}</div>` + newLogsHtml;
+                                }
+                            } else {
+                                if (event.timestamp > lastProcessedTimestamp) {
+                                    newLogsHtml = `<div class="log-entry warning">[${timeStr}] CRC FAIL | Seq: ${event.sequence} | Conf: ${event.confidence}% | Chan: ${event.channel}</div>` + newLogsHtml;
+                                }
+                            }
+                        }
+                    });
+
+                    // Update Top Metrics
+                    if (totalProcessed > 0) {
+                        const sr = (totalSuccess / totalProcessed * 100).toFixed(1);
+                        document.getElementById('success-rate').innerText = `${sr}%`;
+                        document.getElementById('success-rate').style.color = sr > 80 ? '#00ffcc' : (sr > 50 ? '#ffcc00' : '#ff3333');
+                        
+                        document.getElementById('avg-confidence').innerText = `${(confSum / totalProcessed).toFixed(1)}%`;
+                    }
+                    document.getElementById('total-repairs').innerText = totalRepairs;
+                    document.getElementById('total-packets').innerText = totalProcessed;
+
+                    // Update Charts
+                    // Keep only last 50 points for line chart
+                    confidenceChart.data.labels = confLabels.slice(-50);
+                    confidenceChart.data.datasets[0].data = confData.slice(-50);
+                    confidenceChart.data.datasets[1].data = jammerData.slice(-10); // Keep last 10 jammer strikes visible
+                    confidenceChart.update();
+
+                    channelChart.data.datasets[0].data = chanSuccess;
+                    channelChart.data.datasets[1].data = chanFail;
+                    channelChart.update();
+
+                    // Update Logs
+                    if (newLogsHtml) {
+                        logWindow.innerHTML = newLogsHtml + logWindow.innerHTML;
+                        // Limit log history
+                        const logs = logWindow.getElementsByClassName('log-entry');
+                        while (logs.length > 100) {
+                            logWindow.removeChild(logs[logs.length - 1]);
+                        }
+                    }
+
+                    if (data.length > 0) {
+                        lastProcessedTimestamp = data[data.length - 1].timestamp;
+                    }
+                })
+                .catch(err => {
+                    document.getElementById('connection-status').className = 'status-indicator offline';
+                    document.getElementById('connection-status').innerText = 'OFFLINE';
+                    console.error("Dashboard fetch error:", err);
+                });
+        }
+
+        // Poll every 1 second
+        setInterval(updateDashboard, 1000);
+        updateDashboard(); // Initial load
+
+        document.getElementById('clear-btn').addEventListener('click', () => {
+            if (confirm("Wipe all telemetry data? This cannot be undone.")) {
+                fetch('/api/clear', { method: 'POST' })
+                    .then(() => {
+                        lastProcessedTimestamp = 0;
+                        confidenceChart.data.labels = [];
+                        confidenceChart.data.datasets[0].data = [];
+                        confidenceChart.data.datasets[1].data = [];
+                        confidenceChart.update();
+                        document.getElementById('event-log').innerHTML = '';
+                        updateDashboard();
+                    });
+            }
+        });
+    </script>
+</body>
+</html>

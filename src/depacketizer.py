@@ -241,8 +241,17 @@ class depacketizer(gr.basic_block):
                         self.message_port_pub(pmt.intern("diagnostics"), diag_dict)
 
                         # Log
-                        telemetry = {"timestamp": time.time(), "channel": self.current_channel, "crc_ok": crc_pass, "confidence": round(conf, 2)}
-                        self.telemetry_file.write(json.dumps(telemetry) + "\n"); self.telemetry_file.flush()
+                        telemetry = {
+                            "timestamp": time.time(),
+                            "event": "PACKET",
+                            "channel": self.current_channel,
+                            "crc_ok": crc_pass,
+                            "confidence": round(conf, 2),
+                            "sequence": seq,
+                            "fec_repairs": repairs
+                        }
+                        self.telemetry_file.write(json.dumps(telemetry) + "\n")
+                        self.telemetry_file.flush()
 
                     except Exception as e: print(f"Decode Error: {e}")
                     self.state = "SEARCH"; self.bit_buf = 0

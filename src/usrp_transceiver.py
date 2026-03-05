@@ -7,6 +7,8 @@ import sys
 import numpy as np
 from gnuradio import gr, blocks, analog, digital, qtgui, filter, fft, uhd, pdu
 import pmt
+import time
+import struct
 from PyQt5 import Qt
 from PyQt5.QtCore import pyqtSignal
 import sip
@@ -123,8 +125,8 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
             self.mod_a = digital.psk_mod(constellation_points=const_points, mod_code=digital.mod_codes.GRAY_CODE, differential=True, samples_per_symbol=sps, excess_bw=0.35, verbose=False, log=False)
             self.demod_b = digital.psk_demod(constellation_points=const_points, differential=True, samples_per_symbol=sps, excess_bw=0.35, phase_bw=6.28/100.0, timing_bw=6.28/100.0, mod_code=digital.mod_codes.GRAY_CODE, verbose=False, log=False)
         elif mod_type == "MSK":
-            self.mod_a = digital.msk_mod(samples_per_symbol=sps, bt=0.5)
-            self.demod_b = digital.msk_demod(samples_per_symbol=sps, gain_mu=0.1, mu=0.5, omega_relative_limit=0.005, freq_error=0.0)
+            self.mod_a = digital.gmsk_mod(samples_per_symbol=sps, bt=0.5)
+            self.demod_b = digital.gmsk_demod(samples_per_symbol=sps, gain_mu=0.1, mu=0.5, omega_relative_limit=0.005, freq_error=0.0)
         elif mod_type == "OFDM":
             # Tier 4: Wideband OFDM
             self.mod_a = digital.ofdm_tx(fft_len=64, cp_len=16, packet_length_tag_key="packet_len")
