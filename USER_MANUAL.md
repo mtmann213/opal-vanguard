@@ -69,7 +69,7 @@ Opal Vanguard's resilience is built on a "defense-in-depth" architecture.
 *   **Spreading (Stealth):** Uses DSSS (Direct Sequence Spread Spectrum) and CCSK (Cyclic Code Shift Keying) to expand the signal's bandwidth, lowering its power density to hide it below the noise floor (LPI/LPD).
 *   **Forward Error Correction (FEC):** Uses mathematical algorithms, specifically Reed-Solomon (RS 15,11 and RS 31,15), to reconstruct corrupted data without needing a retransmission.
 *   **Frequency Hopping Spread Spectrum (FHSS):** Changes the carrier frequency rapidly (up to 100 times per second) using cryptographic AES-CTR sequences synchronized via precise Time-of-Day (TOD) clocks.
-*   **Adaptive MAC Layer:** Features ARQ (Automatic Repeat Request) for automated retransmissions, and AFH (Adaptive Frequency Hopping) which autonomously detects jammed channels and "blacklists" them, dynamically altering the hop sequence to evade the Red Team.
+*   **Adaptive MAC Layer:** Features **ARQ** (Automatic Repeat Request) for automated retransmissions, **AFH** (Adaptive Frequency Hopping) which autonomously detects jammed channels and blacklists them, and **AMC** (Adaptive Modulation & Coding) which monitors link quality and automatically re-boots the radio into a more resilient PHY layer (e.g., from high-speed PSK down to DSSS) if the link falls under heavy attack.
 
 ---
 

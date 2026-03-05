@@ -31,7 +31,7 @@ Welcome to Project Opal Vanguard. You are tasked with operating or disrupting a 
 *   **Stealth:** Use **DSSS** or **CCSK**. DSSS spreads your energy across the band, while CCSK provides the high-correlation symbol mapping used in military tactical links.
 *   **Repair:** If you see "FEC Repairs" increasing on your dashboard, your link is under attack but surviving. Link-16 mode (Level 6) uses **RS(31,15)** which can survive losing nearly 50% of the packet symbols.
 *   **Modulation:** MSK (Minimum Shift Keying) provides better spectral efficiency and a smoother phase transition than GFSK, making it harder to detect at the band edges.
-*   **Phase Resilience:** If the Red Team uses frequency offsets, ensure **NRZ-I** is enabled to protect against bit-flips.
+*   **Adaptive Resilience (AMC):** If you are running a high-tier mission config and the Red Team begins a massive jamming campaign, do not panic if the link drops momentarily. The MAC layer monitors Link Quality (LQI). If it detects 5 consecutive failures, it will automatically execute a **Fallback Reboot**, rapidly restarting your terminal into the ultra-resilient Level 4 Stealth configuration to save the link.
 
 #### **For Red Team:**
 *   **The Sync Attack:** Don't just jam the data. Try to jam the **Syncword**. If Blue can't find the start of the packet, the FEC and DSSS are useless.

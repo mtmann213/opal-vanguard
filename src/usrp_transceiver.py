@@ -27,11 +27,14 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
     status_signal = pyqtSignal(str, str)
     data_signal = pyqtSignal(str)
     diag_signal = pyqtSignal(dict)
-
     def __init__(self, role="ALPHA", serial="", config_path="mission_configs/level1_soft_link.yaml"):
         gr.top_block.__init__(self, f"Opal Vanguard - {role}")
         Qt.QWidget.__init__(self)
-        
+
+        self.role = role
+        self.serial = serial
+
+        # 0. Config Validation
         success, msg = validate_config(config_path)
         if not success:
             print(f"FATAL CONFIG ERROR: {msg}"); sys.exit(1)
@@ -267,6 +270,22 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
                 except: pass
             def work(self, input_items, output_items): return 0
         self.logger = ConsoleDataLogger(self); self.msg_connect((self.session, "data_out"), (self.logger, "msg"))
+        
+        # AMC Fallback Handler
+        class AMCHandler(gr.basic_block):
+            def __init__(self, parent):
+                gr.basic_block.__init__(self, "AMCHandler", None, None); self.parent = parent
+                self.message_port_register_in(pmt.intern("msg")); self.set_msg_handler(pmt.intern("msg"), self.handle)
+            def handle(self, msg):
+                print("\033[41m*** EXECUTING AMC HARD-REBOOT TO LEVEL 4 STEALTH ***\033[0m")
+                # Ensure hardware is stopped cleanly before exec
+                self.parent.stop(); self.parent.wait()
+                # Reboot the process with the resilient config
+                python = sys.executable
+                args = [python, sys.argv[0], "--role", self.parent.role, "--serial", self.parent.serial, "--config", "mission_configs/level4_stealth.yaml"]
+                os.execv(python, args)
+            def work(self, input_items, output_items): return 0
+        self.amc_h = AMCHandler(self); self.msg_connect((self.session, "amc_fallback"), (self.amc_h, "msg"))
 
         # Viz
         self.snk_waterfall = qtgui.waterfall_sink_c(2048, fft.window.WIN_BLACKMAN_HARRIS, self.center_freq, self.samp_rate, "USRP RF Spectrum", 1)
