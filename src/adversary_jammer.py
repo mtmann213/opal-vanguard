@@ -7,6 +7,8 @@ import numpy as np
 from gnuradio import gr, blocks, analog, uhd, filter
 import argparse
 import os
+import time
+import json
 
 def main():
     parser = argparse.ArgumentParser(description="Opal Vanguard Red Team Jammer")
@@ -17,9 +19,17 @@ def main():
     parser.add_argument("--mode", choices=["NOISE", "SWEEP", "PULSE", "FOLLOWER"], default="NOISE", help="Jamming Mode")
     parser.add_argument("--sweep-rate", type=float, default=10.0, help="Sweep frequency (Hz)")
     parser.add_argument("--pulse-ms", type=float, default=100.0, help="Pulse dwell time (ms)")
+    parser.add_argument("--log-telemetry", action="store_true", help="Log Target Locks to JSONL")
     args = parser.parse_args()
 
     tb = gr.top_block("Opal Vanguard Red Team Jammer")
+    
+    # Telemetry
+    telemetry_file = None
+    if args.log_telemetry:
+        telemetry_file = open("jammer_telemetry.jsonl", "a")
+        telemetry_file.write(json.dumps({"timestamp": time.time(), "event": "JAMMER_START", "mode": args.mode}) + "\n")
+        telemetry_file.flush()
 
     # USRP Sink
     uhd_args = "type=b200"
@@ -82,7 +92,7 @@ def main():
         s2v = blocks.stream_to_vector(gr.sizeof_gr_complex, fft_size)
         
         class FollowerLogic(gr.sync_block):
-            def __init__(self, samp_rate, fft_size, parent):
+            def __init__(self, samp_rate, fft_size, parent, telemetry_file=None):
                 gr.sync_block.__init__(self, name="FollowerLogic", in_sig=[(np.complex64, fft_size)], out_sig=None)
                 self.samp_rate = samp_rate
                 self.fft_size = fft_size
@@ -90,6 +100,7 @@ def main():
                 self.state = "LOOKING"
                 self.timer = 0
                 self.skip = 0
+                self.telemetry_file = telemetry_file
                 
             def work(self, input_items, output_items):
                 for vec in input_items[0]:
@@ -115,14 +126,19 @@ def main():
                         
                         if max_pwr > avg_pwr * 15 and max_pwr > 0.5:
                             offset_hz = (max_idx - self.fft_size / 2) * (self.samp_rate / self.fft_size)
-                            print(f"\033[91m[FOLLOWER] Target Lock: {offset_hz/1000:.1f} kHz\033[0m")
+                            target_freq = args.freq + offset_hz
+                            print(f"\033[91m[FOLLOWER] Target Lock: {target_freq/1e6:.3f} MHz\033[0m")
                             self.parent.sig_gen.set_frequency(offset_hz)
                             self.parent.multiplier.set_k(1.0)
                             self.state = "JAMMING"
                             self.timer = int((self.parent.pulse_ms / 1000.0) * (self.samp_rate / self.fft_size))
+                            
+                            if self.telemetry_file:
+                                self.telemetry_file.write(json.dumps({"timestamp": time.time(), "event": "TARGET_LOCK", "freq_hz": target_freq}) + "\n")
+                                self.telemetry_file.flush()
                 return len(input_items[0])
                 
-        follower = FollowerLogic(args.rate, fft_size, tb)
+        follower = FollowerLogic(args.rate, fft_size, tb, telemetry_file)
         tb.connect(source, s2v, follower)
         tb.connect(tb.sig_gen, tb.multiplier, sink)
         print(f"[*] MODE: Autonomous Follower Jammer (Dwell: {args.pulse_ms}ms)")

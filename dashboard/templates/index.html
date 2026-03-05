@@ -66,16 +66,30 @@
             type: 'line',
             data: {
                 labels: [],
-                datasets: [{
-                    label: 'Confidence %',
-                    data: [],
-                    borderColor: '#00ffcc',
-                    backgroundColor: 'rgba(0, 255, 204, 0.1)',
-                    borderWidth: 2,
-                    fill: true,
-                    tension: 0.3,
-                    pointRadius: 0
-                }]
+                datasets: [
+                    {
+                        label: 'Confidence %',
+                        data: [],
+                        borderColor: '#00ffcc',
+                        backgroundColor: 'rgba(0, 255, 204, 0.1)',
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.3,
+                        pointRadius: 0,
+                        yAxisID: 'y'
+                    },
+                    {
+                        label: 'Jammer Strikes',
+                        type: 'scatter',
+                        data: [],
+                        backgroundColor: '#ff3333',
+                        pointStyle: 'crossRot',
+                        pointRadius: 8,
+                        pointBorderWidth: 3,
+                        borderColor: '#ff3333',
+                        yAxisID: 'y'
+                    }
+                ]
             },
             options: {
                 responsive: true,
@@ -141,6 +155,7 @@
                     
                     const confLabels = [];
                     const confData = [];
+                    const jammerData = [];
                     const chanSuccess = Array(51).fill(0);
                     const chanFail = Array(51).fill(0);
                     
@@ -148,6 +163,21 @@
                     let newLogsHtml = '';
 
                     data.forEach(event => {
+                        if (event.source === 'red_team') {
+                            if (event.event === "TARGET_LOCK") {
+                                const timeStr = new Date(event.timestamp*1000).toLocaleTimeString();
+                                // We push the jammer strike to the nearest label. 
+                                // Since labels are generated dynamically by Blue Team packets, we just approximate it to appear on the chart.
+                                confLabels.push(timeStr);
+                                jammerData.push({x: timeStr, y: 50}); // Plot it in the middle of the graph
+                                
+                                if (event.timestamp > lastProcessedTimestamp) {
+                                    newLogsHtml = `<div class="log-entry error">[${timeStr}] RED TEAM: Target Lock at ${(event.freq_hz/1000000).toFixed(3)} MHz</div>` + newLogsHtml;
+                                }
+                            }
+                            return;
+                        }
+
                         if (event.event === "START") {
                             // Reset everything on new mission
                             totalProcessed = 0; totalSuccess = 0; totalRepairs = 0; confSum = 0;
@@ -161,7 +191,8 @@
                             confSum += event.confidence || 0;
                             totalRepairs += event.fec_repairs || 0;
                             
-                            confLabels.push(new Date(event.timestamp*1000).toLocaleTimeString());
+                            const timeStr = new Date(event.timestamp*1000).toLocaleTimeString();
+                            confLabels.push(timeStr);
                             confData.push(event.confidence || 0);
 
                             if (event.channel !== undefined && event.channel >= 0 && event.channel < 51) {
@@ -172,11 +203,11 @@
                             if (event.crc_ok) {
                                 totalSuccess++;
                                 if (event.timestamp > lastProcessedTimestamp) {
-                                    newLogsHtml = `<div class="log-entry success">[${new Date(event.timestamp*1000).toLocaleTimeString()}] RX OK | Seq: ${event.sequence} | Conf: ${event.confidence}% | Repairs: ${event.fec_repairs}</div>` + newLogsHtml;
+                                    newLogsHtml = `<div class="log-entry success">[${timeStr}] RX OK | Seq: ${event.sequence} | Conf: ${event.confidence}% | Repairs: ${event.fec_repairs}</div>` + newLogsHtml;
                                 }
                             } else {
                                 if (event.timestamp > lastProcessedTimestamp) {
-                                    newLogsHtml = `<div class="log-entry error">[${new Date(event.timestamp*1000).toLocaleTimeString()}] CRC FAIL | Seq: ${event.sequence} | Conf: ${event.confidence}% | Chan: ${event.channel}</div>` + newLogsHtml;
+                                    newLogsHtml = `<div class="log-entry warning">[${timeStr}] CRC FAIL | Seq: ${event.sequence} | Conf: ${event.confidence}% | Chan: ${event.channel}</div>` + newLogsHtml;
                                 }
                             }
                         }
@@ -197,6 +228,7 @@
                     // Keep only last 50 points for line chart
                     confidenceChart.data.labels = confLabels.slice(-50);
                     confidenceChart.data.datasets[0].data = confData.slice(-50);
+                    confidenceChart.data.datasets[1].data = jammerData.slice(-10); // Keep last 10 jammer strikes visible
                     confidenceChart.update();
 
                     channelChart.data.datasets[0].data = chanSuccess;
