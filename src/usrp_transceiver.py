@@ -81,6 +81,37 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
         self.rx_gain_slider.valueChanged.connect(self.update_hardware)
 
         self.text_out = Qt.QTextEdit(); self.text_out.setReadOnly(True); self.ctrl_panel.addWidget(self.text_out)
+        
+        # Application Layer: Chat Interface
+        self.app_cfg = self.cfg.get('application_layer', {})
+        self.payload_type = self.app_cfg.get('payload_type', 'heartbeat')
+        
+        if self.payload_type == 'chat':
+            self.chat_layout = Qt.QHBoxLayout()
+            self.chat_input = Qt.QLineEdit()
+            self.chat_input.setPlaceholderText("Type message...")
+            self.chat_btn = Qt.QPushButton("Send")
+            self.chat_layout.addWidget(self.chat_input)
+            self.chat_layout.addWidget(self.chat_btn)
+            self.ctrl_panel.addLayout(self.chat_layout)
+            
+            # Custom block to emit PDU when send is clicked
+            class ChatSender(gr.basic_block):
+                def __init__(self):
+                    gr.basic_block.__init__(self, "ChatSender", None, None)
+                    self.message_port_register_out(pmt.intern("out"))
+                def send_msg(self, text):
+                    payload = text.encode('utf-8')
+                    self.message_port_pub(pmt.intern("out"), pmt.cons(pmt.make_dict(), pmt.init_u8vector(len(payload), list(payload))))
+                def work(self, input_items, output_items): return 0
+                
+            self.pdu_src = ChatSender()
+            self.chat_btn.clicked.connect(self.on_chat_send)
+            self.chat_input.returnPressed.connect(self.on_chat_send)
+        else:
+            interval = 1000 if role == "ALPHA" else 1200
+            payload_text = f"MISSION DATA FROM {role}"
+            self.pdu_src = blocks.message_strobe(pmt.cons(pmt.make_dict(), pmt.init_u8vector(len(payload_text), list(payload_text.encode()))), interval)
 
         # Hardware Setup
         args = hw_cfg['args']
@@ -110,9 +141,6 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
         self.depkt_b = depacketizer(config_path=config_path)
 
         # DSP Chain
-        interval = 1000 if role == "ALPHA" else 1200
-        payload_text = f"MISSION DATA FROM {role}"
-        self.pdu_src = blocks.message_strobe(pmt.cons(pmt.make_dict(), pmt.init_u8vector(len(payload_text), list(payload_text.encode()))), interval)
         self.p2s_a = pdu.pdu_to_tagged_stream(gr.types.byte_t, "packet_len")
         
         mod_type = self.cfg['physical'].get('modulation', 'GFSK')
@@ -149,7 +177,10 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
         self.rx_filter = filter.fir_filter_ccf(1, lpf_taps)
 
         # Connections
-        self.msg_connect((self.pdu_src, "strobe"), (self.session, "data_in"))
+        if self.payload_type == 'chat':
+            self.msg_connect((self.pdu_src, "out"), (self.session, "data_in"))
+        else:
+            self.msg_connect((self.pdu_src, "strobe"), (self.session, "data_in"))
         self.msg_connect((self.session, "pkt_out"), (self.pkt_a, "in"))
         self.msg_connect((self.pkt_a, "out"), (self.p2s_a, "pdus"))
         self.connect(self.p2s_a, self.mod_a, (self.add, 0))
@@ -246,6 +277,13 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
         if hcfg.get('enabled', True):
             print(f"[Terminal] Hopping ENABLED ({hcfg['dwell_time_ms']}ms)"); self.timer.start(hcfg['dwell_time_ms'])
         else: print("[Terminal] Hopping DISABLED (Fixed Frequency)")
+
+    def on_chat_send(self):
+        text = self.chat_input.text()
+        if text:
+            self.text_out.append(f"<b>[TX]:</b> {text}")
+            self.pdu_src.send_msg(text)
+            self.chat_input.clear()
 
     def update_hardware(self):
         self.usrp_sink.set_gain(self.tx_gain_slider.value(), 0); self.usrp_source.set_gain(self.rx_gain_slider.value(), 0)

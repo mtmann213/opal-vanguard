@@ -1,19 +1,18 @@
 mission:
-  id: "LEVEL_2_REPAIRABLE"
+  id: LEVEL_2_REPAIRABLE
 physical:
   samp_rate: 2000000
   center_freq: 915000000
-  modulation: "GFSK"
+  modulation: GFSK
   freq_dev: 125000
   samples_per_symbol: 8
 mac_layer:
   arq_enabled: false
   max_retries: 3
-
 link_layer:
   use_comsec: false
-  comsec_key: "5365637265744f70616c4b6579313233"
-  crc_type: "CRC16"
+  comsec_key: 5365637265744f70616c4b6579313233
+  crc_type: CRC16
   use_fec: true
   use_interleaving: false
   use_whitening: true
@@ -25,9 +24,11 @@ dsss:
 hopping:
   enabled: false
 hardware:
-  args: "type=b200"
+  args: type=b200
   samp_rate: 2000000
   tx_gain: 70
   rx_gain: 70
-  tx_antenna: "TX/RX"
-  rx_antenna: "TX/RX"
+  tx_antenna: TX/RX
+  rx_antenna: TX/RX
+application_layer:
+  payload_type: heartbeat

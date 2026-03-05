@@ -1,19 +1,18 @@
 mission:
-  id: "LEVEL_6_LINK16"
+  id: LEVEL_6_LINK16
 physical:
   samp_rate: 2000000
   center_freq: 915000000
-  modulation: "MSK"
+  modulation: MSK
   freq_dev: 125000
   samples_per_symbol: 8
 mac_layer:
   arq_enabled: true
   max_retries: 3
-
 link_layer:
   use_comsec: true
-  comsec_key: "5365637265744f70616c4b6579313233"
-  crc_type: "CRC16"
+  comsec_key: 5365637265744f70616c4b6579313233
+  crc_type: CRC16
   use_fec: true
   use_interleaving: true
   interleaver_rows: 32
@@ -22,22 +21,24 @@ link_layer:
   use_manchester: false
 dsss:
   enabled: true
-  type: "CCSK"
+  type: CCSK
   spreading_factor: 32
 hopping:
   enabled: true
-  type: "AES"
-  sync_mode: "TOD"
+  type: AES
+  sync_mode: TOD
   dwell_time_ms: 1000
   lookahead_ms: 50
   num_channels: 51
   channel_spacing: 150000
-  aes_key: "4c696e6b31365365637572654b657921"
-  initial_seed: 0x1616
+  aes_key: 4c696e6b31365365637572654b657921
+  initial_seed: 5654
 hardware:
-  args: "type=b200"
+  args: type=b200
   samp_rate: 2000000
   tx_gain: 70
   rx_gain: 70
-  tx_antenna: "TX/RX"
-  rx_antenna: "TX/RX"
+  tx_antenna: TX/RX
+  rx_antenna: TX/RX
+application_layer:
+  payload_type: heartbeat

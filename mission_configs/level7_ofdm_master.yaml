@@ -1,14 +1,14 @@
 mission:
-  id: "LEVEL_7_OFDM_MASTER"
+  id: LEVEL_7_OFDM_MASTER
 physical:
   samp_rate: 2000000
   center_freq: 915000000
-  modulation: "OFDM"
+  modulation: OFDM
   samples_per_symbol: 8
 link_layer:
   use_comsec: true
-  comsec_key: "5365637265744f70616c4b6579313233"
-  crc_type: "CRC32"
+  comsec_key: 5365637265744f70616c4b6579313233
+  crc_type: CRC32
   use_fec: true
   use_interleaving: true
   interleaver_rows: 32
@@ -23,19 +23,21 @@ dsss:
   enabled: false
 hopping:
   enabled: true
-  type: "AES"
-  sync_mode: "TOD"
+  type: AES
+  sync_mode: TOD
   dwell_time_ms: 1000
   lookahead_ms: 50
   num_channels: 20
   channel_spacing: 500000
-  aes_key: "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
-  initial_seed: 0xACE
+  aes_key: 000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f
+  initial_seed: 2766
 hardware:
-  args: "type=b200"
+  args: type=b200
   samp_rate: 2000000
   tx_gain: 70
   rx_gain: 70
-  tx_antenna: "TX/RX"
-  rx_antenna: "TX/RX"
-  sync: "pc_clock" # Can be set to 'external' if GPSDO is attached
+  tx_antenna: TX/RX
+  rx_antenna: TX/RX
+  sync: pc_clock
+application_layer:
+  payload_type: heartbeat
