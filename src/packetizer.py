@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Opal Vanguard - Mission-Controlled Packetizer (Signal Restoration Build v7.5)
+# Opal Vanguard - Mission-Controlled Packetizer (True Signal Build v7.6)
 
 import numpy as np
 from gnuradio import gr
@@ -74,7 +74,8 @@ class packetizer(gr.basic_block):
                 for i in range(0, len(payload), 11):
                     chunk = payload[i:i+11].ljust(11, b'\x00'); nibs = []
                     for b in chunk: nibs.extend([(b >> 4) & 0x0F, b & 0x0F])
-                    all_e = self.rs1511.encode(nibs[:11]) + self.rs1511.encode(nibs[11:])
+                    e1 = self.rs1511.encode(nibs[:11]); e2 = self.rs1511.encode(nibs[11:])
+                    all_e = e1 + e2
                     for k in range(0, 30, 2): fec_payload += bytes([(all_e[k] << 4) | all_e[k+1]])
         else: fec_payload = payload
 
@@ -96,9 +97,10 @@ class packetizer(gr.basic_block):
         if self.use_interleaving: packet = self.interleaver.interleave(packet, len(packet))
         if self.use_whitening: self.scrambler.reset(); packet = self.scrambler.process(packet)
             
-        # 4. Bit-Level Processing
+        # 4. Bit-Level Processing (Output UNPACKED BITS for GNU Radio Modulators)
         bits = []
         for b in packet: [bits.append((b >> (7-i)) & 1) for i in range(8)]
+        
         if self.use_nrzi: self.nrzi.tx_state = 0; bits = self.nrzi.encode(bits)
         if self.use_manchester: bits = self.manchester.encode(bits)
         
@@ -114,15 +116,12 @@ class packetizer(gr.basic_block):
                 for b in bits: final_bits.extend(self.dsss.encode([b]))
         else: final_bits = bits
         
-        # 6. Framing & PACKING (Crucial for GNU Radio Modulators)
-        all_bits = [1,0]*16 + [int(b) for b in format(0x3D4C5B6A, '032b')] + final_bits
-        packed_bytes = []
-        for i in range(0, len(all_bits), 8):
-            chunk = all_bits[i:i+8]
-            acc = 0
-            for b in chunk: acc = (acc << 1) | b
-            packed_bytes.append(acc)
+        # 6. Framing (Preamble + Syncword + Data)
+        preamble = [1,0]*16 # 0xAAAA
+        syncword = [int(b) for b in format(0x3D4C5B6A, '032b')]
+        out_bits = preamble + syncword + final_bits
         
-        self.message_port_pub(pmt.intern("out"), pmt.cons(pmt.make_dict(), pmt.init_u8vector(len(packed_bytes), packed_bytes)))
+        # Output as UNPACKED bits (one bit per byte)
+        self.message_port_pub(pmt.intern("out"), pmt.cons(pmt.make_dict(), pmt.init_u8vector(len(out_bits), out_bits)))
 
     def work(self, i, o): return 0

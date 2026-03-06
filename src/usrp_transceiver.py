@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Opal Vanguard - USRP B210/B205mini Transceiver (Signal Restoration Build v7.5)
+# Opal Vanguard - USRP B210/B205mini Transceiver (Definitive Baseline Build v7.3)
 
 import os
 import sys
@@ -144,16 +144,13 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
             interval = 1000 if role == "ALPHA" else 1200
             self.pdu_src = blocks.message_strobe(pmt.cons(pmt.make_dict(), pmt.init_u8vector(len(f"HEARTBEAT FROM {role}"), list(f"HEARTBEAT FROM {role}".encode()))), interval)
 
-        # Hardware Setup
+        # Hardware
         args_str = hw_cfg['args']
         if serial: args_str += f",serial={serial}"
         try:
             self.usrp_sink = uhd.usrp_sink(args_str, uhd.stream_args(cpu_format="fc32", channels=[0]))
             self.usrp_source = uhd.usrp_source(args_str, uhd.stream_args(cpu_format="fc32", channels=[0]))
             for dev in [self.usrp_sink, self.usrp_source]:
-                if hw_cfg.get('sync') == 'external':
-                    dev.set_clock_source("external"); dev.set_time_source("external"); dev.set_time_unknown_pps(uhd.time_spec())
-                elif hw_cfg.get('sync') == 'pc_clock': dev.set_time_now(uhd.time_spec(time.time()))
                 dev.set_samp_rate(self.samp_rate); dev.set_center_freq(self.center_freq, 0)
             self.usrp_sink.set_gain(hw_cfg['tx_gain'], 0); self.usrp_sink.set_antenna(hw_cfg['tx_antenna'], 0)
             self.usrp_source.set_gain(hw_cfg['rx_gain'], 0); self.usrp_source.set_antenna(hw_cfg['rx_antenna'], 0)
@@ -161,8 +158,9 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
 
         sid = 1 if role == "ALPHA" else 2
         self.session = session_manager(initial_seed=hcfg.get('initial_seed', 0xACE), config_path=config_path)
-        self.session.state = "CONNECTED"; self.pkt_a = packetizer(config_path=config_path, src_id=sid); self.depkt_b = depacketizer(config_path=config_path, src_id=sid, ignore_self=True)
+        self.pkt_a = packetizer(config_path=config_path, src_id=sid); self.depkt_b = depacketizer(config_path=config_path, src_id=sid, ignore_self=True)
         self.p2s_a = pdu.pdu_to_tagged_stream(gr.types.byte_t, "packet_len")
+        
         mod_type = self.cfg['physical'].get('modulation', 'GFSK'); sps = self.cfg['physical'].get('samples_per_symbol', 8)
         if mod_type in ["DBPSK", "DQPSK", "D8PSK"]:
             cp = 2 if "BPSK" in mod_type else (4 if "QPSK" in mod_type else 8)
@@ -188,20 +186,13 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
             def __init__(self, parent):
                 gr.basic_block.__init__(self, "UHDHandler", None, None); self.p = parent
                 self.message_port_register_in(pmt.intern("msg")); self.set_msg_handler(pmt.intern("msg"), self.handle)
-                self.message_port_register_in(pmt.intern("blacklist")); self.set_msg_handler(pmt.intern("blacklist"), self.handle_blacklist)
-            def handle_blacklist(self, msg): pass # Stub for stability
             def handle(self, msg):
                 try:
-                    if pmt.is_dict(msg):
-                        f = pmt.to_double(pmt.dict_ref(msg, pmt.intern("freq"), pmt.from_double(0))); t = pmt.to_double(pmt.dict_ref(msg, pmt.intern("time"), pmt.from_double(0)))
-                        if t > 0: ts = uhd.time_spec(t); self.p.usrp_sink.set_command_time(ts); self.p.usrp_source.set_command_time(ts)
-                        self.p.usrp_sink.set_center_freq(f); self.p.usrp_source.set_center_freq(f)
-                        if t > 0: self.p.usrp_sink.clear_command_time(); self.p.usrp_source.clear_command_time()
-                    else: f = pmt.to_double(msg); self.p.usrp_sink.set_center_freq(f); self.p.usrp_source.set_center_freq(f)
-                    self.p.depkt_b.current_channel = int((f - self.p.center_freq) / self.p.cfg['hopping']['channel_spacing'] + (self.p.cfg['hopping']['num_channels'] // 2))
+                    f = pmt.to_double(pmt.dict_ref(msg, pmt.intern("freq"), pmt.from_double(0))) if pmt.is_dict(msg) else pmt.to_double(msg)
+                    if f > 0: self.p.usrp_sink.set_center_freq(f); self.p.usrp_source.set_center_freq(f)
                 except: pass
             def work(self, i, o): return 0
-        self.uhd_h = UHDHandler(self); self.msg_connect((self.hop_ctrl, "freq"), (self.uhd_h, "msg")); self.msg_connect((self.session, "blacklist_out"), (self.uhd_h, "blacklist"))
+        self.uhd_h = UHDHandler(self); self.msg_connect((self.hop_ctrl, "freq"), (self.uhd_h, "msg"))
 
         class DiagProxy(gr.basic_block):
             def __init__(self, parent): gr.basic_block.__init__(self, "DiagProxy", None, None); self.p = parent; self.message_port_register_in(pmt.intern("msg")); self.set_msg_handler(pmt.intern("msg"), self.handle)
