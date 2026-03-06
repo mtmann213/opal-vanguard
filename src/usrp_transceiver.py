@@ -67,6 +67,7 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
     data_signal = pyqtSignal(str)
     diag_signal = pyqtSignal(dict)
     reboot_signal = pyqtSignal(str)
+    ghost_trigger_signal = pyqtSignal()
 
     def __init__(self, role="ALPHA", serial="", config_path="mission_configs/level1_soft_link.yaml"):
         gr.top_block.__init__(self, f"Opal Vanguard - {role}")
@@ -230,11 +231,12 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
             def work(self, i, o): return 0
         self.logger = ConsoleDataLogger(self); self.msg_connect((self.session, "data_out"), (self.logger, "msg"))
 
-        self.ghost_mode = self.cfg['physical'].get('ghost_mode', False); self.ghost_timer = Qt.QTimer(); self.ghost_timer.setSingleShot(True); self.ghost_timer.timeout.connect(lambda: self.usrp_sink.set_gain(0, 0) if self.ghost_mode else None)
+        self.ghost_mode = self.cfg['physical'].get('ghost_mode', False); self.ghost_timer = Qt.QTimer(); self.ghost_timer.setSingleShot(True); self.ghost_timer.timeout.connect(lambda: self.usrp_sink.set_gain(0, 0))
+        self.ghost_trigger_signal.connect(self.start_ghost_tx)
         class GhostController(gr.basic_block):
             def __init__(self, parent): gr.basic_block.__init__(self, "GhostController", None, None); self.p = parent; self.message_port_register_in(pmt.intern("msg")); self.set_msg_handler(pmt.intern("msg"), self.handle)
             def handle(self, msg):
-                if self.p.ghost_mode: self.p.usrp_sink.set_gain(self.p.tx_gain_slider.value(), 0); self.p.ghost_timer.start(150)
+                if self.p.ghost_mode: self.p.ghost_trigger_signal.emit()
             def work(self, i, o): return 0
         self.ghost_ctrl = GhostController(self); self.msg_connect((self.pkt_a, "out"), (self.ghost_ctrl, "msg"))
 
@@ -258,6 +260,12 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
         print(f"\033[41m*** EXECUTING COLD REBOOT TO {target_config} ***\033[0m")
         self.stop(); self.wait(); time.sleep(1.0)
         python = sys.executable; os.execv(python, [python, sys.argv[0], "--role", self.role, "--serial", self.serial, "--config", target_config])
+
+    @Qt.pyqtSlot()
+    def start_ghost_tx(self):
+        if self.ghost_mode:
+            self.usrp_sink.set_gain(self.tx_gain_slider.value(), 0)
+            self.ghost_timer.start(150)
 
     def save_iq_snapshot(self, iq_buffer):
         try:
