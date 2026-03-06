@@ -155,11 +155,23 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
                 dev.set_samp_rate(self.samp_rate); dev.set_center_freq(self.center_freq, 0)
             self.usrp_sink.set_gain(hw_cfg['tx_gain'], 0); self.usrp_sink.set_antenna(hw_cfg['tx_antenna'], 0)
             self.usrp_source.set_gain(hw_cfg['rx_gain'], 0); self.usrp_source.set_antenna(hw_cfg['rx_antenna'], 0)
+            
+            # Sync clock to System Time
+            self.usrp_sink.set_time_now(uhd.time_spec(time.time()))
+            print(f"[TERMINAL] USRP Clock Synced to: {time.ctime()}")
         except Exception as e: print(f"FATAL USRP: {e}"); sys.exit(1)
 
         sid = 1 if role == "ALPHA" else 2
         self.session = session_manager(initial_seed=hcfg.get('initial_seed', 0xACE), config_path=config_path)
         self.pkt_a = packetizer(config_path=config_path, src_id=sid); self.depkt_b = depacketizer(config_path=config_path, src_id=sid, ignore_self=True)
+        
+        # COMSEC Support
+        if self.cfg['link_layer'].get('use_comsec', False):
+            key = bytes.fromhex(self.cfg['link_layer'].get('comsec_key', '00'*32))
+            self.pkt_a.use_comsec = True; self.pkt_a.aes_gcm = AESGCM(key)
+            self.depkt_b.use_comsec = True; self.depkt_b.aes_gcm = AESGCM(key)
+            print("[TERMINAL] COMSEC (AES-GCM) ENABLED")
+
         self.p2s_a = pdu.pdu_to_tagged_stream(gr.types.byte_t, "packet_len")
         
         mod_type = self.cfg['physical'].get('modulation', 'GFSK'); sps = self.cfg['physical'].get('samples_per_symbol', 8)
@@ -195,8 +207,24 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
                 self.message_port_register_in(pmt.intern("msg")); self.set_msg_handler(pmt.intern("msg"), self.handle)
             def handle(self, msg):
                 try:
-                    f = pmt.to_double(pmt.dict_ref(msg, pmt.intern("freq"), pmt.from_double(0))) if pmt.is_dict(msg) else pmt.to_double(msg)
-                    if f > 0: self.p.usrp_sink.set_center_freq(f); self.p.usrp_source.set_center_freq(f)
+                    if pmt.is_dict(msg):
+                        f = pmt.to_double(pmt.dict_ref(msg, pmt.intern("freq"), pmt.from_double(0)))
+                        t = pmt.to_double(pmt.dict_ref(msg, pmt.intern("time"), pmt.from_double(0)))
+                        if f > 0:
+                            if t > 0:
+                                # Synchronized Timed Command
+                                self.p.usrp_sink.set_command_time(uhd.time_spec(t))
+                                self.p.usrp_source.set_command_time(uhd.time_spec(t))
+                                self.p.usrp_sink.set_center_freq(f)
+                                self.p.usrp_source.set_center_freq(f)
+                                self.p.usrp_sink.clear_command_time()
+                                self.p.usrp_source.clear_command_time()
+                            else:
+                                self.p.usrp_sink.set_center_freq(f)
+                                self.p.usrp_source.set_center_freq(f)
+                    else:
+                        f = pmt.to_double(msg)
+                        if f > 0: self.p.usrp_sink.set_center_freq(f); self.p.usrp_source.set_center_freq(f)
                 except: pass
             def work(self, i, o): return 0
         self.uhd_h = UHDHandler(self); self.msg_connect((self.hop_ctrl, "freq"), (self.uhd_h, "msg"))
