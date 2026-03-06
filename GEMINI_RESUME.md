@@ -1,50 +1,34 @@
-# Mission Hand-off: Project Opal Vanguard (TACTICAL BUILD v3.0)
-## Session State: Thursday, March 5, 2026
+# Opal Vanguard - Gemini CLI Handoff (Master Build v7.6)
 
-### 1. Project Status: Deployment Ready & Hardened
-The system has evolved from a basic FHSS simulator into a professional-grade Electronic Warfare (EW) testbed. All core modules are verified on physical USRP hardware.
+## 🎯 Current Objective
+Establish a rock-solid P2P RF link between Laptop 1 (BRAVO) and Laptop 2 (ALPHA) using USRP B205mini hardware. Current focus is **Level 3: Resilient** baseline testing.
 
-**Current Branch:** `main` (fully synced with `hardware/usrp-integration`)
+## 🛠️ State of the Build (v7.6)
+We have stripped the codebase down to an **Absolute Stability Baseline** to eliminate SegFaults and PMT errors.
 
-### 2. Full Capability Stack
-*   **Modulations:** GFSK, MSK, DBPSK, DQPSK, D8PSK, and wideband OFDM.
-*   **Applications:**
-    *   `chat`: Real-time tactical messaging via PyQt UI.
-    *   `file`: Chunked FTP with ARQ reassembly for image/data transfer.
-    *   `heartbeat`: Automated signal presence pulses.
-*   **Security:**
-    *   **COMSEC:** AES-256-GCM authenticated payload encryption.
-    *   **TRANSEC:** TOD-synced and AES-CTR frequency hopping.
-*   **Resilience:**
-    *   **MAC:** Automatic Repeat Request (ARQ) and Adaptive Frequency Hopping (AFH) channel blacklisting.
-    *   **PHY:** Reed-Solomon (15,11) and (31,15) FEC; DSSS (31-chip) and CCSK (32-chip) spreading.
-    *   **LPI/LPD:** "Ghost Mode" hardware power control (TX Gain 0 between bursts).
+### 🏁 Critical Fixes Implemented:
+1.  **Bit-Packing Restoration:** `packetizer.py` now outputs **unpacked bits** (1 bit per byte). This is mandatory for GNU Radio modulators to send a valid signal.
+2.  **AMC Auto-Reboot Disabled:** Automatic mission switching is physically stripped from `usrp_transceiver.py` to prevent Segmentation Faults during USRP hardware release.
+3.  **AFH Blacklist Logic Stubbed:** `handle_blacklist` in hop generators is a no-op stub to prevent `AttributeError: is_vector_obj` crashes in GNU Radio 3.10.
+4.  **Header Alignment:** `interleaver_rows` is set to **8** for Levels 1-5 (120-byte blocks) and **32** for Level 6 (320-byte blocks).
+5.  **Virtual Wipe:** Dashboard UI now uses browser-side timestamp filtering for telemetry wipes, bypassing `sudo` file permission issues.
 
-### 3. Analytics & Visualization
-*   **Telemetry:** Structured JSONL logging (`mission_telemetry.jsonl` and `jammer_telemetry.jsonl`).
-*   **Commander Dashboard:** Flask-based web UI (`http://localhost:5000`) with live Chart.js visualization of signal confidence, success rates, and Jammer strikes.
+## 🚀 Laptop 2 Setup (ALPHA)
+The next agent should perform the following to resume:
 
-### 4. Resumption Instructions (New Machine)
-1.  **Clone & Bootstrap:**
-    ```bash
-    git clone <repo_url>
-    cd opal-vanguard
-    chmod +x SETUP_MISSION.sh
-    ./SETUP_MISSION.sh
-    ```
-2.  **Verify Digital Logic:**
-    ```bash
-    python3 src/test_all_configs.py
-    ```
-3.  **Launch Hardware Link (Example: Level 4 Stealth):**
-    *   **PC 1:** `sudo -E python3 src/usrp_transceiver.py --role ALPHA --serial <S1> --config mission_configs/level4_stealth.yaml`
-    *   **PC 2:** `sudo -E python3 src/usrp_transceiver.py --role BRAVO --serial <S2> --config mission_configs/level4_stealth.yaml`
-4.  **Launch Dashboard:**
-    ```bash
-    python3 dashboard/app.py
-    ```
+```bash
+# 1. Force hard sync to main
+git fetch origin
+git reset --hard origin/main
 
-### 5. Next Objectives
-*   **Follower Jammer Testing:** Use `src/adversary_jammer.py --mode FOLLOWER --log-telemetry` to pressure the link.
-*   **OFDM Optimization:** Fine-tune Level 7 OFDM subcarriers for higher throughput.
-*   **GPSDO Integration:** Once hardware arrives, switch `sync: pc_clock` to `sync: external` in YAML configs for nanosecond-accurate 1PPS hopping.
+# 2. Purge Python cache
+find . -name "__pycache__" -type d -exec rm -rf {} +
+
+# 3. Launch ALPHA Radio
+sudo -E python3 src/usrp_transceiver.py --role ALPHA --serial 3457480 --config mission_configs/level3_resilient.yaml
+```
+
+## 📋 Mission Log
+- **Level 1 & 2:** Stable.
+- **Level 3:** Freezing fixed. Payloads restored.
+- **Next Step:** Verify "HEARTBEAT FROM ALPHA" is received correctly by BRAVO on Laptop 1.
