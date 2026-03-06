@@ -1,0 +1,38 @@
+{"timestamp": 1772758996.435047, "event": "START", "mission_id": "AUTO_TEST"}
+{"timestamp": 1772758996.4421983, "event": "PACKET", "channel": 0, "crc_ok": true, "confidence": 100.0, "sequence": 0, "fec_repairs": 0}
+{"timestamp": 1772758996.5808394, "event": "START", "mission_id": "AUTO_TEST"}
+{"timestamp": 1772758996.5869234, "event": "PACKET", "channel": 0, "crc_ok": true, "confidence": 100.0, "sequence": 0, "fec_repairs": 1}
+{"timestamp": 1772758996.7207296, "event": "START", "mission_id": "AUTO_TEST"}
+{"timestamp": 1772758996.7251415, "event": "PACKET", "channel": 0, "crc_ok": true, "confidence": 100.0, "sequence": 0, "fec_repairs": 0}
+{"timestamp": 1772758996.861474, "event": "START", "mission_id": "AUTO_TEST"}
+{"timestamp": 1772758996.8660688, "event": "PACKET", "channel": 0, "crc_ok": true, "confidence": 100.0, "sequence": 0, "fec_repairs": 0}
+{"timestamp": 1772758997.0075822, "event": "START", "mission_id": "AUTO_TEST"}
+{"timestamp": 1772758997.0125842, "event": "PACKET", "channel": 0, "crc_ok": true, "confidence": 100.0, "sequence": 0, "fec_repairs": 0}
+{"timestamp": 1772758997.1461833, "event": "START", "mission_id": "AUTO_TEST"}
+{"timestamp": 1772758997.151683, "event": "PACKET", "channel": 0, "crc_ok": true, "confidence": 100.0, "sequence": 0, "fec_repairs": 0}
+{"timestamp": 1772758997.2783928, "event": "START", "mission_id": "AUTO_TEST"}
+{"timestamp": 1772758997.2909327, "event": "PACKET", "channel": 0, "crc_ok": true, "confidence": 100.0, "sequence": 0, "fec_repairs": 2}
+{"timestamp": 1772758997.4094062, "event": "START", "mission_id": "AUTO_TEST"}
+{"timestamp": 1772758997.4202418, "event": "PACKET", "channel": 0, "crc_ok": true, "confidence": 100.0, "sequence": 0, "fec_repairs": 2}
+{"timestamp": 1772758997.5412047, "event": "START", "mission_id": "AUTO_TEST"}
+{"timestamp": 1772758997.6610315, "event": "PACKET", "channel": 0, "crc_ok": true, "confidence": 100.0, "sequence": 0, "fec_repairs": 2}
+{"timestamp": 1772758997.7004995, "event": "START", "mission_id": "AUTO_TEST"}
+{"timestamp": 1772758997.7066102, "event": "PACKET", "channel": 0, "crc_ok": true, "confidence": 100.0, "sequence": 0, "fec_repairs": 0}
+{"timestamp": 1772758997.8270054, "event": "START", "mission_id": "AUTO_TEST"}
+{"timestamp": 1772758997.831738, "event": "PACKET", "channel": 0, "crc_ok": true, "confidence": 100.0, "sequence": 0, "fec_repairs": 1}
+{"timestamp": 1772758997.952533, "event": "START", "mission_id": "AUTO_TEST"}
+{"timestamp": 1772758997.9592314, "event": "PACKET", "channel": 0, "crc_ok": true, "confidence": 100.0, "sequence": 0, "fec_repairs": 0}
+{"timestamp": 1772758998.0804791, "event": "START", "mission_id": "AUTO_TEST"}
+{"timestamp": 1772758998.0852199, "event": "PACKET", "channel": 0, "crc_ok": true, "confidence": 100.0, "sequence": 0, "fec_repairs": 0}
+{"timestamp": 1772758998.2078075, "event": "START", "mission_id": "AUTO_TEST"}
+{"timestamp": 1772758998.2112312, "event": "PACKET", "channel": 0, "crc_ok": true, "confidence": 100.0, "sequence": 0, "fec_repairs": 0}
+{"timestamp": 1772758998.342186, "event": "START", "mission_id": "AUTO_TEST"}
+{"timestamp": 1772758998.3468695, "event": "PACKET", "channel": 0, "crc_ok": true, "confidence": 100.0, "sequence": 0, "fec_repairs": 0}
+{"timestamp": 1772758998.4719326, "event": "START", "mission_id": "AUTO_TEST"}
+{"timestamp": 1772758998.4846675, "event": "PACKET", "channel": 0, "crc_ok": true, "confidence": 100.0, "sequence": 0, "fec_repairs": 2}
+{"timestamp": 1772758998.6020782, "event": "START", "mission_id": "AUTO_TEST"}
+{"timestamp": 1772758998.6240265, "event": "PACKET", "channel": 0, "crc_ok": true, "confidence": 100.0, "sequence": 0, "fec_repairs": 2}
+{"timestamp": 1772758998.7385366, "event": "START", "mission_id": "AUTO_TEST"}
+{"timestamp": 1772758998.8774242, "event": "PACKET", "channel": 0, "crc_ok": true, "confidence": 100.0, "sequence": 0, "fec_repairs": 2}
+{"timestamp": 1772758999.529569, "event": "START", "mission_id": "LEVEL_6_LINK16"}
+{"timestamp": 1772759000.3532748, "event": "PACKET", "channel": 0, "crc_ok": true, "confidence": 100.0, "sequence": 0, "fec_repairs": 0}

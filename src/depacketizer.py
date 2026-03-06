@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Opal Vanguard - Mission-Controlled Depacketizer (with AFH Health Tracking)
+# Opal Vanguard - Mission-Controlled Depacketizer (with COMSEC, AFH & Self-Filter)
 
 import numpy as np
 from gnuradio import gr
@@ -19,9 +19,11 @@ from rs_helper import RS1511, RS3115
 from dsp_helper import MatrixInterleaver, DSSSProcessor, NRZIEncoder, ManchesterEncoder, Scrambler, CCSKProcessor
 
 class depacketizer(gr.basic_block):
-    def __init__(self, config_path="mission_configs/level1_soft_link.yaml"):
+    def __init__(self, config_path="mission_configs/level1_soft_link.yaml", src_id=0, ignore_self=False):
         gr.basic_block.__init__(self, name="depacketizer", in_sig=[np.uint8], out_sig=None)
         
+        self.src_id = src_id
+        self.ignore_self = ignore_self
         with open(config_path, 'r') as f:
             self.cfg = yaml.safe_load(f)
             
@@ -134,7 +136,7 @@ class depacketizer(gr.basic_block):
                     self.recovered_bits.append(bit ^ (1 if self.is_inverted else 0))
 
                 if not self.use_interleaving and self.active_pkt_len == 0:
-                    header_bits_needed = 24 * (2 if self.use_manchester else 1)
+                    header_bits_needed = 32 * (2 if self.use_manchester else 1)
                     if len(self.recovered_bits) >= header_bits_needed:
                         h_bits = self.recovered_bits[:header_bits_needed]
                         if self.use_manchester: h_bits = self.manchester.decode(h_bits)
@@ -147,13 +149,13 @@ class depacketizer(gr.basic_block):
                         h_data = bytes(h_bytes)
                         if self.use_whitening: h_data = self.scrambler.process(h_data)
                         try:
-                            m_type, seq, plen = struct.unpack('BBB', h_data[:3])
+                            sid, m_type, seq, plen = struct.unpack('BBBB', h_data[:4])
                             if self.use_fec:
                                 if "LINK-16" in self.fec_mode or "LEVEL_6" in self.fec_mode: f_len = (((((plen + 14) // 15) * 15) * 8 + 74) // 75) * 31 * 5 // 8
                                 else: f_len = ((plen + 10) // 11) * 15
                             else: f_len = plen
                             c_len = 4 if self.crc_type == "CRC32" else (2 if self.crc_type == "CRC16" else 0)
-                            self.active_pkt_len = 3 + f_len + c_len
+                            self.active_pkt_len = 4 + f_len + c_len
                         except: pass
 
                 if self.use_interleaving:
@@ -178,7 +180,7 @@ class depacketizer(gr.basic_block):
                     if self.use_interleaving: data_block = self.interleaver.deinterleave(data_block, len(data_block))
                     
                     try:
-                        m_type, seq, plen = struct.unpack('BBB', data_block[:3])
+                        sid, m_type, seq, plen = struct.unpack('BBBB', data_block[:4])
                         if self.use_fec:
                             if "LINK-16" in self.fec_mode or "LEVEL_6" in self.fec_mode:
                                 padded_plen = ((plen + 14) // 15) * 15
@@ -187,7 +189,7 @@ class depacketizer(gr.basic_block):
                             else: f_len = ((plen + 10) // 11) * 15
                         else: f_len = plen
                         c_len = 4 if self.crc_type == "CRC32" else (2 if self.crc_type == "CRC16" else 0)
-                        full_packet_len = 3 + f_len + c_len
+                        full_packet_len = 4 + f_len + c_len
                         packet_for_crc = data_block[:full_packet_len]
                         
                         if self.use_dsss and self.dsss_type == "CCSK":
@@ -199,12 +201,17 @@ class depacketizer(gr.basic_block):
                         repairs = 0; payload = b""
 
                         if crc_pass:
-                            fec_payload = packet_for_crc[3:3+f_len]
+                            if self.ignore_self and sid == self.src_id:
+                                # Self-reception! Ignore it.
+                                self.state = "SEARCH"; self.bit_buf = 0
+                                self.consume(0, len(in0)); return 0
+
+                            fec_payload = packet_for_crc[4:4+f_len]
                             if self.use_fec:
                                 if "LINK-16" in self.fec_mode or "LEVEL_6" in self.fec_mode:
                                     p_bits = []
                                     for b in fec_payload:
-                                        for k in range(8): p_bits.append((b >> (7-k)) & 1)
+                                        for i in range(8): p_bits.append((b >> (7-i)) & 1)
                                     decoded_payload_bits = []
                                     for j in range(0, (len(p_bits)//(31*5))*(31*5), 31*5):
                                         chunk = p_bits[j:j+31*5]; symbols = []
@@ -241,7 +248,7 @@ class depacketizer(gr.basic_block):
                                 except Exception as e:
                                     print(f"\033[91m[FAIL]\033[0m COMSEC Decryption Error: {e}")
                                     comsec_fail = True
-                                    crc_pass = False # Force NACK if decryption fails
+                                    crc_pass = False 
                             
                             if not comsec_fail:
                                 print(f"\033[92m[OK]\033[0m ID: {seq:03} | Conf: {conf:5.1f}% | RX: {payload}")
@@ -259,8 +266,20 @@ class depacketizer(gr.basic_block):
                         self.message_port_pub(pmt.intern("diagnostics"), diag_dict)
 
                         # Log
-                        telemetry = {"timestamp": time.time(), "channel": self.current_channel, "crc_ok": crc_pass, "confidence": round(conf, 2)}
-                        self.telemetry_file.write(json.dumps(telemetry) + "\n"); self.telemetry_file.flush()
+                        telemetry = {
+                            "timestamp": time.time(),
+                            "event": "PACKET",
+                            "channel": self.current_channel,
+                            "crc_ok": crc_pass,
+                            "confidence": round(conf, 2),
+                            "sequence": seq,
+                            "fec_repairs": repairs
+                        }
+                        if not crc_pass:
+                            telemetry["trigger_iq"] = True
+                        
+                        self.telemetry_file.write(json.dumps(telemetry) + "\n")
+                        self.telemetry_file.flush()
 
                     except Exception as e: print(f"Decode Error: {e}")
                     self.state = "SEARCH"; self.bit_buf = 0

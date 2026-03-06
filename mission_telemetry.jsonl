@@ -178,3 +178,5 @@
 {"timestamp": 1772739283.6275532, "channel": 0, "crc_ok": true, "confidence": 100.0}
 {"timestamp": 1772739283.7450833, "event": "START", "mission_id": "AUTO_TEST"}
 {"timestamp": 1772739283.860086, "channel": 0, "crc_ok": true, "confidence": 100.0}
+{"timestamp": 1772759249.8548496, "event": "START", "mission_id": "LEVEL_6_LINK16"}
+{"timestamp": 1772759250.7249498, "event": "PACKET", "channel": 0, "crc_ok": true, "confidence": 100.0, "sequence": 0, "fec_repairs": 0}

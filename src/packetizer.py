@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Opal Vanguard - Mission-Controlled Packetizer (with Sequence Tracking)
+# Opal Vanguard - Mission-Controlled Packetizer (with COMSEC & SRC_ID)
 
 import numpy as np
 from gnuradio import gr
@@ -17,9 +17,10 @@ from rs_helper import RS1511, RS3115
 from dsp_helper import MatrixInterleaver, DSSSProcessor, NRZIEncoder, ManchesterEncoder, Scrambler, CCSKProcessor
 
 class packetizer(gr.basic_block):
-    def __init__(self, config_path="mission_configs/level1_soft_link.yaml"):
+    def __init__(self, config_path="mission_configs/level1_soft_link.yaml", src_id=0):
         gr.basic_block.__init__(self, name="packetizer", in_sig=None, out_sig=None)
         
+        self.src_id = src_id
         with open(config_path, 'r') as f:
             self.cfg = yaml.safe_load(f)
             
@@ -79,13 +80,12 @@ class packetizer(gr.basic_block):
         
         msg_type = pmt.to_long(pmt.dict_ref(meta, pmt.intern("type"), pmt.from_long(0)))
         
-        # COMSEC (Encryption) before FEC and framing
-        if self.use_comsec and msg_type == 0: # Only encrypt actual payload data
-            # Use the sequence number as part of the nonce to prevent replay attacks
+        # COMSEC (Encryption)
+        if self.use_comsec and msg_type == 0:
             nonce = struct.pack(">Q", self.sequence) + b'\x00' * 4
             payload_bytes = self.aesgcm.encrypt(nonce, payload_bytes, associated_data=None)
             
-        header = struct.pack('BBB', msg_type, self.sequence, len(payload_bytes) & 0xFF)
+        header = struct.pack('BBBB', self.src_id, msg_type, self.sequence, len(payload_bytes) & 0xFF)
         self.sequence = (self.sequence + 1) & 0xFF
         
         if self.use_fec:
@@ -146,7 +146,6 @@ class packetizer(gr.basic_block):
         
         if self.use_dsss:
             if self.dsss_type == "CCSK":
-                # CCSK mapping: 5 bits -> 32 chips
                 chips = []
                 for i in range(0, len(final_bits), 5):
                     chunk = final_bits[i:i+5]
