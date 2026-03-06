@@ -168,9 +168,8 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
             self.demod_b = digital.psk_demod(cp, True, sps, 0.35, 6.28/100, 6.28/100, digital.mod_codes.GRAY_CODE, False, False)
         elif mod_type == "MSK": self.mod_a = digital.gmsk_mod(sps, 0.5); self.demod_b = digital.gmsk_demod(sps, 0.1, 0.5, 0.005, 0.0)
         elif mod_type == "OFDM": self.mod_a = digital.ofdm_tx(64, 16, "packet_len"); self.demod_b = digital.ofdm_rx(64, 16, "packet_len")
-        else: self.mod_a = digital.gfsk_mod(sps, (2.0*np.pi*125000)/self.samp_rate, 0.35); self.demod_b = digital.gfsk_demod(sps, 0.1, 0.5, 0.005, 0.0)
+        else: self.mod_a = digital.gfsk_mod(sps, (2.0*np.pi*125000)/self.samp_rate, 0.35, False, False, False); self.demod_b = digital.gfsk_demod(sps, 0.1, 0.5, 0.005, 0.0)
 
-        self.heartbeat = analog.noise_source_c(analog.GR_GAUSSIAN, 0.0001); self.add = blocks.add_vcc(1)
         if hcfg.get('sync_mode') == "TOD": self.hop_ctrl = tod_hop_generator(bytes.fromhex(hcfg.get('aes_key', '00'*32)), hcfg.get('num_channels', 50), self.center_freq, hcfg.get('channel_spacing', 150000), hcfg.get('dwell_time_ms', 200), hcfg.get('lookahead_ms', 0))
         else: self.hop_ctrl = aes_hop_generator(bytes.fromhex(hcfg.get('aes_key', '00'*32)), hcfg.get('num_channels', 50), self.center_freq, hcfg.get('channel_spacing', 150000))
         self.rx_filter = filter.fir_filter_ccf(1, filter.firdes.low_pass(1.0, self.samp_rate, 500e3, 100e3)); self.iq_probe = IQDiagnosticProbe(self)
@@ -178,7 +177,7 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
         # Connect
         src_port = "out" if self.payload_type in ['chat', 'file'] else "strobe"
         self.msg_connect((self.pdu_src, src_port), (self.session, "data_in")); self.msg_connect((self.session, "pkt_out"), (self.pkt_a, "in")); self.msg_connect((self.pkt_a, "out"), (self.p2s_a, "pdus"))
-        self.connect(self.p2s_a, self.mod_a, (self.add, 0)); self.connect(self.heartbeat, (self.add, 1)); self.connect(self.add, self.usrp_sink)
+        self.connect(self.p2s_a, self.mod_a, self.usrp_sink)
         self.connect(self.usrp_source, self.rx_filter, self.demod_b, self.depkt_b); self.connect(self.usrp_source, self.iq_probe)
         self.msg_connect((self.depkt_b, "out"), (self.session, "msg_in")); self.msg_connect((self.depkt_b, "diagnostics"), (self.session, "crc_fail")); self.msg_connect((self.session, "blacklist_out"), (self.hop_ctrl, "blacklist"))
 

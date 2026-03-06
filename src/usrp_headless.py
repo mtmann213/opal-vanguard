@@ -93,7 +93,7 @@ class OpalVanguardUSRPHeadless(gr.top_block):
             # GFSK Default
             freq_dev = self.cfg['physical'].get('freq_dev', 125000)
             mod_sensitivity = (2.0 * np.pi * freq_dev) / self.samp_rate
-            self.mod_a = digital.gfsk_mod(samples_per_symbol=sps, sensitivity=mod_sensitivity, bt=0.35)
+            self.mod_a = digital.gfsk_mod(samples_per_symbol=sps, sensitivity=mod_sensitivity, bt=0.35, verbose=False, log=False, unpack=False)
             self.demod_b = digital.gfsk_demod(samples_per_symbol=sps, gain_mu=0.1, mu=0.5, omega_relative_limit=0.005, freq_error=0.0)
 
         print(f"[{self.role}] Initializing hop generator...")
