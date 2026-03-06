@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Opal Vanguard - USRP B210/B205mini Transceiver (Definitive Baseline Build v7.3)
+# Opal Vanguard - USRP B210/B205mini Transceiver (Signal Restoration Build v7.5)
 
 import os
 import sys
@@ -110,12 +110,12 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
         self.app_cfg = self.cfg.get('application_layer', {}); self.payload_type = self.app_cfg.get('payload_type', 'heartbeat')
         if self.payload_type == 'chat':
             self.chat_layout = Qt.QHBoxLayout(); self.chat_input = Qt.QLineEdit(); self.chat_btn = Qt.QPushButton("Send")
-            self.chat_layout.addWidget(self.chat_input); self.chat_input.addWidget(self.chat_btn); self.ctrl_panel.addLayout(self.chat_layout)
+            self.chat_layout.addWidget(self.chat_input); self.chat_layout.addWidget(self.chat_btn); self.ctrl_panel.addLayout(self.chat_layout)
             class ChatSender(gr.basic_block):
-                def __init__(self, parent): gr.basic_block.__init__(self, "ChatSender", None, None); self.p = parent; self.message_port_register_out(pmt.intern("out"))
+                def __init__(self): gr.basic_block.__init__(self, "ChatSender", None, None); self.message_port_register_out(pmt.intern("out"))
                 def send_msg(self, t): p = t.encode('utf-8'); self.message_port_pub(pmt.intern("out"), pmt.cons(pmt.make_dict(), pmt.init_u8vector(len(p), list(p))))
                 def work(self, i, o): return 0
-            self.pdu_src = ChatSender(self); self.chat_btn.clicked.connect(self.on_chat_send); self.chat_input.returnPressed.connect(self.on_chat_send)
+            self.pdu_src = ChatSender(); self.chat_btn.clicked.connect(self.on_chat_send); self.chat_input.returnPressed.connect(self.on_chat_send)
         elif self.payload_type == 'file':
             self.file_layout = Qt.QHBoxLayout(); self.file_path_input = Qt.QLineEdit(); self.file_browse_btn = Qt.QPushButton("...")
             self.file_send_btn = Qt.QPushButton("Send File"); self.file_layout.addWidget(self.file_path_input); self.file_layout.addWidget(self.file_browse_btn); self.file_layout.addWidget(self.file_send_btn); self.ctrl_panel.addLayout(self.file_layout)
@@ -185,7 +185,11 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
         self.msg_connect((self.depkt_b, "out"), (self.session, "msg_in")); self.msg_connect((self.depkt_b, "diagnostics"), (self.session, "crc_fail")); self.msg_connect((self.session, "blacklist_out"), (self.hop_ctrl, "blacklist"))
 
         class UHDHandler(gr.basic_block):
-            def __init__(self, parent): gr.basic_block.__init__(self, "UHDHandler", None, None); self.p = parent; self.message_port_register_in(pmt.intern("msg")); self.set_msg_handler(pmt.intern("msg"), self.handle); self.message_port_register_in(pmt.intern("blacklist")); self.set_msg_handler(pmt.intern("blacklist"), lambda m: None)
+            def __init__(self, parent):
+                gr.basic_block.__init__(self, "UHDHandler", None, None); self.p = parent
+                self.message_port_register_in(pmt.intern("msg")); self.set_msg_handler(pmt.intern("msg"), self.handle)
+                self.message_port_register_in(pmt.intern("blacklist")); self.set_msg_handler(pmt.intern("blacklist"), self.handle_blacklist)
+            def handle_blacklist(self, msg): pass # Stub for stability
             def handle(self, msg):
                 try:
                     if pmt.is_dict(msg):
