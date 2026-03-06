@@ -191,7 +191,10 @@ class depacketizer(gr.basic_block):
                                     payload = decoded[:plen]
                             else: payload = fec_payload[:plen]
                             
-                            print(f"\033[92m[OK]\033[0m ID: {seq:03} | RX: {payload}")
+                            type_map = {0: "DATA", 1: "SYN", 2: "ACK", 3: "NACK", 4: "AFH", 5: "AMC"}
+                            t_name = type_map.get(m_type, "UNKNOWN")
+                            color = "\033[92m" if m_type == 0 else "\033[96m" # Green for Data, Cyan for Control
+                            print(f"{color}[OK]\033[0m ID: {seq:03} | TYPE: {t_name:4} | RX: {payload}")
                             
                             out_meta = pmt.make_dict()
                             out_meta = pmt.dict_add(out_meta, pmt.intern("type"), pmt.from_long(m_type))

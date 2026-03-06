@@ -162,7 +162,7 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
         self.p2s_a = pdu.pdu_to_tagged_stream(gr.types.byte_t, "packet_len")
         
         mod_type = self.cfg['physical'].get('modulation', 'GFSK'); sps = self.cfg['physical'].get('samples_per_symbol', 8)
-        self.mult_len = blocks.tagged_stream_multiply_length(gr.sizeof_gr_complex*1, "packet_len", sps)
+        self.mult_len = blocks.tagged_stream_multiply_length(gr.sizeof_char*1, "packet_len", sps)
         
         if mod_type in ["DBPSK", "DQPSK", "D8PSK"]:
             cp = 2 if "BPSK" in mod_type else (4 if "QPSK" in mod_type else 8)
@@ -179,7 +179,12 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
         # Connect
         src_port = "out" if self.payload_type in ['chat', 'file'] else "strobe"
         self.msg_connect((self.pdu_src, src_port), (self.session, "data_in")); self.msg_connect((self.session, "pkt_out"), (self.pkt_a, "in")); self.msg_connect((self.pkt_a, "out"), (self.p2s_a, "pdus"))
-        self.connect(self.p2s_a, self.mod_a, self.mult_len, self.usrp_sink)
+        
+        if mod_type == "OFDM":
+            self.connect(self.p2s_a, self.mod_a, self.usrp_sink)
+        else:
+            self.connect(self.p2s_a, self.mult_len, self.mod_a, self.usrp_sink)
+            
         self.connect(self.usrp_source, self.rx_filter, self.demod_b, self.depkt_b); self.connect(self.usrp_source, self.iq_probe)
         self.msg_connect((self.depkt_b, "out"), (self.session, "msg_in")); self.msg_connect((self.depkt_b, "diagnostics"), (self.session, "crc_fail")); self.msg_connect((self.session, "blacklist_out"), (self.hop_ctrl, "blacklist"))
 
@@ -241,7 +246,9 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
         self.amc_h = AMCHandler(self); self.msg_connect((self.session, "amc_fallback"), (self.amc_h, "msg"))
 
         self.snk_waterfall = qtgui.waterfall_sink_c(2048, fft.window.WIN_BLACKMAN_HARRIS, self.center_freq, self.samp_rate, "Spectrum", 1)
+        self.snk_waterfall.set_update_time(0.2)
         self.viz_panel.addWidget(sip.wrapinstance(self.snk_waterfall.qwidget(), Qt.QWidget)); self.connect(self.usrp_source, self.snk_waterfall)
+
         self.ctrl_listen = RemoteControlListener(self); self.ctrl_listen.start()
         self.timer = Qt.QTimer(); self.timer.timeout.connect(lambda: self.hop_ctrl.handle_trigger(pmt.PMT_T))
         if hcfg.get('enabled', True): self.timer.start(hcfg['dwell_time_ms'])
