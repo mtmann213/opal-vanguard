@@ -148,7 +148,7 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
         args_str = hw_cfg['args']
         if serial: args_str += f",serial={serial}"
         try:
-            self.usrp_sink = uhd.usrp_sink(args_str, uhd.stream_args(cpu_format="fc32", channels=[0]))
+            self.usrp_sink = uhd.usrp_sink(args_str, uhd.stream_args(cpu_format="fc32", channels=[0]), "packet_len")
             self.usrp_source = uhd.usrp_source(args_str, uhd.stream_args(cpu_format="fc32", channels=[0]))
             for dev in [self.usrp_sink, self.usrp_source]:
                 dev.set_samp_rate(self.samp_rate); dev.set_center_freq(self.center_freq, 0)
@@ -162,6 +162,8 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
         self.p2s_a = pdu.pdu_to_tagged_stream(gr.types.byte_t, "packet_len")
         
         mod_type = self.cfg['physical'].get('modulation', 'GFSK'); sps = self.cfg['physical'].get('samples_per_symbol', 8)
+        self.mult_len = blocks.tagged_stream_multiply_length(gr.sizeof_gr_complex*1, "packet_len", sps)
+        
         if mod_type in ["DBPSK", "DQPSK", "D8PSK"]:
             cp = 2 if "BPSK" in mod_type else (4 if "QPSK" in mod_type else 8)
             self.mod_a = digital.psk_mod(cp, digital.mod_codes.GRAY_CODE, True, sps, 0.35, False, False)
@@ -177,7 +179,7 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
         # Connect
         src_port = "out" if self.payload_type in ['chat', 'file'] else "strobe"
         self.msg_connect((self.pdu_src, src_port), (self.session, "data_in")); self.msg_connect((self.session, "pkt_out"), (self.pkt_a, "in")); self.msg_connect((self.pkt_a, "out"), (self.p2s_a, "pdus"))
-        self.connect(self.p2s_a, self.mod_a, self.usrp_sink)
+        self.connect(self.p2s_a, self.mod_a, self.mult_len, self.usrp_sink)
         self.connect(self.usrp_source, self.rx_filter, self.demod_b, self.depkt_b); self.connect(self.usrp_source, self.iq_probe)
         self.msg_connect((self.depkt_b, "out"), (self.session, "msg_in")); self.msg_connect((self.depkt_b, "diagnostics"), (self.session, "crc_fail")); self.msg_connect((self.session, "blacklist_out"), (self.hop_ctrl, "blacklist"))
 

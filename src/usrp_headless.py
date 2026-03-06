@@ -40,7 +40,7 @@ class OpalVanguardUSRPHeadless(gr.top_block):
         
         print(f"[{self.role}] Initializing USRP with args: {args}")
         try:
-            self.usrp_sink = uhd.usrp_sink(args, uhd.stream_args(cpu_format="fc32", channels=[0]))
+            self.usrp_sink = uhd.usrp_sink(args, uhd.stream_args(cpu_format="fc32", channels=[0]), "packet_len")
             print(f"[{self.role}] USRP Sink initialized.")
             self.usrp_source = uhd.usrp_source(args, uhd.stream_args(cpu_format="fc32", channels=[0]))
             print(f"[{self.role}] USRP Source initialized.")
@@ -69,6 +69,7 @@ class OpalVanguardUSRPHeadless(gr.top_block):
         
         mod_type = self.cfg['physical'].get('modulation', 'GFSK')
         sps = self.cfg['physical'].get('samples_per_symbol', 8)
+        self.mult_len = blocks.tagged_stream_multiply_length(gr.sizeof_gr_complex*1, "packet_len", sps)
         
         if mod_type == "DBPSK":
             self.mod_a = digital.psk_mod(
@@ -112,7 +113,7 @@ class OpalVanguardUSRPHeadless(gr.top_block):
         self.msg_connect((self.pdu_src, "strobe"), (self.session_a, "data_in"))
         self.msg_connect((self.session_a, "pkt_out"), (self.pkt_a, "in"))
         self.msg_connect((self.pkt_a, "out"), (self.p2s_a, "pdus"))
-        self.connect(self.p2s_a, self.mod_a, self.usrp_sink)
+        self.connect(self.p2s_a, self.mod_a, self.mult_len, self.usrp_sink)
         self.connect(self.usrp_source, self.rx_filter, self.demod_b, self.depkt_b)
         self.msg_connect((self.depkt_b, "out"), (self.session_b, "msg_in"))
         self.msg_connect((self.session_b, "pkt_out"), (self.session_a, "msg_in"))
