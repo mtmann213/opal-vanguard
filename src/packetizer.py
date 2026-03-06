@@ -26,6 +26,8 @@ class packetizer(gr.basic_block):
         self.use_whitening = l_cfg.get('use_whitening', True)
         self.use_nrzi = l_cfg.get('use_nrzi', True)
         self.use_manchester = l_cfg.get('use_manchester', False)
+        self.use_comsec = False
+        self.aes_gcm = None
         self.fec_mode = self.cfg.get('mission', {}).get('id', "")
         
         self.interleaver = MatrixInterleaver(rows=self.rows)
@@ -51,6 +53,12 @@ class packetizer(gr.basic_block):
         if pmt.is_dict(pmt.car(msg)):
             seq = pmt.to_long(pmt.dict_ref(pmt.car(msg), pmt.intern("seq"), pmt.from_long(0)))
             m_type = pmt.to_long(pmt.dict_ref(pmt.car(msg), pmt.intern("type"), pmt.from_long(0)))
+
+        # 0. COMSEC
+        if self.use_comsec and self.aes_gcm:
+            nonce = os.urandom(12)
+            ciphertext = self.aes_gcm.encrypt(nonce, payload, None)
+            payload = nonce + ciphertext
 
         # 1. FEC
         if self.use_fec:
