@@ -192,7 +192,12 @@ class depacketizer(gr.basic_block):
                             else: payload = fec_payload[:plen]
                             
                             print(f"\033[92m[OK]\033[0m ID: {seq:03} | RX: {payload}")
-                            self.message_port_pub(pmt.intern("out"), pmt.cons(pmt.make_dict(), pmt.init_u8vector(len(payload), list(payload))))
+                            
+                            out_meta = pmt.make_dict()
+                            out_meta = pmt.dict_add(out_meta, pmt.intern("type"), pmt.from_long(m_type))
+                            out_meta = pmt.dict_add(out_meta, pmt.intern("seq"), pmt.from_long(seq))
+                            out_meta = pmt.dict_add(out_meta, pmt.intern("src_id"), pmt.from_long(sid))
+                            self.message_port_pub(pmt.intern("out"), pmt.cons(out_meta, pmt.init_u8vector(len(payload), list(payload))))
                         
                         # Telemetry
                         diag_dict = pmt.make_dict()
