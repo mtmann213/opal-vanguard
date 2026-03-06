@@ -50,6 +50,11 @@ class session_manager(gr.basic_block):
         m_type = pmt.to_long(pmt.dict_ref(meta, pmt.intern("type"), pmt.from_long(0)))
 
         if m_type == 1: # SYN
+            try:
+                peer_seed = struct.unpack('>H', payload[:2])[0]
+                self.current_seed = peer_seed
+                print(f"\033[96m[MAC] Handshake Seed Synced: 0x{peer_seed:04X}\033[0m")
+            except: pass
             self.send_packet(b"ACK", msg_type=2); self.state = "CONNECTED"
             self.consecutive_fails = 0
         elif m_type == 2: # ACK
@@ -95,7 +100,9 @@ class session_manager(gr.basic_block):
             self.tx_buffer.append(msg)
             if self.state == "IDLE" or self.state == "CONNECTING":
                 self.state = "CONNECTING"
-                self.send_packet(struct.pack('>H', self.current_seed), msg_type=1)
+                # Pad SYN to 16 bytes for COMSEC reliability
+                syn_payload = struct.pack('>H', self.current_seed).ljust(16, b'\x00')
+                self.send_packet(syn_payload, msg_type=1)
 
     def handle_crc_fail(self, msg):
         # 1. ARQ NACK
