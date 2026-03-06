@@ -93,7 +93,7 @@ class session_manager(gr.basic_block):
         if self.state == "CONNECTED": self.send_data_packet(msg)
         else:
             self.tx_buffer.append(msg)
-            if self.state == "IDLE":
+            if self.state == "IDLE" or self.state == "CONNECTING":
                 self.state = "CONNECTING"
                 self.send_packet(struct.pack('>H', self.current_seed), msg_type=1)
 
