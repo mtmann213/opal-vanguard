@@ -17,7 +17,7 @@ link_layer:
   use_nrzi: true
   use_manchester: false
 mac_layer:
-  amc_enabled: true
+  amc_enabled: false
   arq_enabled: true
   afh_enabled: true
   max_retries: 5

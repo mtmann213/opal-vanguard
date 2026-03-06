@@ -8,7 +8,7 @@ physical:
   freq_dev: 125000
   samples_per_symbol: 8
 mac_layer:
-  amc_enabled: true
+  amc_enabled: false
   arq_enabled: true
   max_retries: 3
 link_layer:
