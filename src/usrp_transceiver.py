@@ -27,6 +27,7 @@ from depacketizer import depacketizer
 from hop_generator_aes import aes_hop_generator
 from hop_generator_tod import tod_hop_generator
 from session_manager import session_manager
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from config_validator import validate_config
 
 # ----------------------------------------------------------------------
