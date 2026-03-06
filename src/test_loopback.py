@@ -43,7 +43,10 @@ def test_loopback(config_path="mission_configs/level1_soft_link.yaml"):
     print("-" * 40)
 
 if __name__ == "__main__":
-    for level in [1, 2, 3]:
+    for level in [1, 2, 3, 4]:
         cfg = f"mission_configs/level{level}_" + (
-            "soft_link.yaml" if level == 1 else "repairable.yaml" if level == 2 else "resilient.yaml")
+            "soft_link.yaml" if level == 1 else 
+            "repairable.yaml" if level == 2 else 
+            "resilient.yaml" if level == 3 else
+            "stealth.yaml")
         test_loopback(cfg)

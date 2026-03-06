@@ -113,7 +113,8 @@ class packetizer(gr.basic_block):
                     for j in range(5): sym = (sym << 1) | bits[i+j]
                     final_bits.extend(self.ccsk.encode_symbol(sym))
             else:
-                for b in bits: final_bits.extend(self.dsss.encode([b]))
+                chips = self.dsss.spread(bits)
+                final_bits = [1 if c > 0 else 0 for c in chips]
         else: final_bits = bits
         
         # 6. Framing (Preamble + Syncword + Data)
