@@ -7,15 +7,16 @@ import numpy as np
 class MatrixInterleaver:
     def __init__(self, rows=8):
         self.rows = rows
-    def interleave(self, data):
+    def interleave(self, data, *args):
         data_len = len(data)
         cols = (data_len + self.rows - 1) // self.rows
         padded_data = list(data) + [0] * (cols * self.rows - data_len)
         matrix = np.array(padded_data).reshape((self.rows, cols))
         interleaved = matrix.T.flatten()
         return bytes(interleaved.tolist())
-    def deinterleave(self, data, original_len):
+    def deinterleave(self, data, *args):
         data_len = len(data)
+        original_len = args[0] if args else data_len
         cols = data_len // self.rows
         matrix = np.array(list(data)).reshape((cols, self.rows))
         deinterleaved = matrix.T.flatten()
@@ -110,6 +111,8 @@ class Scrambler:
     def __init__(self, mask=0x48, seed=0x7F):
         self.mask = mask
         self.seed = seed
+    def reset(self):
+        pass
     def process(self, data):
         state = self.seed
         out = []

@@ -14,21 +14,17 @@ We have stripped the codebase down to an **Absolute Stability Baseline** to elim
 5.  **Virtual Wipe:** Dashboard UI now uses browser-side timestamp filtering for telemetry wipes, bypassing `sudo` file permission issues.
 
 ## 🚀 Laptop 2 Setup (ALPHA)
-The next agent should perform the following to resume:
+The repository has been synced and cleaned. Resume with:
 
 ```bash
-# 1. Force hard sync to main
-git fetch origin
-git reset --hard origin/main
+# 1. (COMPLETED) Force hard sync to main
+# 2. (COMPLETED) Purge Python cache
 
-# 2. Purge Python cache
-find . -name "__pycache__" -type d -exec rm -rf {} +
-
-# 3. Launch ALPHA Radio
-sudo -E python3 src/usrp_transceiver.py --role ALPHA --serial 3457480 --config mission_configs/level3_resilient.yaml
+# 3. Launch ALPHA Radio (Updated Serial & sudo for stability)
+sudo -E python3 src/usrp_transceiver.py --role ALPHA --serial 3449AC1 --config mission_configs/level3_resilient.yaml
 ```
 
 ## 📋 Mission Log
 - **Level 1 & 2:** Stable.
-- **Level 3:** Freezing fixed. Payloads restored.
-- **Next Step:** Verify "HEARTBEAT FROM ALPHA" is received correctly by BRAVO on Laptop 1.
+- **Level 3:** Repo synced and cache purged. Hardware verified (B205mini, serial 3449AC1).
+- **Next Step:** User starting ALPHA Radio manually to verify "HEARTBEAT FROM ALPHA" reception by BRAVO.
