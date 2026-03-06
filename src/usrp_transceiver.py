@@ -150,7 +150,7 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
         args_str = hw_cfg['args']
         if serial: args_str += f",serial={serial}"
         try:
-            self.usrp_sink = uhd.usrp_sink(args_str, uhd.stream_args(cpu_format="fc32", channels=[0]), "packet_len")
+            self.usrp_sink = uhd.usrp_sink(args_str, uhd.stream_args(cpu_format="fc32", channels=[0]))
             self.usrp_source = uhd.usrp_source(args_str, uhd.stream_args(cpu_format="fc32", channels=[0]))
             for dev in [self.usrp_sink, self.usrp_source]:
                 dev.set_samp_rate(self.samp_rate); dev.set_center_freq(self.center_freq, 0)
@@ -196,11 +196,7 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
         src_port = "out" if self.payload_type in ['chat', 'file'] else "strobe"
         self.msg_connect((self.pdu_src, src_port), (self.session, "data_in")); self.msg_connect((self.session, "pkt_out"), (self.pkt_a, "in")); self.msg_connect((self.pkt_a, "out"), (self.p2s_a, "pdus"))
         
-        if mod_type == "OFDM":
-            self.connect(self.p2s_a, self.mod_a, self.rot_tx, self.usrp_sink)
-        else:
-            self.connect(self.p2s_a, self.mod_a, self.mult_len, self.rot_tx, self.usrp_sink)
-            
+        self.connect(self.p2s_a, self.mod_a, self.rot_tx, self.usrp_sink)
         self.connect(self.usrp_source, self.rx_filter, self.rot_rx, self.demod_b, self.depkt_b); self.connect(self.usrp_source, self.iq_probe)
         self.msg_connect((self.depkt_b, "out"), (self.session, "msg_in")); self.msg_connect((self.depkt_b, "diagnostics"), (self.session, "crc_fail")); self.msg_connect((self.session, "blacklist_out"), (self.hop_ctrl, "blacklist"))
 
