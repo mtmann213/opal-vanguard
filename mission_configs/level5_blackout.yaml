@@ -2,7 +2,7 @@ mission:
   id: LEVEL_5_BLACKOUT
 physical:
   ghost_mode: true
-  samp_rate: 2000000
+  samp_rate: 1000000
   center_freq: 915000000
   modulation: GFSK
   freq_dev: 125000
@@ -68,7 +68,7 @@ hopping:
   initial_seed: 2766
 hardware:
   args: type=b200
-  samp_rate: 2000000
+  samp_rate: 1000000
   tx_gain: 70
   rx_gain: 70
   tx_antenna: TX/RX

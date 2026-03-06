@@ -34,6 +34,8 @@ class depacketizer(gr.basic_block):
         self.use_whitening = l_cfg.get('use_whitening', True)
         self.use_nrzi = l_cfg.get('use_nrzi', True)
         self.use_manchester = l_cfg.get('use_manchester', False)
+        self.use_comsec = False
+        self.aes_gcm = None
         self.fec_mode = self.cfg.get('mission', {}).get('id', "")
         
         # Core Blocks
@@ -191,6 +193,17 @@ class depacketizer(gr.basic_block):
                                     payload = decoded[:plen]
                             else: payload = fec_payload[:plen]
                             
+                            # 2. COMSEC Decryption
+                            if self.use_comsec and self.aes_gcm:
+                                try:
+                                    if len(payload) > 12:
+                                        nonce = payload[:12]
+                                        ciphertext = payload[12:]
+                                        payload = self.aes_gcm.decrypt(nonce, ciphertext, None)
+                                except Exception as e:
+                                    print(f"\033[91m[COMSEC ERROR]\033[0m Decryption failed: {e}")
+                                    self.state = "SEARCH"; self.bit_buf = 0; continue
+
                             type_map = {0: "DATA", 1: "SYN", 2: "ACK", 3: "NACK", 4: "AFH", 5: "AMC"}
                             t_name = type_map.get(m_type, "UNKNOWN")
                             color = "\033[92m" if m_type == 0 else "\033[96m" # Green for Data, Cyan for Control
