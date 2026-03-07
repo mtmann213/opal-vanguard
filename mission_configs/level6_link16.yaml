@@ -24,7 +24,7 @@ link_layer:
   crc_type: CRC16
   use_fec: true
   use_interleaving: true
-  interleaver_rows: 15
+  interleaver_rows: 16
   use_whitening: true
   use_nrzi: true
   use_manchester: false

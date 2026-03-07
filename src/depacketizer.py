@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Opal Vanguard - Mission-Controlled Depacketizer (Deep FEC Build v10.4)
+# Opal Vanguard - Mission-Controlled Depacketizer (Tactical Standard Build v10.5)
 
 import numpy as np
 from gnuradio import gr
@@ -24,7 +24,7 @@ class depacketizer(gr.basic_block):
         self.use_nrzi = l_cfg.get('use_nrzi', True)
         self.use_comsec = False
         self.comsec_key = None
-        self.interleaver = MatrixInterleaver(rows=l_cfg.get('interleaver_rows', 15))
+        self.interleaver = MatrixInterleaver(rows=l_cfg.get('interleaver_rows', 16))
         self.scrambler = Scrambler(mask=l_cfg.get('scrambler_mask', 0x48), seed=l_cfg.get('scrambler_seed', 0x7F))
         self.nrzi = NRZIEncoder()
         self.fec_mode = self.cfg.get('mission', {}).get('id', "")
@@ -35,10 +35,8 @@ class depacketizer(gr.basic_block):
         self.message_port_register_out(pmt.intern("diagnostics"))
         self.state, self.bit_buf = "SEARCH", 0
         self.syncword_32 = 0x3D4C5B6A
-        self.syncword_64 = 0x3D4C5B6AACE12345
 
     def verify_crc(self, payload, true_plen):
-        """Verify inner CRC based strictly on payload bits."""
         if len(payload) < (true_plen + 2): return False
         extracted_data = payload[:true_plen]
         extracted_crc = struct.unpack('>H', payload[true_plen:true_plen+2])[0]
@@ -57,15 +55,12 @@ class depacketizer(gr.basic_block):
         is_tactical = ("LINK-16" in self.fec_mode or "LEVEL_6" in self.fec_mode)
         for i in range(n):
             bit = int(in0[i]) & 1
-            self.bit_buf = ((self.bit_buf << 1) | bit) & 0xFFFFFFFFFFFFFFFF
+            self.bit_buf = ((self.bit_buf << 1) | bit) & 0xFFFFFFFF
             found_sync = False
-            if is_tactical:
-                if bin(self.bit_buf ^ self.syncword_64).count('1') <= 4: self.is_inverted = False; found_sync = True
-                elif bin(self.bit_buf ^ (0xFFFFFFFFFFFFFFFF ^ self.syncword_64)).count('1') <= 4: self.is_inverted = True; found_sync = True
-            else:
-                buf32 = self.bit_buf & 0xFFFFFFFF
-                if bin(buf32 ^ self.syncword_32).count('1') <= 2: self.is_inverted = False; found_sync = True
-                elif bin(buf32 ^ (0xFFFFFFFF ^ self.syncword_32)).count('1') <= 2: self.is_inverted = True; found_sync = True
+            # Standard 32-bit Sync Trigger (Strict for Tactical, 2-bit for Baseline)
+            threshold = 0 if is_tactical else 2
+            if bin(self.bit_buf ^ self.syncword_32).count('1') <= threshold: self.is_inverted = False; found_sync = True
+            elif bin(self.bit_buf ^ (0xFFFFFFFF ^ self.syncword_32)).count('1') <= threshold: self.is_inverted = True; found_sync = True
             
             if found_sync:
                 self.state, self.recovered_bits, self.ccsk_buf = "COLLECT", [], []
@@ -100,17 +95,14 @@ class depacketizer(gr.basic_block):
                             bytes_data.append(acc)
                         data_block = bytes(bytes_data)
                         
-                        # 1. De-whiten FIRST
                         if self.use_whitening: self.scrambler.reset(); data_block = self.scrambler.process(data_block)
-                        # 2. De-interleave SECOND
                         if self.use_interleaving: data_block = self.interleaver.deinterleave(data_block)
                         
-                        # 3. Deep HEALING STAGE (RS 31,15)
+                        # Deep HEALING (RS 31,15)
                         decoded_payload = data_block
                         if self.use_fec:
                             from rs_helper import RS3115
                             rs, healed = RS3115(), b''
-                            # Convert 160 bytes back into 31-symbol blocks
                             for j in range(0, len(data_block), 20):
                                 chunk_bytes = data_block[j:j+20]
                                 if len(chunk_bytes) < 20: break
@@ -122,16 +114,11 @@ class depacketizer(gr.basic_block):
                                     s = 0
                                     for m in range(5): s = (s << 1) | c_bits[k+m]
                                     syms.append(s)
-                                # Decode RS(31,15)
                                 d_syms = rs.decode(syms)
-                                # Each 15 symbols is exactly 15 bytes in our mapping
-                                healed += bytes(d_syms)
+                                healed += bytes(d_syms) # Reconstruct 15 bytes
                             decoded_payload = healed
                         
-                        # 4. Extract Header from HEALED data
                         sid, m_type, seq, true_plen = struct.unpack('BBBB', decoded_payload[:4])
-                        
-                        # 5. CRC Check on HEALED payload
                         payload_zone = decoded_payload[4:4+true_plen+2]
                         crc_pass = self.verify_crc(payload_zone, true_plen)
                         

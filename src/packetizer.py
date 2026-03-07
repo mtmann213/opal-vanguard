@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Opal Vanguard - Mission-Controlled Packetizer (Deep FEC Build v10.4)
+# Opal Vanguard - Mission-Controlled Packetizer (Tactical Standard Build v10.5)
 
 import numpy as np
 from gnuradio import gr
@@ -29,7 +29,7 @@ class packetizer(gr.basic_block):
         d_cfg = self.cfg.get('dsss', {})
         self.use_ccsk = (d_cfg.get('enabled', False) and d_cfg.get('type') == "CCSK")
         self.ccsk = CCSKProcessor()
-        self.interleaver = MatrixInterleaver(rows=l_cfg.get('interleaver_rows', 15))
+        self.interleaver = MatrixInterleaver(rows=l_cfg.get('interleaver_rows', 16))
         self.scrambler = Scrambler(mask=l_cfg.get('scrambler_mask', 0x48), seed=l_cfg.get('scrambler_seed', 0x7F))
         self.nrzi = NRZIEncoder()
         
@@ -63,14 +63,12 @@ class packetizer(gr.basic_block):
         # 3. Assemble Unified Raw Block (Header + Payload + CRC)
         raw_block = struct.pack('BBBB', self.src_id, m_type, seq, true_plen) + payload + struct.pack('>H', crc)
 
-        # 4. Deep FEC Encoding (RS 31,15 over GF(32))
+        # 4. FEC Encoding (RS 31,15)
         data_to_transmit = raw_block
         if self.use_fec:
             from rs_helper import RS3115
             rs = RS3115()
             fec_payload = b''
-            # Link 16 standard: 15 symbols (75 bits) -> 31 symbols (155 bits)
-            # We'll pack 15 bytes into one RS(31,15) block by treating each byte as a symbol
             for i in range(0, len(raw_block), 15):
                 chunk = list(raw_block[i:i+15].ljust(15, b'\x00'))
                 encoded = rs.encode(chunk)
@@ -109,8 +107,9 @@ class packetizer(gr.basic_block):
         else: final_bits = bits
 
         # 8. Framing
-        preamble = [1,0]*1024
-        syncword = [int(b) for b in format(0x3D4C5B6AACE12345 if is_tactical else 0x3D4C5B6A, '064b' if is_tactical else '032b')]
+        preamble = [1,0]*256
+        # Revert to 32-bit Sync for better trigger reliability
+        syncword = [int(b) for b in format(0x3D4C5B6A, '032b')]
         out_bits = preamble + syncword + final_bits
         self.message_port_pub(pmt.intern("out"), pmt.cons(pmt.make_dict(), pmt.init_u8vector(len(out_bits), out_bits)))
 
