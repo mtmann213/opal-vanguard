@@ -169,8 +169,8 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
         # COMSEC Support
         if self.cfg['link_layer'].get('use_comsec', False):
             key = bytes.fromhex(self.cfg['link_layer'].get('comsec_key', '00'*32))
-            self.pkt_a.use_comsec = True; self.pkt_a.aes_gcm = AESGCM(key)
-            self.depkt_b.use_comsec = True; self.depkt_b.aes_gcm = AESGCM(key)
+            self.pkt_a.use_comsec = True; self.pkt_a.comsec_key = key
+            self.depkt_b.use_comsec = True; self.depkt_b.comsec_key = key
             print("[TERMINAL] COMSEC (AES-GCM) ENABLED")
 
         self.p2s_a = pdu.pdu_to_tagged_stream(gr.types.byte_t, "packet_len")
