@@ -173,7 +173,10 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
             self.depkt_b.use_comsec = True; self.depkt_b.aes_gcm = AESGCM(key)
             print("[TERMINAL] COMSEC (AES-GCM) ENABLED")
 
-        self.p2s_a = pdu.pdu_to_tagged_stream(gr.types.byte_t, "packet_len")
+        # 100% Continuous Architecture
+        self.silence_src = analog.sig_source_b(self.samp_rate, analog.GR_CONST_WAVE, 0, 0, 0)
+        self.pdu_in = pdu.pdu_to_tagged_stream(gr.types.byte_t, "packet_len")
+        self.add_stream = blocks.add_bb()
         
         mod_type = self.cfg['physical'].get('modulation', 'GFSK'); sps = self.cfg['physical'].get('samples_per_symbol', 8)
         self.mult_len = blocks.tagged_stream_multiply_length(gr.sizeof_gr_complex*1, "packet_len", sps)
@@ -194,9 +197,12 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
 
         # Connect
         src_port = "out" if self.payload_type in ['chat', 'file'] else "strobe"
-        self.msg_connect((self.pdu_src, src_port), (self.session, "data_in")); self.msg_connect((self.session, "pkt_out"), (self.pkt_a, "in")); self.msg_connect((self.pkt_a, "out"), (self.p2s_a, "pdus"))
+        self.msg_connect((self.pdu_src, src_port), (self.session, "data_in")); self.msg_connect((self.session, "pkt_out"), (self.pkt_a, "in")); self.msg_connect((self.pkt_a, "out"), (self.pdu_in, "pdus"))
         
-        self.connect(self.p2s_a, self.mod_a, self.mult_len, self.rot_tx, self.usrp_sink)
+        self.connect(self.silence_src, (self.add_stream, 0))
+        self.connect(self.pdu_in, (self.add_stream, 1))
+        self.connect(self.add_stream, self.mod_a, self.mult_len, self.rot_tx, self.usrp_sink)
+        
         self.connect(self.usrp_source, self.rx_filter, self.rot_rx, self.demod_b, self.depkt_b); self.connect(self.usrp_source, self.iq_probe)
         self.msg_connect((self.depkt_b, "out"), (self.session, "msg_in")); self.msg_connect((self.depkt_b, "diagnostics"), (self.session, "crc_fail")); self.msg_connect((self.session, "blacklist_out"), (self.hop_ctrl, "blacklist"))
 
