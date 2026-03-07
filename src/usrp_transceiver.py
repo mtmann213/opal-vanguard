@@ -173,10 +173,9 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
             self.depkt_b.use_comsec = True; self.depkt_b.aes_gcm = AESGCM(key)
             print("[TERMINAL] COMSEC (AES-GCM) ENABLED")
 
-        self.p2s_a = pdu.pdu_to_tagged_stream(gr.types.byte_t, "packet_len")
+        self.p2s_a = pdu.pdu_to_tagged_stream(gr.types.byte_t, "tx_sob", "tx_eob", "packet_len")
         
         mod_type = self.cfg['physical'].get('modulation', 'GFSK'); sps = self.cfg['physical'].get('samples_per_symbol', 8)
-        self.mult_len = blocks.tagged_stream_multiply_length(gr.sizeof_gr_complex*1, "packet_len", sps)
         
         if mod_type in ["DBPSK", "DQPSK", "D8PSK"]:
             cp = 2 if "BPSK" in mod_type else (4 if "QPSK" in mod_type else 8)
@@ -195,41 +194,13 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
         src_port = "out" if self.payload_type in ['chat', 'file'] else "strobe"
         self.msg_connect((self.pdu_src, src_port), (self.session, "data_in")); self.msg_connect((self.session, "pkt_out"), (self.pkt_a, "in")); self.msg_connect((self.pkt_a, "out"), (self.p2s_a, "pdus"))
         
-        if mod_type == "OFDM":
-            self.connect(self.p2s_a, self.mod_a, self.usrp_sink)
-        else:
-            self.connect(self.p2s_a, self.mod_a, self.mult_len, self.usrp_sink)
-        
+        # Async Frequency Control
+        self.msg_connect((self.hop_ctrl, "freq"), (self.usrp_sink, "command"))
+        self.msg_connect((self.hop_ctrl, "freq"), (self.usrp_source, "command"))
+
+        self.connect(self.p2s_a, self.mod_a, self.usrp_sink)
         self.connect(self.usrp_source, self.rx_filter, self.demod_b, self.depkt_b); self.connect(self.usrp_source, self.iq_probe)
         self.msg_connect((self.depkt_b, "out"), (self.session, "msg_in")); self.msg_connect((self.depkt_b, "diagnostics"), (self.session, "crc_fail")); self.msg_connect((self.session, "blacklist_out"), (self.hop_ctrl, "blacklist"))
-
-        class UHDHandler(gr.basic_block):
-            def __init__(self, parent):
-                gr.basic_block.__init__(self, "UHDHandler", None, None); self.p = parent
-                self.message_port_register_in(pmt.intern("msg")); self.set_msg_handler(pmt.intern("msg"), self.handle)
-            def handle(self, msg):
-                try:
-                    if pmt.is_dict(msg):
-                        f = pmt.to_double(pmt.dict_ref(msg, pmt.intern("freq"), pmt.from_double(0)))
-                        t = pmt.to_double(pmt.dict_ref(msg, pmt.intern("time"), pmt.from_double(0)))
-                        if f > 0:
-                            if t > 0:
-                                # Synchronized Timed Command
-                                self.p.usrp_sink.set_command_time(uhd.time_spec(t))
-                                self.p.usrp_source.set_command_time(uhd.time_spec(t))
-                                self.p.usrp_sink.set_center_freq(f)
-                                self.p.usrp_source.set_center_freq(f)
-                                self.p.usrp_sink.clear_command_time()
-                                self.p.usrp_source.clear_command_time()
-                            else:
-                                self.p.usrp_sink.set_center_freq(f)
-                                self.p.usrp_source.set_center_freq(f)
-                    else:
-                        f = pmt.to_double(msg)
-                        if f > 0: self.p.usrp_sink.set_center_freq(f); self.p.usrp_source.set_center_freq(f)
-                except: pass
-            def work(self, i, o): return 0
-        self.uhd_h = UHDHandler(self); self.msg_connect((self.hop_ctrl, "freq"), (self.uhd_h, "msg"))
 
         class DiagProxy(gr.basic_block):
             def __init__(self, parent): gr.basic_block.__init__(self, "DiagProxy", None, None); self.p = parent; self.message_port_register_in(pmt.intern("msg")); self.set_msg_handler(pmt.intern("msg"), self.handle)
