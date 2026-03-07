@@ -71,8 +71,22 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
     ghost_trigger_signal = pyqtSignal()
 
     def __init__(self, role="ALPHA", serial="", config_path="mission_configs/level1_soft_link.yaml"):
+        # Automated Mission Observer Redirection
+        self.log_file = open("mission_observer.log", "a", buffering=1)
+        sys.stdout = self.LoggerProxy(sys.stdout, self.log_file)
+        sys.stderr = self.LoggerProxy(sys.stderr, self.log_file)
+        print(f"\n--- [MISSION OBSERVER START: {time.ctime()}] ---")
+
         gr.top_block.__init__(self, f"Opal Vanguard - {role}")
         Qt.QWidget.__init__(self)
+...
+    class LoggerProxy:
+        def __init__(self, original, log_file):
+            self.original = original; self.log_file = log_file
+        def write(self, data):
+            self.original.write(data); self.log_file.write(data)
+        def flush(self):
+            self.original.flush(); self.log_file.flush()
         
         self.role = role; self.serial = serial; self.config_path = config_path
         self.reboot_requested = None
