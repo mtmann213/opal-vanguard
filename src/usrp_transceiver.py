@@ -134,10 +134,17 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
 
         self.text_out = Qt.QTextEdit(); self.text_out.setReadOnly(True); self.ctrl_layout.addWidget(self.text_out)
         
-        if self.payload_type == 'chat':
+        # Data Source Initialization
+        if self.payload_type == 'heartbeat':
+            interval = 1000 if role == "ALPHA" else 1200
+            self.pdu_src = blocks.message_strobe(pmt.cons(pmt.make_dict(), pmt.init_u8vector(len(f"HEARTBEAT FROM {role}"), list(f"HEARTBEAT FROM {role}".encode()))), interval)
+        elif self.payload_type == 'chat':
+            self.pdu_src = blocks.message_debug() # Use as a message port container
             self.chat_layout = Qt.QHBoxLayout(); self.chat_input = Qt.QLineEdit(); self.chat_btn = Qt.QPushButton("Send")
             self.chat_layout.addWidget(self.chat_input); self.chat_layout.addWidget(self.chat_btn); self.ctrl_layout.addLayout(self.chat_layout)
             self.chat_btn.clicked.connect(self.send_chat)
+        else:
+            self.pdu_src = blocks.message_strobe(pmt.cons(pmt.make_dict(), pmt.init_u8vector(len(f"HEARTBEAT FROM {role}"), list(f"HEARTBEAT FROM {role}".encode()))), 1000)
         
         self.viz_tab = Qt.QWidget(); self.tabs.addTab(self.viz_tab, "Visualization")
         self.viz_layout = Qt.QVBoxLayout(self.viz_tab); self.viz_panel = Qt.QVBoxLayout(); self.viz_layout.addLayout(self.viz_panel)
