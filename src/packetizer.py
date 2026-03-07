@@ -149,7 +149,7 @@ class packetizer(gr.basic_block):
             final_bits = bits
 
         # 7. Framing (Preamble + Syncword + Data)
-        preamble = [1,0]*256 # Robust 2ms preamble for USRP T/R switch settling
+        preamble = [1,0]*512 # Extended 4ms preamble for 2Msps hardware settling
         syncword = [int(b) for b in format(0x3D4C5B6A, '032b')]
         out_bits = preamble + syncword + final_bits
         

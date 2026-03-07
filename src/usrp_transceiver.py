@@ -196,8 +196,8 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
             sens = (2.0 * np.pi * freq_dev) / self.samp_rate
             self.mod_a = analog.frequency_modulator_fc(sens)
             
-            # Receiver remains standard
-            self.demod_b = digital.gfsk_demod(sps, sens, 0.1, 0.5, 0.005, 0.0)
+            # Receiver remains standard - Tuned for faster burst lock
+            self.demod_b = digital.gfsk_demod(sps, sens, 0.2, 0.5, 0.01, 0.0)
             
             self.mult_len = blocks.tagged_stream_multiply_length(gr.sizeof_gr_complex*1, "packet_len", sps)
         
