@@ -313,7 +313,7 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
         self.viz_panel.addWidget(sip.wrapinstance(self.snk_scope.qwidget(), Qt.QWidget))
         
         self.connect(self.usrp_source, self.snk_waterfall)
-        self.connect(self.depkt_b, self.rx_b2f, self.snk_scope)
+        self.connect(self.demod_b, self.rx_b2f, self.snk_scope)
 
         self.ctrl_listen = RemoteControlListener(self); self.ctrl_listen.start()
         self.timer = Qt.QTimer(); self.timer.timeout.connect(lambda: self.hop_ctrl.handle_trigger(pmt.PMT_T))
