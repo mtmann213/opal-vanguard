@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Opal Vanguard - Mission-Controlled Depacketizer (Stability Build v8.0)
+# Opal Vanguard - Mission-Controlled Depacketizer (Burst-Viz Build v8.1)
 
 import numpy as np
 from gnuradio import gr
@@ -15,7 +15,8 @@ from dsp_helper import MatrixInterleaver, Scrambler, NRZIEncoder, ManchesterEnco
 
 class depacketizer(gr.basic_block):
     def __init__(self, config_path="mission_configs/level1_soft_link.yaml", src_id=0, ignore_self=False):
-        gr.basic_block.__init__(self, name="depacketizer", in_sig=[np.uint8], out_sig=None)
+        # Now has an output signature to pass bits + tags to the scope
+        gr.basic_block.__init__(self, name="depacketizer", in_sig=[np.uint8], out_sig=[np.uint8])
         self.src_id = src_id
         self.ignore_self = ignore_self
         
@@ -76,6 +77,11 @@ class depacketizer(gr.basic_block):
 
     def general_work(self, input_items, output_items):
         in0 = input_items[0]
+        out = output_items[0]
+        
+        # Pass bits to output for scope
+        out[:len(in0)] = in0
+
         for i in range(len(in0)):
             bit = int(in0[i]) & 1
             self.bit_buf = ((self.bit_buf << 1) | bit) & 0xFFFFFFFF
@@ -96,6 +102,10 @@ class depacketizer(gr.basic_block):
                 self.bits_processed = 0
                 self.nrzi.rx_state = 0
                 self.scrambler.reset()
+                
+                # Add a tag for the GUI scope to trigger on
+                tag_idx = self.nitems_written(0) + i
+                self.add_item_tag(0, tag_idx, pmt.intern("rx_sync"), pmt.from_long(dist if dist <= 2 else dist_inv))
                 continue
 
             if self.state == "COLLECT":
@@ -214,7 +224,10 @@ class depacketizer(gr.basic_block):
                     except Exception as e:
                         print(f"Decode Error: {e}")
                         self.state = "SEARCH"; self.bit_buf = 0
-        self.consume(0, len(in0)); return 0
+        
+        self.produce(0, len(in0))
+        self.consume(0, len(in0))
+        return 0
 
     def __del__(self):
         if hasattr(self, 'telemetry_file'): self.telemetry_file.close()
