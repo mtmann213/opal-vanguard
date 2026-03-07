@@ -150,7 +150,7 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
         args_str = hw_cfg['args']
         if serial: args_str += f",serial={serial}"
         try:
-            self.usrp_sink = uhd.usrp_sink(args_str, uhd.stream_args(cpu_format="fc32", channels=[0]))
+            self.usrp_sink = uhd.usrp_sink(args_str, uhd.stream_args(cpu_format="fc32", channels=[0]), "packet_len")
             self.usrp_source = uhd.usrp_source(args_str, uhd.stream_args(cpu_format="fc32", channels=[0]))
             for dev in [self.usrp_sink, self.usrp_source]:
                 dev.set_samp_rate(self.samp_rate); dev.set_center_freq(self.center_freq, 0)
