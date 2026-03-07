@@ -171,7 +171,7 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
             key = bytes.fromhex(self.cfg['link_layer'].get('comsec_key', '00'*32))
             self.pkt_a.use_comsec = True; self.pkt_a.comsec_key = key
             self.depkt_b.use_comsec = True; self.depkt_b.comsec_key = key
-            print("[TERMINAL] COMSEC ENABLED")
+            print("[TERMINAL] COMSEC (AES-CTR) ENABLED")
 
         self.p2s_a = pdu.pdu_to_tagged_stream(gr.types.byte_t, "packet_len")
         mod_type = self.cfg['physical'].get('modulation', 'GFSK'); sps = self.cfg['physical'].get('samples_per_symbol', 10)

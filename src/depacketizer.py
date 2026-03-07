@@ -112,14 +112,20 @@ class depacketizer(gr.basic_block):
                 
                 if len(self.recovered_bits) >= target_bits:
                     # Early Quality Guard for CCSK
+                    avg_conf = 1.0
                     if self.use_ccsk and self.ccsk_sym_count > 0:
-                        if (self.ccsk_conf_sum / self.ccsk_sym_count) < 0.5:
+                        avg_conf = self.ccsk_conf_sum / self.ccsk_sym_count
+                        if avg_conf < 0.5:
                             self.state, self.bit_buf = "SEARCH", 0; continue
 
                     bits = self.recovered_bits[:target_bits]
                     try:
-                        if self.use_nrzi: bits = self.nrzi.decode(bits)
+                        # Disable NRZI for tactical (redundant with CCSK and risk of bit-drift)
+                        if self.use_nrzi and not is_tactical:
+                            bits = self.nrzi.decode(bits)
+
                         bytes_data = []
+
                         for j in range(0, target_bits, 8):
                             acc = 0
                             for k in range(8): acc = (acc << 1) | bits[j+k]
@@ -160,17 +166,17 @@ class depacketizer(gr.basic_block):
                                 
                                 payload = payload.split(b'\x00')[0] # Trim nulls
                                 t_name = {0:"DATA", 1:"SYN", 2:"ACK"}.get(m_type, "UNK")
-                                print(f"\033[92m[OK]\033[0m ID: {seq:03} | TYPE: {t_name} | RX: {payload}")
+                                print(f"\033[92m[OK]\033[0m ID: {seq:03} | TYPE: {t_name} | RX: {payload} | CONF: {avg_conf:.2f}")
                                 meta = pmt.make_dict()
                                 meta = pmt.dict_add(meta, pmt.intern("type"), pmt.from_long(m_type))
                                 self.message_port_pub(pmt.intern("out"), pmt.cons(meta, pmt.init_u8vector(len(payload), list(payload))))
                         elif plen > 0 and plen < target_bytes:
-                            print(f"\033[91m[CRC FAIL]\033[0m ID: {seq:03} | LEN: {plen}")
+                            print(f"\033[91m[CRC FAIL]\033[0m ID: {seq:03} | LEN: {plen} | CONF: {avg_conf:.2f}")
 
                         # Diagnostics
                         diag_dict = pmt.make_dict()
                         diag_dict = pmt.dict_add(diag_dict, pmt.intern("crc_ok"), pmt.from_bool(crc_pass))
-                        diag_dict = pmt.dict_add(diag_dict, pmt.intern("confidence"), pmt.from_double(100.0))
+                        diag_dict = pmt.dict_add(diag_dict, pmt.intern("confidence"), pmt.from_double(avg_conf * 100.0))
                         self.message_port_pub(pmt.intern("diagnostics"), diag_dict)
 
                     except Exception as e: print(f"Decode Error: {e}")
