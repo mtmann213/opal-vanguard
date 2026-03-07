@@ -202,8 +202,8 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
         self.msg_connect((self.pdu_src, src_port), (self.session, "data_in")); self.msg_connect((self.session, "pkt_out"), (self.pkt_a, "in")); self.msg_connect((self.pkt_a, "out"), (self.pdu_in, "pdus"))
         
         self.connect(self.silence_src, (self.add_stream, 0))
-        self.connect(self.pdu_in, (self.add_stream, 1))
-        self.connect(self.add_stream, self.mod_a, self.mult_len, self.rot_tx, self.usrp_sink)
+        self.connect(self.pdu_in, self.b2f, (self.add_stream, 1))
+        self.connect(self.add_stream, self.f2b, self.mod_a, self.mult_len, self.rot_tx, self.usrp_sink)
         
         self.connect(self.usrp_source, self.rx_filter, self.rot_rx, self.demod_b, self.depkt_b); self.connect(self.usrp_source, self.iq_probe)
         self.msg_connect((self.depkt_b, "out"), (self.session, "msg_in")); self.msg_connect((self.depkt_b, "diagnostics"), (self.session, "crc_fail")); self.msg_connect((self.session, "blacklist_out"), (self.hop_ctrl, "blacklist"))
