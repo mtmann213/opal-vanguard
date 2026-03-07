@@ -183,8 +183,8 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
         
         if mod_type in ["DBPSK", "DQPSK", "D8PSK"]:
             cp = 2 if "BPSK" in mod_type else (4 if "QPSK" in mod_type else 8)
-            self.mod_a = digital.psk_mod(cp, digital.mod_codes.GRAY_CODE, True, sps, 0.35, False, False)
-            self.demod_b = digital.psk_demod(cp, True, sps, 0.35, 6.28/100, 6.28/100, digital.mod_codes.GRAY_CODE, False, False)
+            self.mod_a = digital.psk_mod(constellation_points=cp, mod_code=digital.mod_codes.GRAY_CODE, differential=True, samples_per_symbol=sps, excess_bw=0.35, verbose=False, log=False)
+            self.demod_b = digital.psk_demod(constellation_points=cp, mod_code=digital.mod_codes.GRAY_CODE, differential=True, samples_per_symbol=sps, excess_bw=0.35, phase_bw=6.28/100, timing_bw=6.28/100, verbose=False, log=False)
         elif mod_type == "MSK": self.mod_a = digital.gmsk_mod(sps, 0.5); self.demod_b = digital.gmsk_demod(sps, 0.1, 0.5, 0.005, 0.0)
         elif mod_type == "OFDM": self.mod_a = digital.ofdm_tx(64, 16, "packet_len"); self.demod_b = digital.ofdm_rx(64, 16, "packet_len")
         else: self.mod_a = digital.gfsk_mod(sps, (2.0*np.pi*125000)/mod_rate, 0.35, False, False, False); self.demod_b = digital.gfsk_demod(sps, 0.1, 0.5, 0.005, 0.0)
