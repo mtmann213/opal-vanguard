@@ -206,6 +206,24 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
 
         self.rx_filter = filter.fir_filter_ccf(1, filter.firdes.low_pass(1.0, self.samp_rate, 100e3, 50e3)); self.iq_probe = IQDiagnosticProbe(self)
 
+        # Hop Controller Initialization
+        if h_cfg.get('sync_mode') == "TOD":
+            self.hop_ctrl = tod_hop_generator(
+                key=bytes.fromhex(h_cfg.get('aes_key', '00'*32)),
+                num_channels=h_cfg.get('num_channels', 50),
+                center_freq=self.center_freq,
+                channel_spacing=h_cfg.get('channel_spacing', 150000),
+                dwell_ms=h_cfg.get('dwell_time_ms', 200),
+                lookahead_ms=h_cfg.get('lookahead_ms', 0)
+            )
+        else:
+            self.hop_ctrl = aes_hop_generator(
+                key=bytes.fromhex(h_cfg.get('aes_key', '00'*32)),
+                num_channels=h_cfg.get('num_channels', 50),
+                center_freq=self.center_freq,
+                channel_spacing=h_cfg.get('channel_spacing', 150000)
+            )
+
         # Connect
         src_port = "out" if self.payload_type in ['chat', 'file'] else "strobe"
         self.msg_connect((self.pdu_src, src_port), (self.session, "data_in")); self.msg_connect((self.session, "pkt_out"), (self.pkt_a, "in")); self.msg_connect((self.pkt_a, "out"), (self.p2s_a, "pdus"))
