@@ -59,8 +59,8 @@ class packetizer(gr.basic_block):
             seq = pmt.to_long(pmt.dict_ref(pmt.car(msg), pmt.intern("seq"), pmt.from_long(0)))
             m_type = pmt.to_long(pmt.dict_ref(pmt.car(msg), pmt.intern("type"), pmt.from_long(0)))
 
-        # 1. COMSEC Encryption (Must happen before Header packing)
-        if self.use_comsec and self.aes_gcm:
+        # 1. COMSEC Encryption (Only encrypt DATA packets, keep handshakes clear)
+        if self.use_comsec and self.aes_gcm and m_type == 0:
             nonce = os.urandom(12)
             ciphertext = self.aes_gcm.encrypt(nonce, payload, None)
             payload = nonce + ciphertext
