@@ -58,10 +58,23 @@ class depacketizer(gr.basic_block):
         for i in range(n):
             bit = int(in0[i]) & 1
             self.bit_buf = ((self.bit_buf << 1) | bit) & 0xFFFFFFFF
-            if self.bit_buf == self.syncword_bits or self.bit_buf == (0xFFFFFFFF ^ self.syncword_bits):
-                self.is_inverted = (self.bit_buf == (0xFFFFFFFF ^ self.syncword_bits))
+            # Syncword Detection
+            is_tactical = ("LINK-16" in self.fec_mode or "LEVEL_6" in self.fec_mode)
+            
+            diff = self.bit_buf ^ self.syncword_bits
+            dist = bin(diff).count('1')
+            diff_inv = self.bit_buf ^ (0xFFFFFFFF ^ self.syncword_bits)
+            dist_inv = bin(diff_inv).count('1')
+
+            # Strict sync for Link-16 to prevent noise triggers; 2-bit tolerance for baseline
+            threshold = 0 if is_tactical else 2
+            
+            if dist <= threshold or dist_inv <= threshold:
+                self.is_inverted = (dist_inv <= threshold)
                 self.state, self.recovered_bits, self.ccsk_buf = "COLLECT", [], []
                 self.nrzi.rx_state = 0; self.scrambler.reset()
+                self.ccsk_conf_sum = 0
+                self.ccsk_sym_count = 0
                 self.add_item_tag(0, self.nitems_written(0) + i - 64, pmt.intern("rx_sync"), pmt.from_long(0))
                 continue
             
@@ -71,15 +84,23 @@ class depacketizer(gr.basic_block):
                     self.ccsk_buf.append(rx_bit)
                     if len(self.ccsk_buf) >= 32:
                         sym, conf = self.ccsk.decode_chips(self.ccsk_buf)
+                        self.ccsk_conf_sum += conf
+                        self.ccsk_sym_count += 1
                         for j in range(5): self.recovered_bits.append((sym >> (4-j)) & 1)
                         self.ccsk_buf = []
                 else:
                     self.recovered_bits.append(rx_bit)
                 
-                target_bytes = 320 if "LINK-16" in self.fec_mode or "LEVEL_6" in self.fec_mode else 120
+                target_bytes = 320 if is_tactical else 120
                 target_bits = target_bytes * 8
                 
                 if len(self.recovered_bits) >= target_bits:
+                    # Coarse LQI Check for CCSK
+                    if self.use_ccsk and self.ccsk_sym_count > 0:
+                        avg_conf = self.ccsk_conf_sum / self.ccsk_sym_count
+                        if avg_conf < 0.5: # Discard obvious noise early
+                            self.state, self.bit_buf = "SEARCH", 0; continue
+
                     bits = self.recovered_bits[:target_bits]
                     try:
                         if self.use_nrzi: bits = self.nrzi.decode(bits)
