@@ -80,8 +80,15 @@ class depacketizer(gr.basic_block):
             bit = int(in0[i]) & 1
             self.bit_buf = ((self.bit_buf << 1) | bit) & 0xFFFFFFFF
 
-            if self.bit_buf == self.syncword_bits or self.bit_buf == (0xFFFFFFFF ^ self.syncword_bits):
-                self.is_inverted = (self.bit_buf == (0xFFFFFFFF ^ self.syncword_bits))
+            # Hamming Distance Syncword Detection (Allow 2 bit errors)
+            diff = self.bit_buf ^ self.syncword_bits
+            dist = bin(diff).count('1')
+            
+            diff_inv = self.bit_buf ^ (0xFFFFFFFF ^ self.syncword_bits)
+            dist_inv = bin(diff_inv).count('1')
+
+            if dist <= 2 or dist_inv <= 2:
+                self.is_inverted = (dist_inv <= 2)
                 self.state = "COLLECT"
                 self.recovered_bits = []
                 self.chip_buf = []

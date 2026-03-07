@@ -178,30 +178,42 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
         mod_type = self.cfg['physical'].get('modulation', 'GFSK'); sps = self.cfg['physical'].get('samples_per_symbol', 8)
         
         if mod_type == "GFSK":
-            # Tag-Safe GFSK Modulator
-            freq_dev = self.cfg['physical'].get('freq_dev', 125000)
-            bt = 0.35
-            
             # 1. Map 0/1 bits to -1.0/1.0 floats
             self.char_to_float = blocks.uchar_to_float()
             self.map_bits = blocks.add_const_ff(-0.5)
             self.scale_bits = blocks.multiply_const_ff(2.0)
             
-            # 2. Gaussian Filter (This block propagates tags!)
+            # 2. Gaussian Filter (Tag-Safe)
             ntaps = 4 * sps
-            taps = filter.firdes.gaussian(1.0, sps, bt, ntaps)
+            taps = filter.firdes.gaussian(1.0, sps, 0.35, ntaps)
             self.gaussian_filter = filter.interp_fir_filter_fff(sps, taps)
             
-            # 3. Frequency Mod (This block propagates tags!)
+            # 3. Burst Tagger (SOB/EOB)
+            # This block adds the Start-of-Burst and End-of-Burst tags that the USRP loves.
+            self.burst_tagger = blocks.tagged_stream_to_pdu(gr.types.float_t, "packet_len") # Just to find boundaries
+            # Wait, easier way: Use a python block to inject SOB/EOB based on packet_len
+            class BurstTagger(gr.sync_block):
+                def __init__(self, sps):
+                    gr.sync_block.__init__(self, "BurstTagger", in_sig=[np.float32], out_sig=[np.float32])
+                    self.sps = sps
+                def work(self, input_items, output_items):
+                    in0 = input_items[0]; out = output_items[0]
+                    tags = self.get_tags_in_window(0, 0, len(in0))
+                    for tag in tags:
+                        if pmt.to_python(tag.key) == "packet_len":
+                            length = pmt.to_python(tag.value) * self.sps
+                            self.add_item_tag(0, tag.offset, pmt.intern("tx_sob"), pmt.PMT_T)
+                            self.add_item_tag(0, tag.offset + length - 1, pmt.intern("tx_eob"), pmt.PMT_T)
+                    out[:] = in0; return len(out)
+            self.tagger = BurstTagger(sps)
+
+            # 4. Frequency Mod
             sens = (2.0 * np.pi * freq_dev) / self.samp_rate
             self.mod_a = analog.frequency_modulator_fc(sens)
             
-            # Receiver remains standard - Tuned for faster burst lock
             self.demod_b = digital.gfsk_demod(sps, sens, 0.2, 0.5, 0.01, 0.0)
-            
-            self.mult_len = blocks.tagged_stream_multiply_length(gr.sizeof_gr_complex*1, "packet_len", sps)
         
-        elif mod_type in ["DBPSK", "DQPSK", "D8PSK"]:
+        # ... rest of mod_types ...
             cp = 2 if "BPSK" in mod_type else (4 if "QPSK" in mod_type else 8)
             self.mod_a = digital.psk_mod(constellation_points=cp, mod_code=digital.mod_codes.GRAY_CODE, differential=True, samples_per_symbol=sps, excess_bw=0.35, verbose=False, log=False)
             self.demod_b = digital.psk_demod(constellation_points=cp, mod_code=digital.mod_codes.GRAY_CODE, differential=True, samples_per_symbol=sps, excess_bw=0.35, phase_bw=6.28/100, timing_bw=6.28/100, verbose=False, log=False)
@@ -223,7 +235,7 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
         self.msg_connect((self.pdu_src, src_port), (self.session, "data_in")); self.msg_connect((self.session, "pkt_out"), (self.pkt_a, "in")); self.msg_connect((self.pkt_a, "out"), (self.p2s_a, "pdus"))
         
         if mod_type == "GFSK":
-            self.connect(self.p2s_a, self.char_to_float, self.map_bits, self.scale_bits, self.gaussian_filter, self.mod_a, self.mult_len, self.usrp_sink)
+            self.connect(self.p2s_a, self.char_to_float, self.map_bits, self.scale_bits, self.gaussian_filter, self.tagger, self.mod_a, self.usrp_sink)
         elif mod_type == "OFDM":
             self.connect(self.p2s_a, self.mod_a, self.usrp_sink)
         else:
