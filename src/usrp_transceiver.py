@@ -194,7 +194,7 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
             
             # 3. Frequency Mod (This block propagates tags!)
             sens = (2.0 * np.pi * freq_dev) / self.samp_rate
-            self.mod_a = analog.frequency_mod(sens)
+            self.mod_a = analog.frequency_modulator_fc(sens)
             
             # Receiver remains standard
             self.demod_b = digital.gfsk_demod(sps, sens, 0.1, 0.5, 0.005, 0.0)
