@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Opal Vanguard - Mission-Controlled Depacketizer (Single-Header Build v10.1)
+# Opal Vanguard - Mission-Controlled Depacketizer (Deep FEC Build v10.4)
 
 import numpy as np
 from gnuradio import gr
@@ -84,7 +84,7 @@ class depacketizer(gr.basic_block):
                         self.ccsk_buf = []
                 else: self.recovered_bits.append(rx_bit)
                 
-                target_bytes = 120
+                target_bytes = 160 if is_tactical else 120
                 target_bits = target_bytes * 8
                 if len(self.recovered_bits) >= target_bits:
                     avg_conf = self.ccsk_conf_sum / self.ccsk_sym_count if self.ccsk_sym_count > 0 else 1.0
@@ -105,28 +105,34 @@ class depacketizer(gr.basic_block):
                         # 2. De-interleave SECOND
                         if self.use_interleaving: data_block = self.interleaver.deinterleave(data_block)
                         
-                        # 3. HEALING STAGE (FEC Decode EVERYTHING first)
-                        decoded_block = data_block
+                        # 3. Deep HEALING STAGE (RS 31,15)
+                        decoded_payload = data_block
                         if self.use_fec:
-                            from rs_helper import RS1511
-                            rs, healed = RS1511(), b''
-                            for j in range(0, len(data_block), 15):
-                                chunk = data_block[j:j+15]
-                                if len(chunk) < 15: break
-                                nibs = []
-                                for b in chunk: nibs.extend([(b >> 4) & 0x0F, b & 0x0F])
-                                d_nibs = rs.decode(nibs[:15]) + rs.decode(nibs[15:])
-                                for k in range(0, 22, 2): healed += bytes([( (d_nibs[k] << 4) | d_nibs[k+1] )])
-                            decoded_block = healed
+                            from rs_helper import RS3115
+                            rs, healed = RS3115(), b''
+                            # Convert 160 bytes back into 31-symbol blocks
+                            for j in range(0, len(data_block), 20):
+                                chunk_bytes = data_block[j:j+20]
+                                if len(chunk_bytes) < 20: break
+                                c_bits = []
+                                for b in chunk_bytes:
+                                    for k in range(8): c_bits.append((b >> (7-k)) & 1)
+                                syms = []
+                                for k in range(0, 155, 5):
+                                    s = 0
+                                    for m in range(5): s = (s << 1) | c_bits[k+m]
+                                    syms.append(s)
+                                # Decode RS(31,15)
+                                d_syms = rs.decode(syms)
+                                # Each 15 symbols is exactly 15 bytes in our mapping
+                                healed += bytes(d_syms)
+                            decoded_payload = healed
                         
                         # 4. Extract Header from HEALED data
-                        sid, m_type, seq, true_plen = struct.unpack('BBBB', decoded_block[:4])
-                        if true_plen > 0 and true_plen < 100:
-                            print(f"[DEBUG] Recovered: sid={sid} type={m_type} seq={seq} plen={true_plen}")
-
+                        sid, m_type, seq, true_plen = struct.unpack('BBBB', decoded_payload[:4])
+                        
                         # 5. CRC Check on HEALED payload
-                        # Payload starts at index 4 in the HEALED block
-                        payload_zone = decoded_block[4:4+true_plen+2]
+                        payload_zone = decoded_payload[4:4+true_plen+2]
                         crc_pass = self.verify_crc(payload_zone, true_plen)
                         
                         if crc_pass:
