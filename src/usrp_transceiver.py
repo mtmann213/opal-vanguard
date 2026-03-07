@@ -178,6 +178,10 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
         mod_type = self.cfg['physical'].get('modulation', 'GFSK'); sps = self.cfg['physical'].get('samples_per_symbol', 8)
         
         if mod_type == "GFSK":
+            # Tag-Safe GFSK Modulator
+            freq_dev = self.cfg['physical'].get('freq_dev', 125000)
+            bt = 0.35
+            
             # 1. Map 0/1 bits to -1.0/1.0 floats
             self.char_to_float = blocks.uchar_to_float()
             self.map_bits = blocks.add_const_ff(-0.5)
