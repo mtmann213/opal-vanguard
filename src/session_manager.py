@@ -53,13 +53,17 @@ class session_manager(gr.basic_block):
             try:
                 peer_seed = struct.unpack('>H', payload[:2])[0]
                 self.current_seed = peer_seed
-                print(f"\033[96m[MAC] Handshake Seed Synced: 0x{peer_seed:04X}\033[0m")
+                print(f"\033[96m[MAC] Handshake SYN Received. Seed: 0x{peer_seed:04X}\033[0m")
             except: pass
-            self.send_packet(b"ACK", msg_type=2); self.state = "CONNECTED"
+            # Always reply with ACK to clear the peer's CONNECTING state
+            self.send_packet(b"ACK", msg_type=2)
+            self.state = "CONNECTED"
             self.consecutive_fails = 0
         elif m_type == 2: # ACK
-            if self.state == "CONNECTING":
+            if self.state == "CONNECTING" or self.state == "IDLE":
+                print("\033[96m[MAC] Handshake ACK Received. Session Connected.\033[0m")
                 self.state = "CONNECTED"
+                self.consecutive_fails = 0
                 while self.tx_buffer: self.send_data_packet(self.tx_buffer.pop(0))
             try:
                 seq = struct.unpack('B', payload)[0]

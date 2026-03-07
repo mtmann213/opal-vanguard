@@ -194,15 +194,21 @@ class depacketizer(gr.basic_block):
                                     payload = decoded[:plen]
                             else:
                                 payload = fec_payload[:plen]
-                            
+                            # 2. COMSEC Decryption
                             if self.use_comsec and self.aes_gcm:
-                                try:
-                                    if len(payload) > 12:
-                                        nonce, ciphertext = payload[:12], payload[12:]
-                                        payload = self.aes_gcm.decrypt(nonce, ciphertext, None)
-                                except Exception as e:
-                                    print(f"\033[91m[COMSEC ERROR]\033[0m Decryption failed: {e}")
-                                    self.state = "SEARCH"; self.bit_buf = 0; continue
+                                # Only decrypt DATA (0) and SYN (1)
+                                if m_type in [0, 1]:
+                                    try:
+                                        if len(payload) > 12:
+                                            nonce, ciphertext = payload[:12], payload[12:]
+                                            payload = self.aes_gcm.decrypt(nonce, ciphertext, None)
+                                    except Exception as e:
+                                        # If decryption fails but it's a control packet, it might be unencrypted
+                                        if m_type != 0: pass 
+                                        else:
+                                            print(f"\033[91m[COMSEC ERROR]\033[0m Decryption failed: {e}")
+                                            self.state = "SEARCH"; self.bit_buf = 0; continue
+
 
                             type_map = {0: "DATA", 1: "SYN", 2: "ACK", 3: "NACK", 4: "AFH", 5: "AMC"}
                             t_name = type_map.get(m_type, "UNKNOWN")
