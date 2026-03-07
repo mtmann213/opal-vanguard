@@ -173,31 +173,10 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
             self.depkt_b.use_comsec = True; self.depkt_b.aes_gcm = AESGCM(key)
             print("[TERMINAL] COMSEC (AES-GCM) ENABLED")
 
-        class PDUToStream(gr.sync_block):
-            def __init__(self):
-                gr.sync_block.__init__(self, name="PDUToStream", in_sig=None, out_sig=[np.uint8])
-                self.message_port_register_in(pmt.intern("pdus"))
-                self.set_msg_handler(pmt.intern("pdus"), self.handle_pdu)
-                self.buffer = []
-            def handle_pdu(self, msg):
-                data = pmt.u8vector_elements(pmt.cdr(msg))
-                self.buffer.extend(data)
-            def work(self, input_items, output_items):
-                out = output_items[0]
-                n = len(out)
-                b_len = len(self.buffer)
-                if b_len >= n:
-                    out[:] = self.buffer[:n]
-                    self.buffer = self.buffer[n:]
-                elif b_len > 0:
-                    out[:b_len] = self.buffer
-                    out[b_len:] = 0
-                    self.buffer = []
-                else:
-                    out[:] = 0
-                return n
-
-        self.p2s_a = PDUToStream()
+        # 100% Continuous Flowgraph - No Tagged Streams
+        self.noise_src = analog.noise_source_b(analog.GR_UNIFORM, 0)
+        self.pdu_injector = blocks.pdu_to_stream(gr.types.byte_t)
+        self.add = blocks.add_bb()
         
         mod_type = self.cfg['physical'].get('modulation', 'GFSK'); sps = self.cfg['physical'].get('samples_per_symbol', 8)
         
@@ -216,9 +195,11 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
 
         # Connect
         src_port = "out" if self.payload_type in ['chat', 'file'] else "strobe"
-        self.msg_connect((self.pdu_src, src_port), (self.session, "data_in")); self.msg_connect((self.session, "pkt_out"), (self.pkt_a, "in")); self.msg_connect((self.pkt_a, "out"), (self.p2s_a, "pdus"))
+        self.msg_connect((self.pdu_src, src_port), (self.session, "data_in")); self.msg_connect((self.session, "pkt_out"), (self.pkt_a, "in")); self.msg_connect((self.pkt_a, "out"), (self.pdu_injector, "pdus"))
         
-        self.connect(self.p2s_a, self.mod_a, self.usrp_sink)
+        self.connect(self.noise_src, (self.add, 0))
+        self.connect(self.pdu_injector, (self.add, 1))
+        self.connect(self.add, self.mod_a, self.usrp_sink)
         self.connect(self.usrp_source, self.rx_filter, self.demod_b, self.depkt_b); self.connect(self.usrp_source, self.iq_probe)
         self.msg_connect((self.depkt_b, "out"), (self.session, "msg_in")); self.msg_connect((self.depkt_b, "diagnostics"), (self.session, "crc_fail")); self.msg_connect((self.session, "blacklist_out"), (self.hop_ctrl, "blacklist"))
 
