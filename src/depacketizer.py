@@ -102,10 +102,23 @@ class depacketizer(gr.basic_block):
                             bytes_data.append(acc)
                         data_block = bytes(bytes_data)
                         
-                        if self.use_whitening: self.scrambler.reset(); data_block = self.scrambler.process(data_block)
-                        if self.use_interleaving: data_block = self.interleaver.deinterleave(data_block)
+                        # Stage Tracking
+                        raw_head = data_block[:4].hex()
+                        
+                        # 1. De-whiten FIRST (Reverse of packetizer last step)
+                        if self.use_whitening: 
+                            self.scrambler.reset()
+                            data_block = self.scrambler.process(data_block)
+                        white_head = data_block[:4].hex()
+                        
+                        # 2. De-interleave SECOND (Reverse of packetizer earlier step)
+                        if self.use_interleaving: 
+                            data_block = self.interleaver.deinterleave(data_block)
+                        final_head = data_block[:4].hex()
                         
                         sid, m_type, seq, true_plen = struct.unpack('BBBB', data_block[:4])
+                        if true_plen > 0 and true_plen < 300:
+                            print(f"[DEBUG] Chain: Raw={raw_head} | White={white_head} | Final={final_head}")
                         
                         # HEALING STAGE
                         num_blocks = (true_plen + 2 + 10) // 11
