@@ -173,7 +173,31 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
             self.depkt_b.use_comsec = True; self.depkt_b.aes_gcm = AESGCM(key)
             print("[TERMINAL] COMSEC (AES-GCM) ENABLED")
 
-        self.p2s_a = pdu.pdu_to_tagged_stream(gr.types.byte_t, "packet_len")
+        class PDUToStream(gr.sync_block):
+            def __init__(self):
+                gr.sync_block.__init__(self, name="PDUToStream", in_sig=None, out_sig=[np.uint8])
+                self.message_port_register_in(pmt.intern("pdus"))
+                self.set_msg_handler(pmt.intern("pdus"), self.handle_pdu)
+                self.buffer = []
+            def handle_pdu(self, msg):
+                data = pmt.u8vector_elements(pmt.cdr(msg))
+                self.buffer.extend(data)
+            def work(self, input_items, output_items):
+                out = output_items[0]
+                n = len(out)
+                b_len = len(self.buffer)
+                if b_len >= n:
+                    out[:] = self.buffer[:n]
+                    self.buffer = self.buffer[n:]
+                elif b_len > 0:
+                    out[:b_len] = self.buffer
+                    out[b_len:] = 0
+                    self.buffer = []
+                else:
+                    out[:] = 0
+                return n
+
+        self.p2s_a = PDUToStream()
         
         mod_type = self.cfg['physical'].get('modulation', 'GFSK'); sps = self.cfg['physical'].get('samples_per_symbol', 8)
         
