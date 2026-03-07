@@ -37,15 +37,14 @@ class depacketizer(gr.basic_block):
         self.syncword_32 = 0x3D4C5B6A
         self.syncword_64 = 0x3D4C5B6AACE12345
 
-    def verify_crc(self, payload, sid, m_type, seq, true_plen):
-        """Verify inner CRC based on TRUE data length."""
+    def verify_crc(self, payload, true_plen):
+        """Verify inner CRC based strictly on payload bits."""
         if len(payload) < (true_plen + 2): return False
         extracted_data = payload[:true_plen]
         extracted_crc = struct.unpack('>H', payload[true_plen:true_plen+2])[0]
         
         crc = 0xFFFF
-        header_base = struct.pack('BBB', sid, m_type, seq)
-        for byte in (header_base + extracted_data):
+        for byte in extracted_data:
             crc ^= (byte << 8)
             for _ in range(8):
                 if crc & 0x8000: crc = (crc << 1) ^ 0x1021
@@ -140,9 +139,10 @@ class depacketizer(gr.basic_block):
                         # CRC Check on HEALED data
                         # The real data is exactly true_plen + 2 bytes (data + crc)
                         real_data_block = decoded_payload[:true_plen + 2]
-                        crc_pass = self.verify_crc(real_data_block, sid, m_type, seq, true_plen)
+                        crc_pass = self.verify_crc(real_data_block, true_plen)
 
                         if crc_pass:
+
                             if not (self.ignore_self and sid == self.src_id):
                                 payload = real_data_block[:true_plen]
 

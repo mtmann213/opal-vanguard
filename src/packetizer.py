@@ -49,11 +49,10 @@ class packetizer(gr.basic_block):
             cipher = Cipher(algorithms.AES(self.comsec_key), modes.CTR(nonce), backend=default_backend())
             payload = nonce + cipher.encryptor().update(payload) + cipher.encryptor().finalize()
 
-        # 2. INNER CRC (Protect header and payload)
+        # 2. INNER CRC (Protect payload only for symmetry)
         crc = 0xFFFF
         true_plen = len(payload)
-        header_base = struct.pack('BBB', self.src_id, m_type, seq)
-        for byte in (header_base + payload):
+        for byte in payload:
             crc ^= (byte << 8)
             for _ in range(8):
                 if crc & 0x8000: crc = (crc << 1) ^ 0x1021
