@@ -97,14 +97,15 @@ class CCSKProcessor:
         return np.roll(self.base_sequence, -shift).tolist()
 
     def decode_chips(self, chips):
-        """Finds the shift with the highest correlation to recover the 5-bit symbol."""
+        """Finds the shift with the highest magnitude correlation to recover the 5-bit symbol."""
         if len(chips) < 32: return 0, 0.0
         chip_bipolar = np.where(np.array(chips[:32]) == 1, 1, -1)
         
         correlations = []
         for shift in range(32):
             ref = np.roll(self.base_bipolar, -shift)
-            correlations.append(np.sum(chip_bipolar * ref))
+            # Use absolute sum to handle phase inversions natively
+            correlations.append(abs(np.sum(chip_bipolar * ref)))
         
         best_shift = np.argmax(correlations)
         confidence = correlations[best_shift] / 32.0

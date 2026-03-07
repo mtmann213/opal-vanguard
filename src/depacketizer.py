@@ -69,9 +69,13 @@ class depacketizer(gr.basic_block):
             # Sync Detection
             found_sync = False
             if is_tactical:
-                # 64-bit Tactical Sync (Strict)
-                if self.bit_buf == self.syncword_64 or self.bit_buf == (0xFFFFFFFFFFFFFFFF ^ self.syncword_64):
-                    self.is_inverted = (self.bit_buf == (0xFFFFFFFFFFFFFFFF ^ self.syncword_64))
+                # 64-bit Tactical Sync (Allow 4 bit errors)
+                diff = self.bit_buf ^ self.syncword_64
+                dist = bin(diff).count('1')
+                diff_inv = self.bit_buf ^ (0xFFFFFFFFFFFFFFFF ^ self.syncword_64)
+                dist_inv = bin(diff_inv).count('1')
+                if dist <= 4 or dist_inv <= 4:
+                    self.is_inverted = (dist_inv <= 4)
                     found_sync = True
             else:
                 # 32-bit Baseline Sync (Hamming Distance <= 2)

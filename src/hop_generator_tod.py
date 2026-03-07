@@ -64,13 +64,12 @@ class tod_hop_generator(gr.basic_block):
         freq = self.center_freq + (final_idx - (self.num_channels // 2)) * self.channel_spacing
         epoch_start_time = epoch * self.dwell_sec
         
-        # Log if we had to remap
+        # Log absolute time and channel for synchronization verification
         if final_idx != raw_idx:
-            print(f"\033[96m[AFH Hop] EVADED {raw_idx} -> Moved to {final_idx} | Freq: {freq/1e6:.3f} MHz\033[0m")
+            print(f"\033[96m[AFH Hop] {time.strftime('%H:%M:%S')} | EVADED {raw_idx} -> Moved to {final_idx}\033[0m")
         else:
-            # Only print every 10 epochs to reduce noise, or if user needs it
             if epoch % 5 == 0:
-                print(f"[TOD Hop] Epoch: {epoch} | Chan: {final_idx} | Freq: {freq/1e6:.3f} MHz")
+                print(f"[TOD Hop] {time.strftime('%H:%M:%S')} | Epoch: {epoch} | Chan: {final_idx} | Freq: {freq/1e6:.3f} MHz")
         
         # Emit dict with freq and precise command time
         out_dict = pmt.make_dict()
