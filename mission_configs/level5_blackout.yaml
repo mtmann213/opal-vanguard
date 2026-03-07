@@ -2,10 +2,10 @@ mission:
   id: LEVEL_5_BLACKOUT
 physical:
   ghost_mode: true
-  samp_rate: 2000000
+  samp_rate: 1000000
   center_freq: 915000000
   modulation: GFSK
-  freq_dev: 125000
+  freq_dev: 25000
   samples_per_symbol: 8
 mac_layer:
   amc_enabled: false
@@ -62,13 +62,13 @@ hopping:
   sync_mode: TOD
   dwell_time_ms: 200
   lookahead_ms: 50
-  num_channels: 50
-  channel_spacing: 150000
+  num_channels: 20
+  channel_spacing: 40000
   aes_key: 000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f
   initial_seed: 2766
 hardware:
   args: type=b200
-  samp_rate: 2000000
+  samp_rate: 1000000
   tx_gain: 70
   rx_gain: 70
   tx_antenna: TX/RX
