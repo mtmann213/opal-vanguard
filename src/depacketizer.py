@@ -131,10 +131,28 @@ class depacketizer(gr.basic_block):
                             for k in range(8): acc = (acc << 1) | bits[j+k]
                             bytes_data.append(acc)
                         data_block = bytes(bytes_data)
-                        if self.use_whitening: self.scrambler.reset(); data_block = self.scrambler.process(data_block)
-                        if self.use_interleaving: data_block = self.interleaver.deinterleave(data_block)
+                        
+                        # Chain Telemetry Stage 1: Raw Recovery
+                        raw_head = data_block[:4].hex()
+                        
+                        if self.use_whitening: 
+                            self.scrambler.reset()
+                            data_block = self.scrambler.process(data_block)
+                        
+                        # Chain Telemetry Stage 2: De-whitened
+                        white_head = data_block[:4].hex()
+                        
+                        if self.use_interleaving: 
+                            data_block = self.interleaver.deinterleave(data_block)
+                        
+                        # Chain Telemetry Stage 3: De-interleaved (Final Header)
+                        final_head = data_block[:4].hex()
                         
                         sid, m_type, seq, plen = struct.unpack('BBBB', data_block[:4])
+                        
+                        # Log the chain state if it's a legitimate-looking trigger
+                        if plen > 0 and plen < target_bytes:
+                            print(f"[DEBUG] Chain: Raw={raw_head} | White={white_head} | Final={final_head}")
                         full_packet_len = 4 + plen + 2
                         crc_pass = False
                         if full_packet_len <= len(data_block):
