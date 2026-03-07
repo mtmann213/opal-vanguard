@@ -239,7 +239,7 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
         self.msg_connect((self.pdu_src, src_port), (self.session, "data_in")); self.msg_connect((self.session, "pkt_out"), (self.pkt_a, "in")); self.msg_connect((self.pkt_a, "out"), (self.p2s_a, "pdus"))
         
         if mod_type == "GFSK":
-            self.connect(self.p2s_a, self.char_to_float, self.map_bits, self.scale_bits, self.gaussian_filter, self.tagger, self.mod_a, self.usrp_sink)
+            self.connect(self.p2s_a, self.char_to_float, self.map_bits, self.scale_bits, self.gaussian_filter, self.tagger, self.mod_a, self.mult_len, self.usrp_sink)
         elif mod_type == "OFDM":
             self.connect(self.p2s_a, self.mod_a, self.usrp_sink)
         else:
