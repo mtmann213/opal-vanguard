@@ -87,15 +87,9 @@ class depacketizer(gr.basic_block):
             bit = int(in0[i]) & 1
             self.bit_buf = ((self.bit_buf << 1) | bit) & 0xFFFFFFFF
 
-            # Hamming Distance Syncword Detection (Allow 2 bit errors)
-            diff = self.bit_buf ^ self.syncword_bits
-            dist = bin(diff).count('1')
-            
-            diff_inv = self.bit_buf ^ (0xFFFFFFFF ^ self.syncword_bits)
-            dist_inv = bin(diff_inv).count('1')
-
-            if dist <= 2 or dist_inv <= 2:
-                self.is_inverted = (dist_inv <= 2)
+            # Strict Syncword Detection (No bit errors allowed to prevent noise triggers)
+            if self.bit_buf == self.syncword_bits or self.bit_buf == (0xFFFFFFFF ^ self.syncword_bits):
+                self.is_inverted = (self.bit_buf == (0xFFFFFFFF ^ self.syncword_bits))
                 self.state = "COLLECT"
                 self.recovered_bits = []
                 self.chip_buf = []
@@ -104,9 +98,9 @@ class depacketizer(gr.basic_block):
                 self.nrzi.rx_state = 0
                 self.scrambler.reset()
                 
-                # Add a tag for the GUI scope to trigger on
-                tag_idx = self.nitems_written(0) + i
-                self.add_item_tag(0, tag_idx, pmt.intern("rx_sync"), pmt.from_long(dist if dist <= 2 else dist_inv))
+                # Add a tag 64 bits EARLY so the scope can show the preamble history
+                tag_idx = max(0, self.nitems_written(0) + i - 64)
+                self.add_item_tag(0, tag_idx, pmt.intern("rx_sync"), pmt.from_long(0))
                 continue
 
             if self.state == "COLLECT":
