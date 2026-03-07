@@ -137,10 +137,15 @@ class depacketizer(gr.basic_block):
                                 for k in range(0, 22, 2): healed += bytes([( (d_nibs[k] << 4) | d_nibs[k+1] )])
                             decoded_payload = healed
                         
-                        crc_pass = self.verify_crc(decoded_payload, sid, m_type, seq, true_plen)
+                        # CRC Check on HEALED data
+                        # The real data is exactly true_plen + 2 bytes (data + crc)
+                        real_data_block = decoded_payload[:true_plen + 2]
+                        crc_pass = self.verify_crc(real_data_block, sid, m_type, seq, true_plen)
+
                         if crc_pass:
                             if not (self.ignore_self and sid == self.src_id):
-                                payload = decoded_payload[:true_plen]
+                                payload = real_data_block[:true_plen]
+
                                 if self.use_comsec and self.comsec_key and m_type == 0:
                                     nonce, ct = payload[:16], payload[16:]
                                     cipher = Cipher(algorithms.AES(self.comsec_key), modes.CTR(nonce), backend=default_backend())
