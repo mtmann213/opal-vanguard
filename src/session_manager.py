@@ -44,12 +44,17 @@ class session_manager(gr.basic_block):
         # Link Quality Indicator (LQI) for AMC
         self.consecutive_fails = 0
         self.amc_triggered = False
+def handle_rx(self, msg):
+    meta = pmt.car(msg)
+    payload = bytes(pmt.u8vector_elements(pmt.cdr(msg)))
+    m_type = pmt.to_long(pmt.dict_ref(meta, pmt.intern("type"), pmt.from_long(0)))
 
-    def handle_rx(self, msg):
-        meta = pmt.car(msg); payload = bytes(pmt.u8vector_elements(pmt.cdr(msg)))
-        m_type = pmt.to_long(pmt.dict_ref(meta, pmt.intern("type"), pmt.from_long(0)))
+    # Diagnostic Handshake Tracer
+    type_names = {0:"DATA", 1:"SYN", 2:"ACK", 3:"NACK", 4:"AFH", 5:"AMC"}
+    print(f"[SESSION] RX {type_names.get(m_type, 'UNK')} | State: {self.state}")
 
-        if m_type == 1: # SYN
+    if m_type == 1: # SYN
+
             try:
                 peer_seed = struct.unpack('>H', payload[:2])[0]
                 self.current_seed = peer_seed
