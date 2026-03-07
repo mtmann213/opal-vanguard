@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Opal Vanguard - Mission-Controlled Packetizer (Self-Healing Header Build v10.0)
+# Opal Vanguard - Mission-Controlled Packetizer (Single-Header Build v10.1)
 
 import numpy as np
 from gnuradio import gr
@@ -29,9 +29,10 @@ class packetizer(gr.basic_block):
         d_cfg = self.cfg.get('dsss', {})
         self.use_ccsk = (d_cfg.get('enabled', False) and d_cfg.get('type') == "CCSK")
         self.ccsk = CCSKProcessor()
-        self.interleaver = MatrixInterleaver(rows=l_cfg.get('interleaver_rows', 8))
+        self.interleaver = MatrixInterleaver(rows=l_cfg.get('interleaver_rows', 15))
         self.scrambler = Scrambler(mask=l_cfg.get('scrambler_mask', 0x48), seed=l_cfg.get('scrambler_seed', 0x7F))
         self.nrzi = NRZIEncoder()
+        
         self.message_port_register_in(pmt.intern("in"))
         self.message_port_register_out(pmt.intern("out"))
         self.set_msg_handler(pmt.intern("in"), self.handle_msg)
@@ -59,12 +60,12 @@ class packetizer(gr.basic_block):
                 else: crc <<= 1
             crc &= 0xFFFF
         
-        # 3. Assemble Header + Payload + CRC
-        # Header is now INSIDE the FEC protection zone
+        # 3. Assemble Unified Raw Block (Header + Payload + CRC)
+        # Total size: 4 + true_plen + 2
         raw_block = struct.pack('BBBB', self.src_id, m_type, seq, true_plen) + payload + struct.pack('>H', crc)
 
-        # 4. FEC Encoding (Symmetric 11-to-15 byte mapping)
-        encoded_block = raw_block
+        # 4. FEC Encoding (Self-Heals Header AND Payload)
+        data_to_transmit = raw_block
         if self.use_fec:
             from rs_helper import RS1511
             rs = RS1511()
@@ -75,16 +76,17 @@ class packetizer(gr.basic_block):
                 for b in chunk: nibs.extend([(b >> 4) & 0x0F, b & 0x0F])
                 all_e = rs.encode(nibs[:11]) + rs.encode(nibs[11:])
                 for k in range(0, 30, 2): fec_payload += bytes([(all_e[k] << 4) | all_e[k+1]])
-            encoded_block = fec_payload
+            data_to_transmit = fec_payload
 
-        # 5. Padding & Interleaving
-        is_tactical = ("LINK-16" in self.fec_mode or "LEVEL_6" in self.fec_mode)
-        target_bytes = 120 # Standard tactical size (8 RS blocks)
-        packet = encoded_block.ljust(target_bytes, b'\x00')[:target_bytes]
+        # 5. Padding & Interleaving (Target exactly 120 bytes = 8 RS blocks)
+        target_bytes = 120
+        packet = data_to_transmit.ljust(target_bytes, b'\x00')[:target_bytes]
+        
         if self.use_interleaving: packet = self.interleaver.interleave(packet)
         if self.use_whitening: self.scrambler.reset(); packet = self.scrambler.process(packet)
 
         # 6. Bit Conversion
+        is_tactical = ("LINK-16" in self.fec_mode or "LEVEL_6" in self.fec_mode)
         bits = []
         for b in packet: [bits.append((b >> (7-i)) & 1) for i in range(8)]
         if self.use_nrzi and not is_tactical: self.nrzi.tx_state = 0; bits = self.nrzi.encode(bits)

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Opal Vanguard - Mission-Controlled Depacketizer (Self-Healing Header Build v10.0)
+# Opal Vanguard - Mission-Controlled Depacketizer (Single-Header Build v10.1)
 
 import numpy as np
 from gnuradio import gr
@@ -24,7 +24,7 @@ class depacketizer(gr.basic_block):
         self.use_nrzi = l_cfg.get('use_nrzi', True)
         self.use_comsec = False
         self.comsec_key = None
-        self.interleaver = MatrixInterleaver(rows=l_cfg.get('interleaver_rows', 8))
+        self.interleaver = MatrixInterleaver(rows=l_cfg.get('interleaver_rows', 15))
         self.scrambler = Scrambler(mask=l_cfg.get('scrambler_mask', 0x48), seed=l_cfg.get('scrambler_seed', 0x7F))
         self.nrzi = NRZIEncoder()
         self.fec_mode = self.cfg.get('mission', {}).get('id', "")
@@ -84,7 +84,7 @@ class depacketizer(gr.basic_block):
                         self.ccsk_buf = []
                 else: self.recovered_bits.append(rx_bit)
                 
-                target_bytes = 120 # Standard tactical size
+                target_bytes = 120
                 target_bits = target_bytes * 8
                 if len(self.recovered_bits) >= target_bits:
                     avg_conf = self.ccsk_conf_sum / self.ccsk_sym_count if self.ccsk_sym_count > 0 else 1.0
@@ -121,7 +121,9 @@ class depacketizer(gr.basic_block):
                         
                         # 4. Extract Header from HEALED data
                         sid, m_type, seq, true_plen = struct.unpack('BBBB', decoded_block[:4])
-                        
+                        if true_plen > 0 and true_plen < 100:
+                            print(f"[DEBUG] Recovered: sid={sid} type={m_type} seq={seq} plen={true_plen}")
+
                         # 5. CRC Check on HEALED payload
                         # Payload starts at index 4 in the HEALED block
                         payload_zone = decoded_block[4:4+true_plen+2]
@@ -140,7 +142,7 @@ class depacketizer(gr.basic_block):
                                 meta = pmt.make_dict()
                                 meta = pmt.dict_add(meta, pmt.intern("type"), pmt.from_long(m_type))
                                 self.message_port_pub(pmt.intern("out"), pmt.cons(meta, pmt.init_u8vector(len(payload), list(payload))))
-                        elif true_plen > 0 and true_plen < target_bytes:
+                        elif true_plen > 0 and true_plen < 100:
                             print(f"\033[91m[CRC FAIL]\033[0m ID: {seq:03} | LEN: {true_plen} | CONF: {avg_conf:.2f}")
                         
                         diag_dict = pmt.make_dict()
