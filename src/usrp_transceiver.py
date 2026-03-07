@@ -303,7 +303,17 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
 
         self.snk_waterfall = qtgui.waterfall_sink_c(2048, fft.window.WIN_BLACKMAN_HARRIS, self.center_freq, self.samp_rate, "Spectrum", 1)
         self.snk_waterfall.set_update_time(0.2)
-        self.viz_panel.addWidget(sip.wrapinstance(self.snk_waterfall.qwidget(), Qt.QWidget)); self.connect(self.usrp_source, self.snk_waterfall)
+        
+        self.snk_scope = qtgui.time_sink_f(1024, self.samp_rate, "Signal Scope (Bits)", 1)
+        self.snk_scope.set_y_axis(-0.5, 1.5)
+        self.snk_scope.set_update_time(0.1)
+        self.rx_b2f = blocks.uchar_to_float()
+        
+        self.viz_panel.addWidget(sip.wrapinstance(self.snk_waterfall.qwidget(), Qt.QWidget))
+        self.viz_panel.addWidget(sip.wrapinstance(self.snk_scope.qwidget(), Qt.QWidget))
+        
+        self.connect(self.usrp_source, self.snk_waterfall)
+        self.connect(self.depkt_b, self.rx_b2f, self.snk_scope)
 
         self.ctrl_listen = RemoteControlListener(self); self.ctrl_listen.start()
         self.timer = Qt.QTimer(); self.timer.timeout.connect(lambda: self.hop_ctrl.handle_trigger(pmt.PMT_T))
