@@ -1,160 +1,70 @@
-# Opal Vanguard: Comprehensive User Manual
+# Opal Vanguard - Field Terminal User Manual
 
-## Table of Contents
-1. [Executive Summary](#executive-summary)
-2. [Introduction](#1-introduction)
-3. [Concept of Employment (CONEMP)](#2-concept-of-employment-conemp)
-4. [Concept of Operations (CONOPS)](#3-concept-of-operations-conops)
-5. [System Architecture & Capabilities](#4-system-architecture--capabilities)
-6. [Mission Tiers (The "Digital Duel")](#5-mission-tiers-the-digital-duel)
-7. [Operator's Guide](#6-operators-guide)
-8. [Glossary & Acronyms](#7-glossary--acronyms)
+## 📖 Introduction
+The Opal Vanguard Field Terminal is a high-performance software-defined radio (SDR) transceiver designed for resilient, secure, and stealthy messaging. This manual covers operation, troubleshooting, and provides a deep-dive glossary of the system's core technologies.
 
 ---
 
-## Executive Summary
-**Project Opal Vanguard** is a highly scalable, Software-Defined Radio (SDR) testbed designed specifically for Electronic Warfare (EW) training and tactical datalink research. Developed utilizing Python and GNU Radio, it provides a physical, hardware-in-the-loop environment to simulate, analyze, and defeat electromagnetic interference and jamming.
+## 🎮 Basic Operation
+### 1. Synchronization
+Ensure both laptops are connected to a shared network (or the Internet) to synchronize their system clocks. This is **critical** for Level 5+ Time-of-Day (TOD) frequency hopping.
 
-**The Value Proposition:**
-Modern tactical communications rely on complex layers of protection—frequency hopping, mathematical error correction, and cryptographic spreading—to survive in contested airspace. Historically, training personnel on these systems required multi-million-dollar military hardware. Opal Vanguard democratizes this capability. 
-
-By leveraging Commercial Off-The-Shelf (COTS) hardware (such as the USRP B205mini), Opal Vanguard allows engineering teams, researchers, and operators to:
-*   **Train** in live "Red vs. Blue" electronic combat scenarios.
-*   **Develop** and evaluate novel anti-jamming algorithms (e.g., Adaptive Frequency Hopping) safely in a laboratory.
-*   **Visualize** the mathematical theories behind advanced datalinks (like the military's Link-16) in real-time.
-
-For leadership, Opal Vanguard represents a low-cost, high-yield asset that rapidly accelerates organizational EW readiness and RF (Radio Frequency) engineering proficiency.
-
----
-
-## 1. Introduction
-Welcome to Opal Vanguard. This manual serves as the definitive guide for operating, deploying, and understanding the platform. The system implements a complete digital communication chain, starting from basic, vulnerable transmissions and scaling up to nanosecond-synchronized, adaptive hopping networks.
-
-Whether you are an operator attempting to punch a signal through a wall of broadband noise, or an adversary attempting to systematically dismantle a communications link, this platform provides the tools required.
-
----
-
-## 2. Concept of Employment (CONEMP)
-**How is Opal Vanguard used by the organization?**
-
-Opal Vanguard is deployed primarily in three modalities:
-
-1.  **The Training Range:** Used to train personnel in the realities of RF physics. By progressing through the "Mission Tiers," trainees learn how individual layers of signal hardening (like Interleaving or Forward Error Correction) respond to different types of jamming.
-2.  **The R&D Testbed:** Used by engineers to prototype new datalink features. Because the system is written in modular Python, engineers can quickly inject new modulation schemes (like OFDM) or MAC (Medium Access Control) logic without rewriting low-level FPGA code.
-3.  **Hardware Evaluation:** Used to test the limits of COTS SDR hardware, evaluating clock drift, tuning latency, and RF front-end performance in dense signal environments.
-
----
-
-## 3. Concept of Operations (CONOPS)
-**How does the system operate in a live scenario?**
-
-Opal Vanguard operates on a **"Digital Duel"** framework, dividing participants into two asymmetrical roles operating in the 900MHz Industrial, Scientific, and Medical (ISM) band.
-
-### The Blue Team (Communications)
-*   **Nodes:** Operates the **ALPHA** (Transmitter) and **BRAVO** (Receiver) terminals.
-*   **Objective:** Maintain a continuous, error-free flow of "Mission Data" from Alpha to Bravo.
-*   **Capabilities:** Blue Team utilizes the `mission_configs/` files to dynamically alter the structure of their radio waves. They can change modulations, add spreading codes, or enable autonomous evasion tactics.
-
-### The Red Team (Adversary)
-*   **Nodes:** Operates the **JAMMER** terminal (`adversary_jammer.py`).
-*   **Objective:** Disrupt, Deny, Degrade, or Manipulate the Blue Team's datalink.
-*   **Capabilities:** Red Team does not decode the data; their goal is destruction. They utilize broadband noise (Denial of Service), swept-frequency tones (Scanning attacks), pulsed bursts, and an autonomous "Follower AI" that dynamically hunts for power peaks to exploit vulnerabilities in the Blue Team's active configuration.
-
----
-
-## 4. System Architecture & Capabilities
-Opal Vanguard's resilience is built on a "defense-in-depth" architecture. 
-
-*   **Application Layer:** Supports configurable payload types including automated `heartbeat` strobes, interactive real-time `chat`, and dynamic `file` transfer with chunked delivery.
-*   **Modulation Suite:** Converts digital bits into analog waves. Supports GFSK (Gaussian Frequency Shift Keying), MSK (Minimum Shift Keying), Phase Shift Keying (DBPSK, DQPSK, D8PSK), and wideband OFDM (Orthogonal Frequency Division Multiplexing).
-*   **COMSEC (Communications Security):** Utilizes AES-256-GCM authenticated encryption with anti-replay sequence nonces to secure the physical payload bytes against interception.
-*   **Spreading (Stealth):** Uses DSSS (Direct Sequence Spread Spectrum) and CCSK (Cyclic Code Shift Keying) to expand the signal's bandwidth, lowering its power density to hide it below the noise floor (LPI/LPD).
-*   **Ghost Mode (Power Control):** Dynamically drops the physical RF transmit amplifier to zero between bursts, making the transmitter invisible to spectrum analyzers when idle.
-*   **Forward Error Correction (FEC):** Uses mathematical algorithms, specifically Reed-Solomon (RS 15,11 and RS 31,15), to reconstruct corrupted data without needing a retransmission.
-*   **Frequency Hopping Spread Spectrum (FHSS):** Changes the carrier frequency rapidly (up to 100 times per second) using cryptographic AES-CTR sequences synchronized via precise Time-of-Day (TOD) clocks.
-*   **Adaptive MAC Layer:** Features **ARQ** (Automatic Repeat Request) for automated retransmissions, **AFH** (Adaptive Frequency Hopping) which autonomously detects jammed channels and blacklists them, and **AMC** (Adaptive Modulation & Coding) which monitors link quality and automatically re-boots the radio into a more resilient PHY layer (e.g., from high-speed PSK down to DSSS) if the link falls under heavy attack.
-
----
-
-## 5. Mission Tiers (The "Digital Duel")
-The system includes predefined configurations that incrementally introduce these capabilities.
-
-*   **Level 1: Soft Link** - Raw GFSK. Extremely fragile; easily destroyed by low-power noise.
-*   **Level 2: Repairable** - Adds basic FEC. Survives random bit flips but fails against sustained bursts.
-*   **Level 3: Resilient** - Adds Matrix Interleaving and ARQ. Bursts of noise are spread out and repaired.
-*   **Level 4: Stealth** - Adds DSSS. The signal is buried in noise, forcing the Jammer to use massive power.
-*   **Level 5: Blackout** - Adds AES Frequency Hopping and AFH. The link rapidly evades narrowband attacks and blacklists jammed channels.
-*   **Level 6: Link-16** - Emulates military tactical datalinks. Uses MSK, CCSK 32-chip mapping, and aggressive RS(31,15) correction.
-*   **Level 7: OFDM Master** - Replaces single-carrier modulation with 64-subcarrier OFDM and nanosecond-accurate hardware clock triggering.
-
----
-
-## 6. Operator's Guide
-### Physical Setup
-Project Opal Vanguard supports two deployment stages:
-
-**Stage 0: Bench Verification (Single-Host)**
-*   Connect all three USRPs to one high-power Linux PC. Use three terminal windows to launch the ALPHA, BRAVO, and JAMMER nodes. This stage is mandatory for verifying code changes and ensuring the RF path is healthy before field distribution.
-
-**Stage 1: Field Employment (Multi-Host)**
-*   Deploy three separate Linux PCs, each connected to one USRP (Universal Software Radio Peripheral) via USB 3.0. This is the intended configuration for the "Digital Duel" competition.
-
-**The "Star" RF Configuration:**
-To merge the signals while allowing for **Reactive Jamming**, use an RF Combiner/Splitter:
-*   **Node 1 (Blue Alpha TX):** Connects to Port 1.
-*   **Node 3 (Red Jammer TRX):** Connects to Port 2. 
-*   **Node 2 (Blue Bravo RX):** Connects to Port 3.
-*   *Note: Because Port 1 and Port 2 are coupled, the Jammer can "sniff" the Alpha signal to trigger autonomous, reactive interference, mimicking a real-world follow-on jammer.*
-
-### Environment Bootstrap
-Run the setup script to install all dependencies and verify the digital logic:
+### 2. Launching the Terminal
+Run the transceiver using the mission configuration for your current level:
 ```bash
-./SETUP_MISSION.sh
-```
-*(Alternatively, deploy using the `DOCKER_GUIDE.md` instructions for an isolated environment).*
-
-### Executing a Mission
-The mission requires three separate command instances, typically run on their respective hardware-connected PCs.
-
-**Computer 1 (Blue Alpha):**
-```bash
-sudo -E python3 src/usrp_transceiver.py --role ALPHA --serial <SERIAL_A> --config mission_configs/level4_stealth.yaml
+sudo -E python3 src/usrp_transceiver.py --role ALPHA --serial <YOUR_SERIAL> --config mission_configs/level5_blackout.yaml
 ```
 
-**Computer 2 (Blue Bravo):**
-```bash
-sudo -E python3 src/usrp_transceiver.py --role BRAVO --serial <SERIAL_B> --config mission_configs/level4_stealth.yaml
-```
-
-**Computer 3 (Red Jammer):**
-```bash
-sudo -E python3 src/adversary_jammer.py --serial <SERIAL_J> --mode SWEEP --gain 75
-```
-
-### Mission Commander Dashboard
-To visualize mission telemetry in real-time, launch the web dashboard on any Blue Team PC:
-```bash
-python3 dashboard/app.py
-```
-Open a browser and navigate to `http://localhost:5000`. This will display live graphs of Signal Confidence, Mission Success Rate, and an Adaptive Frequency Hopping (AFH) channel health heatmap.
+### 3. Tuning the Link
+- **Waterfall**: Use the Spectrum Waterfall to monitor signal presence.
+- **RX Gain**: If the waterfall is solid yellow, **lower the RX gain** until the background is dark blue.
+- **Signal Scope**: Use the scope to verify the bit-level recovery. A clean square wave indicates a strong signal lock.
 
 ---
 
-## 7. Glossary & Acronyms
-*   **1PPS (One Pulse Per Second):** An electrical signal, usually from a GPS receiver, that precisely marks the start of a second. Used for nanosecond hardware synchronization.
-*   **AFH (Adaptive Frequency Hopping):** A system that monitors spectrum health and autonomously avoids channels experiencing heavy interference.
-*   **ARQ (Automatic Repeat Request):** A protocol where the receiver automatically asks the transmitter to resend a specific packet if it was corrupted.
-*   **CCSK (Cyclic Code Shift Keying):** A modulation technique where different data symbols are represented by cyclically shifting a base sequence of chips. Used in Link-16.
-*   **COTS (Commercial Off-The-Shelf):** Standard hardware available to the public, as opposed to custom-built military hardware.
-*   **CRC (Cyclic Redundancy Check):** A checksum attached to a packet to detect accidental changes to raw data.
-*   **DSSS (Direct Sequence Spread Spectrum):** A transmission method that multiplies data bits by a high-speed "chipping code" to spread the signal over a wider bandwidth.
-*   **EW (Electronic Warfare):** Any action involving the use of the electromagnetic spectrum to attack an enemy or impede enemy assaults.
-*   **FEC (Forward Error Correction):** A method of adding redundant data to a transmission so the receiver can mathematically correct errors without asking for a retransmission.
-*   **FHSS (Frequency Hopping Spread Spectrum):** A method of transmitting radio signals by rapidly changing the carrier frequency among many distinct frequencies.
-*   **GFSK / MSK / PSK:** Types of digital modulation (Frequency, Minimum, and Phase Shift Keying) that define exactly how 1s and 0s are encoded into analog waves.
-*   **GPSDO (GPS Disciplined Oscillator):** Hardware that uses GPS satellite timing to generate an incredibly precise and stable clock reference for a radio.
-*   **LPI / LPD (Low Probability of Intercept / Detection):** Techniques used to make a signal difficult for an adversary to find or decode.
-*   **OFDM (Orthogonal Frequency Division Multiplexing):** A method of encoding digital data on multiple carrier frequencies simultaneously (subcarriers).
-*   **SDR (Software-Defined Radio):** A radio communication system where components that have been traditionally implemented in hardware (e.g. mixers, filters, modulators) are instead implemented by software on a computer.
-*   **TOD (Time of Day):** Using an absolute clock (like Unix Epoch time) to synchronize events across separate machines without requiring them to communicate directly.
-*   **USRP (Universal Software Radio Peripheral):** The specific brand of SDR hardware manufactured by Ettus Research used in this project.
+## 📚 Technical Glossary & Concepts
+
+### FHSS (Frequency Hopping Spread Spectrum)
+A method of transmitting radio signals by rapidly switching a carrier among many frequency channels.
+- **Why it matters**: It makes the signal extremely difficult to intercept or jam, as the "target" frequency is constantly moving based on a pseudo-random sequence.
+- **Opal Vanguard Implementation**: We use AES-based pseudo-random sequences synchronized via Time-of-Day (TOD).
+
+### DSSS (Direct Sequence Spread Spectrum)
+A modulation technique where the transmitted signal takes up more bandwidth than the information signal that is being modulated.
+- **Why it matters**: It "spreads" the signal power into the noise floor, making it nearly invisible to standard scanners (Low Probability of Intercept) and highly resistant to narrow-band jamming.
+- **Chips**: The small sub-bits used to spread each information bit. The number of chips per bit is the **Spreading Factor (SF)**.
+
+### COMSEC (Communications Security)
+The discipline of preventing unauthorized interceptors from accessing telecommunications in an intelligible form.
+- **AES-CTR**: We use Advanced Encryption Standard in Counter mode. This is a "stream cipher" that is highly resilient to RF bit errors; a single corrupted bit in the air only ruins one character of the message rather than the whole packet.
+
+### FEC (Forward Error Correction)
+A technique used for controlling errors in data transmission over unreliable or noisy communication channels.
+- **Reed-Solomon (RS)**: A powerful mathematical algorithm that adds redundant data to each packet. Our RS(15,11) implementation can automatically "repair" up to 2 corrupted bytes in every 15-byte block without needing a retransmission.
+
+### ARQ (Automatic Repeat Request)
+An error-control method for data transmission that uses acknowledgments (ACKs) and timeouts to achieve reliable data transmission.
+- **Logic**: If a receiver hears a packet but the CRC fails (and FEC can't fix it), the transmitter will automatically resend the data up to the `max_retries` limit.
+
+### NRZI (Non-Return-to-Zero Inverted)
+A method of mapping binary signals to physical pulses.
+- **Why it matters**: In RF, the phase of a signal can sometimes be inverted (180 degrees) by the environment. NRZI only cares about *changes* in state, making the link immune to phase-flip corruption.
+
+### Whitening (Scrambling)
+The process of XORing the data stream with a pseudo-random sequence before transmission.
+- **Why it matters**: Radio hardware struggles to transmit long strings of identical bits (e.g., all 0s). Whitening ensures the signal is always "randomized," which keeps the hardware's DC-offset balanced and the link stable.
+
+### Interleaving
+A process of rearranging data in a non-contiguous way.
+- **Why it matters**: RF interference often happens in "bursts" that kill several consecutive bits. Interleaving spreads those bits out across the packet so that, after de-interleaving, the errors appear as isolated single-bit flips that the FEC can easily repair.
+
+---
+
+## 🛠 Troubleshooting
+| Issue | Potential Cause | Solution |
+|-------|----------------|----------|
+| Blank Waterfall | USRP Stall / USB Hub | Restart the script; ensure USRP is on a USB 3.0 port. |
+| Solid Yellow Waterfall | Gain Saturation | Lower the **RX Gain** slider immediately. |
+| [CRC FAIL] | High Noise / Multipath | Increase **TX Gain** or move antennas; check for local 900MHz interference. |
+| Decryption failed | Key Mismatch / High BER | Ensure `comsec_key` matches on both ends; lower gain to reduce saturation. |
+| No SYN/ACK | Clock Drift | Run `ntpdate` or check system time sync on both laptops. |

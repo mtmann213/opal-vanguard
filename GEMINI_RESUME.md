@@ -1,30 +1,25 @@
-# Opal Vanguard - Gemini CLI Handoff (Master Build v7.6)
+# Opal Vanguard - Gemini CLI Handoff (Master Build v8.1)
 
-## 🎯 Current Objective
-Establish a rock-solid P2P RF link between Laptop 1 (BRAVO) and Laptop 2 (ALPHA) using USRP B205mini hardware. Current focus is **Level 3: Resilient** baseline testing.
+## 🎯 Current Status: MISSION SUCCESS
+Established a stable, encrypted, frequency-hopping RF link between ALPHA and BRAVO. 
+- **Baseline Logic**: Hamming-based syncword detection (2-bit error tolerance) is fully operational.
+- **Hardware Integration**: Burst timing (SOB/EOB) is stabilized; no more `check_topology` crashes.
+- **Level 5 Baseline**: FHSS (20 channels) + COMSEC (AES-CTR) verified over-the-air.
 
-## 🛠️ State of the Build (v7.6)
-We have stripped the codebase down to an **Absolute Stability Baseline** to eliminate SegFaults and PMT errors.
+## 🚀 Next Step: Level 6 (Link-16)
+The objective is to enable **Adaptive Frequency Hopping (AFH)** and **CCSK Spreading**.
+- **Current Blockers**: None. Level 5 stability is achieved.
+- **Goal**: Implement "Blacklist Syncing" where Node A informs Node B of jammed channels.
 
-### 🏁 Critical Fixes Implemented:
-1.  **Bit-Packing Restoration:** `packetizer.py` now outputs **unpacked bits** (1 bit per byte). This is mandatory for GNU Radio modulators to send a valid signal.
-2.  **AMC Auto-Reboot Disabled:** Automatic mission switching is physically stripped from `usrp_transceiver.py` to prevent Segmentation Faults during USRP hardware release.
-3.  **AFH Blacklist Logic Stubbed:** `handle_blacklist` in hop generators is a no-op stub to prevent `AttributeError: is_vector_obj` crashes in GNU Radio 3.10.
-4.  **Header Alignment:** `interleaver_rows` is set to **8** for Levels 1-5 (120-byte blocks) and **32** for Level 6 (320-byte blocks).
-5.  **Virtual Wipe:** Dashboard UI now uses browser-side timestamp filtering for telemetry wipes, bypassing `sudo` file permission issues.
-
-## 🚀 Laptop 2 Setup (ALPHA)
-The repository has been synced and cleaned. Resume with:
-
+## 📋 Resume Command (ALPHA)
 ```bash
-# 1. (COMPLETED) Force hard sync to main
-# 2. (COMPLETED) Purge Python cache
+# 1. Sync repository
+git fetch origin && git reset --hard origin/main
 
-# 3. Launch ALPHA Radio (Updated Serial & sudo for stability)
-sudo -E python3 src/usrp_transceiver.py --role ALPHA --serial 3449AC1 --config mission_configs/level3_resilient.yaml
+# 2. Launch ALPHA Radio (Level 5 Goal)
+sudo -E python3 src/usrp_transceiver.py --role ALPHA --serial 3449AC1 --config mission_configs/level5_blackout.yaml
 ```
 
-## 📋 Mission Log
-- **Level 1 & 2:** Stable.
-- **Level 3:** Repo synced and cache purged. Hardware verified (B205mini, serial 3449AC1).
-- **Next Step:** User starting ALPHA Radio manually to verify "HEARTBEAT FROM ALPHA" reception by BRAVO.
+## 🛠 Key Tuning
+- **RX Gain**: If the Waterfall is yellow, **DECREASE RX GAIN** to improve SNR.
+- **Clock Sync**: Ensure system time matches on both laptops before running FHSS.

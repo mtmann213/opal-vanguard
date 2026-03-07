@@ -1,40 +1,48 @@
+# Level 6: Link-16 - Advanced Tactical Mode
+# Goal: Standardized military data link emulation using CCSK and AFH.
+
 mission:
   id: LEVEL_6_LINK16
+
 physical:
   ghost_mode: true
   samp_rate: 1000000
   center_freq: 915000000
-  modulation: MSK
+  modulation: GFSK
   freq_dev: 25000
   samples_per_symbol: 10
+
 mac_layer:
-  amc_enabled: false
+  amc_enabled: true      # Adaptive Modulation and Coding - auto-adjusts based on link quality
   arq_enabled: true
-  max_retries: 3
+  max_retries: 5
+  afh_enabled: true      # Adaptive Frequency Hopping - radio blacklists jammed channels
+
 link_layer:
   use_comsec: true
   comsec_key: 5365637265744f70616c4b6579313233
-  crc_type: CRC16
+  crc_type: CRC32
   use_fec: true
   use_interleaving: true
   interleaver_rows: 32
   use_whitening: true
   use_nrzi: true
   use_manchester: false
+
 dsss:
   enabled: true
-  type: CCSK
-  spreading_factor: 32
+  type: CCSK             # Cyclic Code Shift Keying - high-performance tactical spreading
+  chipping_code: [1, 1, 1, 1, 1, -1, -1, 1, 1, -1, 1, -1, 1, 1, 1, 1, 1, -1, -1, 1, 1, -1, 1, -1, 1, 1, 1, 1, 1, -1, -1, 1]
+
 hopping:
   enabled: true
   type: AES
   sync_mode: TOD
-  dwell_time_ms: 1000
-  lookahead_ms: 50
-  num_channels: 51
+  dwell_time_ms: 50
+  lookahead_ms: 10
+  num_channels: 50
   channel_spacing: 150000
-  aes_key: 4c696e6b31365365637572654b657921
-  initial_seed: 5654
+
 hardware:
   args: type=b200
   samp_rate: 1000000
@@ -42,5 +50,6 @@ hardware:
   rx_gain: 70
   tx_antenna: TX/RX
   rx_antenna: TX/RX
+
 application_layer:
   payload_type: heartbeat

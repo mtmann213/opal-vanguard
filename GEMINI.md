@@ -1,13 +1,14 @@
 # Project: Opal Vanguard
 ## Mission Profile
-- **Goal:** Modular FHSS Messaging System.
+- **Goal:** Modular, Secure FHSS Messaging System.
 - **Spectrum:** 900MHz ISM Band (902-928 MHz).
-- **Modulation:** GFSK (start simple).
-- **Hardware:** HackRF One.
+- **Modulation:** GFSK (Baseline) / DBPSK (Tactical).
+- **Hardware:** USRP B205mini.
 
 ## Technical Specifications
-- **FHSS Logic:** Fibonacci LFSR for hop-sequence generation.
-- **Whitening:** Fibonacci LFSR based on polynomial x^7 + x^4 + 1.
-- **Packet:** Preamble (0xAAAA) -> Syncword (0x3D4C5B6A) -> Header -> Payload -> CRC16.
-- **FEC:** Reed-Solomon.
-- **Flowgraph:** GNU Radio 3.10+, utilizing Message Passing for frequency control to minimize latency.
+- **FHSS Logic**: AES pseudo-random hop sequences synchronized via TOD.
+- **COMSEC**: AES-CTR encryption for error-tolerant secure data.
+- **Syncword**: 0x3D4C5B6A with Hamming Distance detection (2-bit error tolerance).
+- **Burst Logic**: Start-of-Burst (SOB) and End-of-Burst (EOB) hardware tagging.
+- **FEC**: Reed-Solomon RS(15,11) self-healing data blocks.
+- **Flowgraph**: GNU Radio 3.10+, utilizing Asynchronous Message Passing for frequency control.

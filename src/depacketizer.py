@@ -87,7 +87,12 @@ class depacketizer(gr.basic_block):
                                         nonce, ct = payload[:16], payload[16:]
                                         cipher = Cipher(algorithms.AES(self.comsec_key), modes.CTR(nonce), backend=default_backend())
                                         decryptor = cipher.decryptor()
-                                        payload = decryptor.update(ct) + decryptor.finalize()
+                                        # Decrypt and then SLICE to plen (minus COMSEC overhead)
+                                        payload = (decryptor.update(ct) + decryptor.finalize())[:plen]
+                                    else:
+                                        # Slice non-encrypted payloads to plen
+                                        payload = payload[:plen]
+
                                     t_name = {0:"DATA", 1:"SYN", 2:"ACK"}.get(m_type, "UNK")
                                     print(f"\033[92m[OK]\033[0m ID: {seq:03} | TYPE: {t_name} | RX: {payload}")
                                     meta = pmt.make_dict()

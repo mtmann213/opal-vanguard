@@ -1,60 +1,28 @@
-# Opal Vanguard: Modular FHSS Messaging System
+# Opal Vanguard - SDR Tactical Transceiver
 
-## Overview
-Opal Vanguard is a Python-based GNU Radio framework for a modular Frequency Hopping Spread Spectrum (FHSS) messaging system. It implements a complete digital communication chain with Forward Error Correction (FEC), scrambling, and real-time frequency hopping control.
+Opal Vanguard is a high-performance, modular software-defined radio system designed for resilient communications in contested RF environments. It supports advanced features such as AES-encrypted messaging, Frequency Hopping (FHSS), and Direct Sequence Spread Spectrum (DSSS).
 
-## Key Features
-- **Application Layer:** Interactive real-time Qt Chat terminal and chunked File Transfer (FTP) protocol.
-- **COMSEC & TRANSEC:** AES-GCM authenticated payload encryption and AES-CTR hopping.
-- **Forward Error Correction (FEC):** Reed-Solomon (15, 11) and (31, 15) for high-reliability links.
-- **Advanced Spreading:** Supports standard **DSSS** (31-chip) and authentic Link-16 **CCSK** (32-chip symbol mapping).
-- **Multi-Modulation:** Support for **GFSK, MSK, DBPSK, DQPSK, D8PSK, and OFDM**.
-- **Scrambling/Whitening:** Fibonacci LFSR whitening using the $x^7 + x^4 + 1$ polynomial.
-- **Standardized Missions:** Tiered mission configurations (`level1` to `level7`) for progressive difficulty.
+## 🚀 Current Status (v8.1)
+The system has been fully stabilized for the **B205mini** hardware and **N150-class CPUs**. 
+- **Levels 1-3**: Rock-solid baseline connectivity with RS(15,11) FEC and ARQ retries.
+- **Level 4**: Stealth mode functional with DSSS spreading and Ghost Mode (LPI).
+- **Level 5**: Secure Blackout mode functional with AES-CTR encryption and TOD-synchronized FHSS.
 
-## Project Structure
-- **/src**: Contains Python Out-Of-Tree (OOT) blocks and hardware transceiver logic (`usrp_transceiver.py`, `adversary_jammer.py`).
-- **/mission_configs**: Contains tiered YAML configuration files (`level1_soft_link.yaml` to `level6_link16.yaml`) defining the datalink parameters.
-- **/grc**: Contains GNU Radio Companion (GRC) block definitions (`.block.yml`) and legacy loopback flowgraphs.
+## 🛠 Core Features
+- **Robust Sync**: Hamming-distance based syncword detection allowing up to 2-bit errors.
+- **COMSEC**: AES-CTR encryption for error-resilient secure payloads.
+- **Burst Stability**: Custom `BurstTagger` logic ensuring perfect USRP T/R switch timing.
+- **Real-time Diagnostics**: GUI-integrated Spectrum Waterfall and Burst Scope.
 
-## Quick Start
+## 🎮 Quick Start
+1.  **Synchronize Clocks**: Ensure system time matches on both terminals (crucial for FHSS).
+2.  **Launch Radio**:
+    ```bash
+    sudo -E python3 src/usrp_transceiver.py --role ALPHA --serial <SERIAL> --config mission_configs/level5_blackout.yaml
+    ```
+3.  **Monitor**: Use the **Signal Scope** to verify bit-level recovery and the **Waterfall** to manage receiver saturation.
 
-### 1. Hardware Field Test (USRP B200/B205mini)
-To run a physical RF test between two separate nodes, use the transceiver script on each respective computer:
-```bash
-# Computer 1 (Alpha)
-sudo -E python3 src/usrp_transceiver.py --role ALPHA --serial <SERIAL_1> --config mission_configs/level1_soft_link.yaml
-
-# Computer 2 (Bravo)
-sudo -E python3 src/usrp_transceiver.py --role BRAVO --serial <SERIAL_2> --config mission_configs/level1_soft_link.yaml
-```
-
-### 2. Contested Environment (Red Team)
-To test the datalink's resilience against jamming, launch the adversary script on a third computer:
-```bash
-# Computer 3 (Jammer)
-sudo -E python3 src/adversary_jammer.py --serial <SERIAL_3> --mode NOISE --gain 75
-```
-
-### 3. Run Visual Demo (Simulation)
-The project includes a full QT GUI flowgraph implemented directly in Python for testing without hardware:
-```bash
-python3 src/top_block_gui.py --config mission_configs/level4_stealth.yaml
-```
-
-### 4. Mission Commander Dashboard (Telemetry)
-The project includes a web-based dashboard for real-time mission telemetry. To launch the dashboard, run the Flask app from the `dashboard/` directory:
-```bash
-python3 dashboard/app.py
-```
-Then navigate to `http://localhost:5000` in your web browser.
-
-## Technical Specifications
-- **Spectrum:** 902-928 MHz (ISM Band)
-- **Modulation:** GFSK
-- **FEC:** Reed-Solomon (15, 11)
-- **Hop Rate:** Variable (200ms default)
-- **Platform:** GNU Radio 3.10+ (Python 3.x)
-
-## License
-Opal Vanguard is released under the **GPL-3.0-or-later** license.
+## 📚 Documentation
+- **[USER_MANUAL.md](USER_MANUAL.md)**: Operation guide and technical glossary.
+- **[MISSION_CONFIG_GUIDE.md](MISSION_CONFIG_GUIDE.md)**: Detailed breakdown of tuning parameters.
+- **[GEMINI_RESUME.md](GEMINI_RESUME.md)**: Operational handoff and current objectives.

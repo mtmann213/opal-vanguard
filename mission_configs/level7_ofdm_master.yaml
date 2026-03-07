@@ -1,38 +1,47 @@
+# Level 7: OFDM Master - The Final Frontier
+# Goal: High-speed multi-carrier data link with full tactical suite.
+
 mission:
   id: LEVEL_7_OFDM_MASTER
+
 physical:
   ghost_mode: true
   samp_rate: 1000000
   center_freq: 915000000
-  modulation: OFDM
+  modulation: OFDM      # Multi-carrier Orthogonal Frequency Division Multiplexing
   samples_per_symbol: 10
+
+mac_layer:
+  amc_enabled: true
+  arq_enabled: true
+  max_retries: 5
+  afh_enabled: true
+
 link_layer:
   use_comsec: true
   comsec_key: 5365637265744f70616c4b6579313233
   crc_type: CRC32
   use_fec: true
   use_interleaving: true
-  interleaver_rows: 32
+  interleaver_rows: 64
   use_whitening: true
   use_nrzi: true
   use_manchester: false
-mac_layer:
-  amc_enabled: false
-  arq_enabled: true
-  afh_enabled: true
-  max_retries: 5
+
 dsss:
-  enabled: false
+  enabled: true
+  type: CCSK
+  chipping_code: [1, 1, 1, 1, 1, -1, -1, 1, 1, -1, 1, -1, 1, 1, 1, 1, 1, -1, -1, 1, 1, -1, 1, -1, 1, 1, 1, 1, 1, -1, -1, 1]
+
 hopping:
   enabled: true
   type: AES
   sync_mode: TOD
-  dwell_time_ms: 1000
-  lookahead_ms: 50
-  num_channels: 20
-  channel_spacing: 500000
-  aes_key: 000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f
-  initial_seed: 2766
+  dwell_time_ms: 20
+  lookahead_ms: 5
+  num_channels: 100
+  channel_spacing: 200000
+
 hardware:
   args: type=b200
   samp_rate: 1000000
@@ -40,6 +49,6 @@ hardware:
   rx_gain: 70
   tx_antenna: TX/RX
   rx_antenna: TX/RX
-  sync: pc_clock
+
 application_layer:
   payload_type: heartbeat

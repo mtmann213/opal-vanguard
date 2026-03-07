@@ -1,36 +1,46 @@
+# Level 1: Soft Link - Baseline Connectivity
+# Goal: Establish a basic unencrypted P2P link with minimal complexity.
+
 mission:
-  id: LEVEL_1_SOFT_LINK
+  id: LEVEL_1_SOFT_LINK # Mission identifier for internal logic
+
 physical:
-  ghost_mode: false
-  samp_rate: 2000000
-  center_freq: 915000000
-  modulation: GFSK
-  freq_dev: 25000
-  samples_per_symbol: 10
+  ghost_mode: false     # Disable transmit amplifier toggling (always on during burst)
+  samp_rate: 2000000    # 2 Msps sample rate - Standard stability baseline
+  center_freq: 915000000 # Base frequency in Hz (915 MHz ISM Band)
+  modulation: GFSK      # Gaussian Frequency Shift Keying
+  freq_dev: 25000       # 25 kHz Frequency Deviation - Narrowband for SNR
+  samples_per_symbol: 10 # 10 Samples Per Symbol - High resolution timing
+
 mac_layer:
-  amc_enabled: false
-  arq_enabled: false
-  max_retries: 3
+  amc_enabled: false    # Adaptive Modulation and Coding disabled
+  arq_enabled: false    # Automatic Repeat Request (Retries) disabled
+  max_retries: 3        # Number of MAC-layer retransmission attempts
+
 link_layer:
-  use_comsec: false
-  comsec_key: 5365637265744f70616c4b6579313233
-  crc_type: CRC16
-  use_fec: false
-  use_interleaving: false
-  use_whitening: true
-  use_nrzi: true
-  use_manchester: false
+  use_comsec: false     # AES encryption disabled
+  comsec_key: 5365637265744f70616c4b6579313233 # Static AES-256 Key
+  crc_type: CRC16       # Error detection type
+  use_fec: false        # Reed-Solomon Forward Error Correction disabled
+  use_interleaving: false # Matrix Interleaver disabled
+  use_whitening: true   # Scrambler enabled to prevent DC offset
+  use_nrzi: true        # Non-Return-to-Zero Inverted for phase resilience
+  use_manchester: false # Manchester encoding disabled
+
 dsss:
-  enabled: false
-  spreading_factor: 1
+  enabled: false        # Direct Sequence Spread Spectrum disabled
+  spreading_factor: 1   # No spreading
+
 hopping:
-  enabled: false
+  enabled: false        # Frequency Hopping disabled
+
 hardware:
-  args: type=b200
-  samp_rate: 2000000
-  tx_gain: 70
-  rx_gain: 70
-  tx_antenna: TX/RX
-  rx_antenna: TX/RX
+  args: type=b200       # UHD device arguments
+  samp_rate: 2000000    # Hardware clock rate
+  tx_gain: 70           # Transmit power (dB)
+  rx_gain: 70           # Receive sensitivity (dB)
+  tx_antenna: TX/RX     # Physical SMA port for transmit
+  rx_antenna: TX/RX     # Physical SMA port for receive
+
 application_layer:
-  payload_type: heartbeat
+  payload_type: heartbeat # Default periodic message type

@@ -1,16 +1,22 @@
+# Level 4: Stealth - Spread Spectrum & LPI
+# Goal: Low Probability of Interception (LPI) using Ghost Mode and DSSS.
+
 mission:
   id: LEVEL_4_STEALTH
+
 physical:
-  ghost_mode: true
-  samp_rate: 1000000
+  ghost_mode: true      # USRP will drop TX gain to 0 between packets to remain "quiet"
+  samp_rate: 1000000    # Reduced rate for N150 CPU compatibility
   center_freq: 915000000
   modulation: GFSK
   freq_dev: 25000
   samples_per_symbol: 10
+
 mac_layer:
   amc_enabled: false
   arq_enabled: true
   max_retries: 3
+
 link_layer:
   use_comsec: false
   comsec_key: 5365637265744f70616c4b6579313233
@@ -21,10 +27,11 @@ link_layer:
   use_whitening: true
   use_nrzi: true
   use_manchester: false
+
 dsss:
-  enabled: true
-  spreading_factor: 31
-  chipping_code:
+  enabled: true         # DSSS enabled - hides signal in the noise floor
+  spreading_factor: 31  # One bit spread across 31 chips
+  chipping_code:        # Pseudo-Noise sequence for spreading
   - 1
   - 1
   - 1
@@ -56,8 +63,10 @@ dsss:
   - 1
   - -1
   - -1
+
 hopping:
   enabled: false
+
 hardware:
   args: type=b200
   samp_rate: 1000000
@@ -65,5 +74,6 @@ hardware:
   rx_gain: 70
   tx_antenna: TX/RX
   rx_antenna: TX/RX
+
 application_layer:
   payload_type: heartbeat

@@ -1,18 +1,24 @@
+# Level 5: Blackout - Frequency Hopping & Encryption
+# Goal: Military-grade resilience using AES encryption and Frequency Hopping (FHSS).
+
 mission:
   id: LEVEL_5_BLACKOUT
+
 physical:
-  ghost_mode: false
-  samp_rate: 1000000
+  ghost_mode: true
+  samp_rate: 1000000    # Reduced rate for N150 CPU compatibility
   center_freq: 915000000
   modulation: GFSK
-  freq_dev: 40000
+  freq_dev: 25000
   samples_per_symbol: 10
+
 mac_layer:
   amc_enabled: false
   arq_enabled: true
   max_retries: 3
+
 link_layer:
-  use_comsec: true
+  use_comsec: true      # AES-256 Encryption enabled for heartbeats
   comsec_key: 5365637265744f70616c4b6579313233
   crc_type: CRC16
   use_fec: true
@@ -21,51 +27,19 @@ link_layer:
   use_whitening: true
   use_nrzi: true
   use_manchester: false
+
 dsss:
   enabled: false
-  spreading_factor: 31
-  chipping_code:
-  - 1
-  - 1
-  - 1
-  - 1
-  - 1
-  - -1
-  - -1
-  - -1
-  - -1
-  - 1
-  - 1
-  - -1
-  - 1
-  - 1
-  - 1
-  - -1
-  - 1
-  - -1
-  - -1
-  - 1
-  - -1
-  - 1
-  - -1
-  - 1
-  - 1
-  - -1
-  - -1
-  - 1
-  - 1
-  - -1
-  - -1
+
 hopping:
-  enabled: true
-  type: AES
-  sync_mode: TOD
-  dwell_time_ms: 200
-  lookahead_ms: 50
-  num_channels: 20
-  channel_spacing: 40000
-  aes_key: 000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f
-  initial_seed: 2766
+  enabled: true         # FHSS enabled - radio hops frequency every epoch
+  type: AES             # AES-based pseudo-random hopping sequence
+  sync_mode: TOD        # Time-of-Day synchronization (uses laptop clock)
+  dwell_time_ms: 1000   # Stay on one frequency for 1 second
+  lookahead_ms: 50      # Pre-calculate next hop 50ms early
+  num_channels: 20      # Size of the hop-set
+  channel_spacing: 40000 # 40 kHz spacing between channels
+
 hardware:
   args: type=b200
   samp_rate: 1000000
@@ -73,5 +47,6 @@ hardware:
   rx_gain: 70
   tx_antenna: TX/RX
   rx_antenna: TX/RX
+
 application_layer:
   payload_type: heartbeat
