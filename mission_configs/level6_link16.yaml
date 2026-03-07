@@ -10,7 +10,7 @@ physical:
   center_freq: 915000000
   modulation: GFSK
   freq_dev: 25000
-  samples_per_symbol: 10
+  samples_per_symbol: 25
 
 mac_layer:
   amc_enabled: true      # Adaptive Modulation and Coding - auto-adjusts based on link quality
@@ -38,9 +38,9 @@ hopping:
   enabled: true
   type: AES
   sync_mode: TOD
-  dwell_time_ms: 50
-  lookahead_ms: 10
-  num_channels: 50
+  dwell_time_ms: 200
+  lookahead_ms: 50
+  num_channels: 6
   channel_spacing: 150000
 
 hardware:
