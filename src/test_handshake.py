@@ -37,20 +37,16 @@ def test_handshake():
             self.p2s_a = blocks.pdu_to_tagged_stream(gr.types.byte_t, "packet_len")
             self.p2s_b = blocks.pdu_to_tagged_stream(gr.types.byte_t, "packet_len")
             
-            # Unpacker converts bytes to bitstream for the depacketizer
-            self.unp_a = blocks.unpack_k_bits_bb(8)
-            self.unp_b = blocks.unpack_k_bits_bb(8)
-            
             # A -> B path
             self.msg_connect((self.session_a, "pkt_out"), (self.pkt_a, "in"))
             self.msg_connect((self.pkt_a, "out"), (self.p2s_a, "pdus"))
-            self.connect(self.p2s_a, self.unp_a, self.depkt_b)
+            self.connect(self.p2s_a, self.depkt_b)
             self.msg_connect((self.depkt_b, "out"), (self.session_b, "msg_in"))
             
             # B -> A path
             self.msg_connect((self.session_b, "pkt_out"), (self.pkt_b, "in"))
             self.msg_connect((self.pkt_b, "out"), (self.p2s_b, "pdus"))
-            self.connect(self.p2s_b, self.unp_b, self.depkt_a)
+            self.connect(self.p2s_b, self.depkt_a)
             self.msg_connect((self.depkt_a, "out"), (self.session_a, "msg_in"))
 
             # Monitoring
