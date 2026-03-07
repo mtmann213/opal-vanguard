@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Opal Vanguard - Mission-Controlled Depacketizer (Link-16 Build v8.4)
+# Opal Vanguard - Mission-Controlled Depacketizer (Link-16 Build v8.7)
 
 import numpy as np
 from gnuradio import gr
@@ -36,7 +36,10 @@ class depacketizer(gr.basic_block):
         self.message_port_register_out(pmt.intern("out"))
         self.message_port_register_out(pmt.intern("diagnostics"))
         
-        self.state, self.bit_buf, self.syncword_bits = "SEARCH", 0, 0x3D4C5B6A
+        self.state = "SEARCH"
+        self.bit_buf = 0
+        self.syncword_32 = 0x3D4C5B6A
+        self.syncword_64 = 0x3D4C5B6AACE12345
         self.recovered_bits = []
         self.ccsk_buf = []
 
@@ -55,26 +58,36 @@ class depacketizer(gr.basic_block):
     def general_work(self, input_items, output_items):
         in0, out = input_items[0], output_items[0]
         n = min(len(in0), len(out)); out[:n] = in0[:n]
+        is_tactical = ("LINK-16" in self.fec_mode or "LEVEL_6" in self.fec_mode)
+
         for i in range(n):
             bit = int(in0[i]) & 1
-            self.bit_buf = ((self.bit_buf << 1) | bit) & 0xFFFFFFFF
-            # Syncword Detection
-            is_tactical = ("LINK-16" in self.fec_mode or "LEVEL_6" in self.fec_mode)
             
-            diff = self.bit_buf ^ self.syncword_bits
-            dist = bin(diff).count('1')
-            diff_inv = self.bit_buf ^ (0xFFFFFFFF ^ self.syncword_bits)
-            dist_inv = bin(diff_inv).count('1')
+            # Maintain 64-bit buffer
+            self.bit_buf = ((self.bit_buf << 1) | bit) & 0xFFFFFFFFFFFFFFFF
+            
+            # Sync Detection
+            found_sync = False
+            if is_tactical:
+                # 64-bit Tactical Sync (Strict)
+                if self.bit_buf == self.syncword_64 or self.bit_buf == (0xFFFFFFFFFFFFFFFF ^ self.syncword_64):
+                    self.is_inverted = (self.bit_buf == (0xFFFFFFFFFFFFFFFF ^ self.syncword_64))
+                    found_sync = True
+            else:
+                # 32-bit Baseline Sync (Hamming Distance <= 2)
+                buf32 = self.bit_buf & 0xFFFFFFFF
+                diff = buf32 ^ self.syncword_32
+                dist = bin(diff).count('1')
+                diff_inv = buf32 ^ (0xFFFFFFFF ^ self.syncword_32)
+                dist_inv = bin(diff_inv).count('1')
+                if dist <= 2 or dist_inv <= 2:
+                    self.is_inverted = (dist_inv <= 2)
+                    found_sync = True
 
-            # Strict sync for Link-16 to prevent noise triggers; 2-bit tolerance for baseline
-            threshold = 0 if is_tactical else 2
-            
-            if dist <= threshold or dist_inv <= threshold:
-                self.is_inverted = (dist_inv <= threshold)
+            if found_sync:
                 self.state, self.recovered_bits, self.ccsk_buf = "COLLECT", [], []
                 self.nrzi.rx_state = 0; self.scrambler.reset()
-                self.ccsk_conf_sum = 0
-                self.ccsk_sym_count = 0
+                self.ccsk_conf_sum, self.ccsk_sym_count = 0, 0
                 self.add_item_tag(0, self.nitems_written(0) + i - 64, pmt.intern("rx_sync"), pmt.from_long(0))
                 continue
             
@@ -84,8 +97,7 @@ class depacketizer(gr.basic_block):
                     self.ccsk_buf.append(rx_bit)
                     if len(self.ccsk_buf) >= 32:
                         sym, conf = self.ccsk.decode_chips(self.ccsk_buf)
-                        self.ccsk_conf_sum += conf
-                        self.ccsk_sym_count += 1
+                        self.ccsk_conf_sum += conf; self.ccsk_sym_count += 1
                         for j in range(5): self.recovered_bits.append((sym >> (4-j)) & 1)
                         self.ccsk_buf = []
                 else:
@@ -93,13 +105,11 @@ class depacketizer(gr.basic_block):
                 
                 target_bytes = 320 if is_tactical else 120
                 target_bits = target_bytes * 8
-
+                
                 if len(self.recovered_bits) >= target_bits:
-
-                    # Coarse LQI Check for CCSK
+                    # Early Quality Guard for CCSK
                     if self.use_ccsk and self.ccsk_sym_count > 0:
-                        avg_conf = self.ccsk_conf_sum / self.ccsk_sym_count
-                        if avg_conf < 0.5: # Discard obvious noise early
+                        if (self.ccsk_conf_sum / self.ccsk_sym_count) < 0.5:
                             self.state, self.bit_buf = "SEARCH", 0; continue
 
                     bits = self.recovered_bits[:target_bits]
@@ -111,7 +121,6 @@ class depacketizer(gr.basic_block):
                             for k in range(8): acc = (acc << 1) | bits[j+k]
                             bytes_data.append(acc)
                         data_block = bytes(bytes_data)
-                        
                         if self.use_whitening: self.scrambler.reset(); data_block = self.scrambler.process(data_block)
                         if self.use_interleaving: data_block = self.interleaver.deinterleave(data_block)
                         
@@ -136,8 +145,7 @@ class depacketizer(gr.basic_block):
                                         for b in chunk: nibs.extend([(b >> 4) & 0x0F, b & 0x0F])
                                         b1, b2 = rs.decode(nibs[:15]), rs.decode(nibs[15:])
                                         all_n = b1 + b2
-                                        for k in range(0, 22, 2):
-                                            decoded += bytes([( (all_n[k] << 4) | all_n[k+1] )])
+                                        for k in range(0, 22, 2): decoded += bytes([(all_n[k] << 4) | all_n[k+1]])
                                     payload = decoded
                                 
                                 if self.use_comsec and self.comsec_key and m_type == 0:

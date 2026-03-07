@@ -106,8 +106,16 @@ class packetizer(gr.basic_block):
             final_bits = bits
 
         # 7. Framing
-        preamble = [1,0]*256
-        syncword = [int(b) for b in format(0x3D4C5B6A, '032b')]
+        preamble = [1,0]*512 # Extended 4ms preamble for 1Msps stability
+        is_tactical = ("LINK-16" in self.fec_mode or "LEVEL_6" in self.fec_mode)
+        
+        if is_tactical:
+            # 64-bit Extended Syncword for tactical mode
+            syncword = [int(b) for b in format(0x3D4C5B6AACE12345, '064b')]
+        else:
+            # Standard 32-bit syncword
+            syncword = [int(b) for b in format(0x3D4C5B6A, '032b')]
+            
         out_bits = preamble + syncword + final_bits
         self.message_port_pub(pmt.intern("out"), pmt.cons(pmt.make_dict(), pmt.init_u8vector(len(out_bits), out_bits)))
 
