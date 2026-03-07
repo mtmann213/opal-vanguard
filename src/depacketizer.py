@@ -151,6 +151,9 @@ class depacketizer(gr.basic_block):
                         packet_for_crc = data_block[:full_packet_len]
                         crc_pass = self.verify_crc(packet_for_crc)
                         
+                        if not crc_pass:
+                            print(f"\033[91m[CRC FAIL]\033[0m ID: {seq:03} | LEN: {plen}")
+                        
                         conf = (self.correlation_sum / self.bits_processed / self.sf * 100.0) if self.bits_processed > 0 else 100.0
                         repairs = 0
                         payload = b''
