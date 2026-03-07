@@ -138,10 +138,15 @@ class depacketizer(gr.basic_block):
                             data_block = self.interleaver.deinterleave(data_block)
                         
                         sid, m_type, seq, plen = struct.unpack('BBBB', data_block[:4])
-                        f_len = ((plen + 10) // 11) * 15 if self.use_fec and not ("LINK-16" in self.fec_mode) else plen
-                        if "LINK-16" in self.fec_mode: f_len = ((plen + 14) // 15) * 31
+                        # The plen in the header IS the length of the data block (including FEC/COMSEC if applied)
+                        # We just need to ensure we don't read past the data_block size (120 or 320)
+                        f_len = plen
                         
                         full_packet_len = 4 + f_len + 2
+                        if full_packet_len > len(data_block):
+                            # Header is corrupt or lying
+                            self.state = "SEARCH"; self.bit_buf = 0; continue
+
                         packet_for_crc = data_block[:full_packet_len]
                         crc_pass = self.verify_crc(packet_for_crc)
                         
