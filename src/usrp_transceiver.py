@@ -184,7 +184,11 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
             self.demod_b = digital.psk_demod(constellation_points=cp, mod_code=digital.mod_codes.GRAY_CODE, differential=True, samples_per_symbol=sps, excess_bw=0.35, phase_bw=6.28/100, timing_bw=6.28/100, verbose=False, log=False)
         elif mod_type == "MSK": self.mod_a = digital.gmsk_mod(sps, 0.5); self.demod_b = digital.gmsk_demod(sps, 0.1, 0.5, 0.005, 0.0)
         elif mod_type == "OFDM": self.mod_a = digital.ofdm_tx(64, 16, "packet_len"); self.demod_b = digital.ofdm_rx(64, 16, "packet_len")
-        else: self.mod_a = digital.gfsk_mod(sps, (2.0*np.pi*125000)/self.samp_rate, 0.35, False, False, False); self.demod_b = digital.gfsk_demod(sps, 0.1, 0.5, 0.005, 0.0)
+        else:
+            freq_dev = self.cfg['physical'].get('freq_dev', 125000)
+            sens = (2.0 * np.pi * freq_dev) / self.samp_rate
+            self.mod_a = digital.gfsk_mod(sps, sens, 0.35, False, False, False)
+            self.demod_b = digital.gfsk_demod(sps, sens, 0.1, 0.5, 0.005, 0.0)
 
         if hcfg.get('sync_mode') == "TOD": self.hop_ctrl = tod_hop_generator(bytes.fromhex(hcfg.get('aes_key', '00'*32)), hcfg.get('num_channels', 50), self.center_freq, hcfg.get('channel_spacing', 150000), hcfg.get('dwell_time_ms', 200), hcfg.get('lookahead_ms', 0))
         else: self.hop_ctrl = aes_hop_generator(bytes.fromhex(hcfg.get('aes_key', '00'*32)), hcfg.get('num_channels', 50), self.center_freq, hcfg.get('channel_spacing', 150000))
