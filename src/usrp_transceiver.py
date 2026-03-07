@@ -173,15 +173,9 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
             self.depkt_b.use_comsec = True; self.depkt_b.aes_gcm = AESGCM(key)
             print("[TERMINAL] COMSEC (AES-GCM) ENABLED")
 
-        # 100% Continuous Architecture
-        self.silence_src = analog.sig_source_f(self.samp_rate, analog.GR_CONST_WAVE, 0, 0, 0)
         self.pdu_in = pdu.pdu_to_tagged_stream(gr.types.byte_t, "packet_len")
-        self.b2f = blocks.uchar_to_float()
-        self.add_stream = blocks.add_ff()
-        self.f2b = blocks.float_to_uchar()
         
         mod_type = self.cfg['physical'].get('modulation', 'GFSK'); sps = self.cfg['physical'].get('samples_per_symbol', 8)
-        self.mult_len = blocks.tagged_stream_multiply_length(gr.sizeof_gr_complex*1, "packet_len", sps)
         
         if mod_type in ["DBPSK", "DQPSK", "D8PSK"]:
             cp = 2 if "BPSK" in mod_type else (4 if "QPSK" in mod_type else 8)
@@ -201,10 +195,7 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
         src_port = "out" if self.payload_type in ['chat', 'file'] else "strobe"
         self.msg_connect((self.pdu_src, src_port), (self.session, "data_in")); self.msg_connect((self.session, "pkt_out"), (self.pkt_a, "in")); self.msg_connect((self.pkt_a, "out"), (self.pdu_in, "pdus"))
         
-        self.connect(self.silence_src, (self.add_stream, 0))
-        self.connect(self.pdu_in, self.b2f, (self.add_stream, 1))
-        self.connect(self.add_stream, self.f2b, self.mod_a, self.mult_len, self.rot_tx, self.usrp_sink)
-        
+        self.connect(self.pdu_in, self.mod_a, self.rot_tx, self.usrp_sink)
         self.connect(self.usrp_source, self.rx_filter, self.rot_rx, self.demod_b, self.depkt_b); self.connect(self.usrp_source, self.iq_probe)
         self.msg_connect((self.depkt_b, "out"), (self.session, "msg_in")); self.msg_connect((self.depkt_b, "diagnostics"), (self.session, "crc_fail")); self.msg_connect((self.session, "blacklist_out"), (self.hop_ctrl, "blacklist"))
 
