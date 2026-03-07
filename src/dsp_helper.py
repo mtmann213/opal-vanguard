@@ -23,8 +23,12 @@ class MatrixInterleaver:
         return bytes(deinterleaved[:original_len].tolist())
 
 class DSSSProcessor:
-    def __init__(self, chipping_code=[1, -1]):
-        self.code = np.array(chipping_code)
+    def __init__(self, sf=31, chipping_code=None):
+        if chipping_code is None or len(chipping_code) == 0:
+            # Default to Barker 11 if nothing provided
+            self.code = np.array([1, 1, 1, -1, -1, -1, 1, -1, -1, 1, -1])
+        else:
+            self.code = np.array(chipping_code)
         self.sf = len(self.code)
     def spread(self, bits):
         chips = []
@@ -33,11 +37,10 @@ class DSSSProcessor:
             chips.extend((val * self.code).tolist())
         return chips
     def despread(self, chips):
-        bits = []
-        for i in range(0, len(chips), self.sf):
-            chunk = np.array(chips[i:i+self.sf]); correlation = np.sum(chunk * self.code)
-            bits.append(1 if correlation > 0 else 0)
-        return bits
+        chunk = np.array(chips[:self.sf])
+        correlation = np.sum(chunk * self.code)
+        recovered_bit = 1 if correlation > 0 else 0
+        return recovered_bit, correlation
 
 class NRZIEncoder:
     def __init__(self):
