@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Opal Vanguard - Mission-Controlled Depacketizer (True Symmetry Build v9.4)
+# Opal Vanguard - Mission-Controlled Depacketizer (Self-Healing Header Build v10.0)
 
 import numpy as np
 from gnuradio import gr
@@ -42,7 +42,6 @@ class depacketizer(gr.basic_block):
         if len(payload) < (true_plen + 2): return False
         extracted_data = payload[:true_plen]
         extracted_crc = struct.unpack('>H', payload[true_plen:true_plen+2])[0]
-        
         crc = 0xFFFF
         for byte in extracted_data:
             crc ^= (byte << 8)
@@ -85,7 +84,7 @@ class depacketizer(gr.basic_block):
                         self.ccsk_buf = []
                 else: self.recovered_bits.append(rx_bit)
                 
-                target_bytes = 128 if is_tactical else 120
+                target_bytes = 120 # Standard tactical size
                 target_bits = target_bytes * 8
                 if len(self.recovered_bits) >= target_bits:
                     avg_conf = self.ccsk_conf_sum / self.ccsk_sym_count if self.ccsk_sym_count > 0 else 1.0
@@ -101,51 +100,36 @@ class depacketizer(gr.basic_block):
                             bytes_data.append(acc)
                         data_block = bytes(bytes_data)
                         
-                        # Stage Tracking
-                        raw_head = data_block[:4].hex()
+                        # 1. De-whiten FIRST
+                        if self.use_whitening: self.scrambler.reset(); data_block = self.scrambler.process(data_block)
+                        # 2. De-interleave SECOND
+                        if self.use_interleaving: data_block = self.interleaver.deinterleave(data_block)
                         
-                        # 1. De-whiten FIRST (Reverse of packetizer last step)
-                        if self.use_whitening: 
-                            self.scrambler.reset()
-                            data_block = self.scrambler.process(data_block)
-                        white_head = data_block[:4].hex()
-                        
-                        # 2. De-interleave SECOND (Reverse of packetizer earlier step)
-                        if self.use_interleaving: 
-                            data_block = self.interleaver.deinterleave(data_block)
-                        final_head = data_block[:4].hex()
-                        
-                        sid, m_type, seq, true_plen = struct.unpack('BBBB', data_block[:4])
-                        if true_plen > 0 and true_plen < 300:
-                            print(f"[DEBUG] Chain: Raw={raw_head} | White={white_head} | Final={final_head}")
-                        
-                        # HEALING STAGE
-                        num_blocks = (true_plen + 2 + 10) // 11
-                        fec_size = num_blocks * 15
-                        encoded_payload = data_block[4:4+fec_size]
-                        decoded_payload = encoded_payload
+                        # 3. HEALING STAGE (FEC Decode EVERYTHING first)
+                        decoded_block = data_block
                         if self.use_fec:
                             from rs_helper import RS1511
                             rs, healed = RS1511(), b''
-                            for j in range(0, len(encoded_payload), 15):
-                                chunk = encoded_payload[j:j+15]
+                            for j in range(0, len(data_block), 15):
+                                chunk = data_block[j:j+15]
                                 if len(chunk) < 15: break
                                 nibs = []
                                 for b in chunk: nibs.extend([(b >> 4) & 0x0F, b & 0x0F])
                                 d_nibs = rs.decode(nibs[:15]) + rs.decode(nibs[15:])
                                 for k in range(0, 22, 2): healed += bytes([( (d_nibs[k] << 4) | d_nibs[k+1] )])
-                            decoded_payload = healed
+                            decoded_block = healed
                         
-                        # CRC Check on HEALED data
-                        # The real data is exactly true_plen + 2 bytes (data + crc)
-                        real_data_block = decoded_payload[:true_plen + 2]
-                        crc_pass = self.verify_crc(real_data_block, true_plen)
-
+                        # 4. Extract Header from HEALED data
+                        sid, m_type, seq, true_plen = struct.unpack('BBBB', decoded_block[:4])
+                        
+                        # 5. CRC Check on HEALED payload
+                        # Payload starts at index 4 in the HEALED block
+                        payload_zone = decoded_block[4:4+true_plen+2]
+                        crc_pass = self.verify_crc(payload_zone, true_plen)
+                        
                         if crc_pass:
-
                             if not (self.ignore_self and sid == self.src_id):
-                                payload = real_data_block[:true_plen]
-
+                                payload = payload_zone[:true_plen]
                                 if self.use_comsec and self.comsec_key and m_type == 0:
                                     nonce, ct = payload[:16], payload[16:]
                                     cipher = Cipher(algorithms.AES(self.comsec_key), modes.CTR(nonce), backend=default_backend())
@@ -156,7 +140,7 @@ class depacketizer(gr.basic_block):
                                 meta = pmt.make_dict()
                                 meta = pmt.dict_add(meta, pmt.intern("type"), pmt.from_long(m_type))
                                 self.message_port_pub(pmt.intern("out"), pmt.cons(meta, pmt.init_u8vector(len(payload), list(payload))))
-                        elif true_plen > 0 and true_plen < 300:
+                        elif true_plen > 0 and true_plen < target_bytes:
                             print(f"\033[91m[CRC FAIL]\033[0m ID: {seq:03} | LEN: {true_plen} | CONF: {avg_conf:.2f}")
                         
                         diag_dict = pmt.make_dict()

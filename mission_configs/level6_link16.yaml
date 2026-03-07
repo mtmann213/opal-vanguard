@@ -21,10 +21,10 @@ mac_layer:
 link_layer:
   use_comsec: true
   comsec_key: 5365637265744f70616c4b6579313233
-  crc_type: CRC32
+  crc_type: CRC16
   use_fec: true
   use_interleaving: true
-  interleaver_rows: 32
+  interleaver_rows: 15
   use_whitening: true
   use_nrzi: true
   use_manchester: false

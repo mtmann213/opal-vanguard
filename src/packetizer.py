@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Opal Vanguard - Mission-Controlled Packetizer (True Symmetry Build v9.4)
+# Opal Vanguard - Mission-Controlled Packetizer (Self-Healing Header Build v10.0)
 
 import numpy as np
 from gnuradio import gr
@@ -49,7 +49,7 @@ class packetizer(gr.basic_block):
             cipher = Cipher(algorithms.AES(self.comsec_key), modes.CTR(nonce), backend=default_backend())
             payload = nonce + cipher.encryptor().update(payload) + cipher.encryptor().finalize()
 
-        # 2. INNER CRC (Protect payload only for symmetry)
+        # 2. INNER CRC (Protect payload only)
         crc = 0xFFFF
         true_plen = len(payload)
         for byte in payload:
@@ -59,31 +59,28 @@ class packetizer(gr.basic_block):
                 else: crc <<= 1
             crc &= 0xFFFF
         
-        # Block to encode is [Payload + 2-byte CRC]
-        data_to_encode = payload + struct.pack('>H', crc)
+        # 3. Assemble Header + Payload + CRC
+        # Header is now INSIDE the FEC protection zone
+        raw_block = struct.pack('BBBB', self.src_id, m_type, seq, true_plen) + payload + struct.pack('>H', crc)
 
-        # 3. FEC Encoding (Symmetric 11-to-15 byte mapping)
+        # 4. FEC Encoding (Symmetric 11-to-15 byte mapping)
+        encoded_block = raw_block
         if self.use_fec:
             from rs_helper import RS1511
             rs = RS1511()
             fec_payload = b''
-            for i in range(0, len(data_to_encode), 11):
-                chunk = data_to_encode[i:i+11].ljust(11, b'\x00')
+            for i in range(0, len(raw_block), 11):
+                chunk = raw_block[i:i+11].ljust(11, b'\x00')
                 nibs = []
                 for b in chunk: nibs.extend([(b >> 4) & 0x0F, b & 0x0F])
                 all_e = rs.encode(nibs[:11]) + rs.encode(nibs[11:])
                 for k in range(0, 30, 2): fec_payload += bytes([(all_e[k] << 4) | all_e[k+1]])
-            data_to_encode = fec_payload
-
-        # 4. Final Assembly
-        # plen in header is now the TRUE DATA LENGTH
-        header = struct.pack('BBBB', self.src_id, m_type, seq, true_plen)
-        packet = header + data_to_encode
+            encoded_block = fec_payload
 
         # 5. Padding & Interleaving
         is_tactical = ("LINK-16" in self.fec_mode or "LEVEL_6" in self.fec_mode)
-        target_bytes = 128 if is_tactical else 120
-        packet = packet.ljust(target_bytes, b'\x00')[:target_bytes]
+        target_bytes = 120 # Standard tactical size (8 RS blocks)
+        packet = encoded_block.ljust(target_bytes, b'\x00')[:target_bytes]
         if self.use_interleaving: packet = self.interleaver.interleave(packet)
         if self.use_whitening: self.scrambler.reset(); packet = self.scrambler.process(packet)
 
