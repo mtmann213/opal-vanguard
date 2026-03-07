@@ -174,9 +174,11 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
             print("[TERMINAL] COMSEC (AES-GCM) ENABLED")
 
         # 100% Continuous Architecture
-        self.silence_src = analog.sig_source_b(self.samp_rate, analog.GR_CONST_WAVE, 0, 0, 0)
+        self.silence_src = analog.sig_source_f(self.samp_rate, analog.GR_CONST_WAVE, 0, 0, 0)
         self.pdu_in = pdu.pdu_to_tagged_stream(gr.types.byte_t, "packet_len")
-        self.add_stream = blocks.add_bb()
+        self.b2f = blocks.byte_to_float()
+        self.add_stream = blocks.add_ff()
+        self.f2b = blocks.float_to_byte()
         
         mod_type = self.cfg['physical'].get('modulation', 'GFSK'); sps = self.cfg['physical'].get('samples_per_symbol', 8)
         self.mult_len = blocks.tagged_stream_multiply_length(gr.sizeof_gr_complex*1, "packet_len", sps)
