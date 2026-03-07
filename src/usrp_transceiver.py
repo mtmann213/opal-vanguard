@@ -186,7 +186,7 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
             self.map_bits = blocks.add_const_ff(-0.5)
             self.scale_bits = blocks.multiply_const_ff(2.0)
             ntaps = 4 * sps
-            taps = filter.firdes.gaussian(1.0, sps, 0.35, ntaps)
+            taps = filter.firdes.gaussian(sps, sps, 0.35, ntaps)
             self.gaussian_filter = filter.interp_fir_filter_fff(sps, taps)
             
             class BurstTagger(gr.sync_block):
