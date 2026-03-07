@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Opal Vanguard - Mission-Controlled Depacketizer (Symmetric RS Build v9.3)
+# Opal Vanguard - Mission-Controlled Depacketizer (True Symmetry Build v9.4)
 
 import numpy as np
 from gnuradio import gr
@@ -37,20 +37,21 @@ class depacketizer(gr.basic_block):
         self.syncword_32 = 0x3D4C5B6A
         self.syncword_64 = 0x3D4C5B6AACE12345
 
-    def verify_crc(self, payload_data, sid, m_type, seq):
-        """Reconstructs the original packet structure to verify the inner CRC."""
-        if len(payload_data) < 2: return False
-        payload = payload_data[:-2]
-        received_crc = struct.unpack('>H', payload_data[-2:])[0]
+    def verify_crc(self, payload, sid, m_type, seq, true_plen):
+        """Verify inner CRC based on TRUE data length."""
+        if len(payload) < (true_plen + 2): return False
+        extracted_data = payload[:true_plen]
+        extracted_crc = struct.unpack('>H', payload[true_plen:true_plen+2])[0]
+        
         crc = 0xFFFF
         header_base = struct.pack('BBB', sid, m_type, seq)
-        for byte in (header_base + payload):
+        for byte in (header_base + extracted_data):
             crc ^= (byte << 8)
             for _ in range(8):
                 if crc & 0x8000: crc = (crc << 1) ^ 0x1021
                 else: crc <<= 1
             crc &= 0xFFFF
-        return crc == received_crc
+        return crc == extracted_crc
 
     def general_work(self, input_items, output_items):
         in0, out = input_items[0], output_items[0]
@@ -61,18 +62,19 @@ class depacketizer(gr.basic_block):
             self.bit_buf = ((self.bit_buf << 1) | bit) & 0xFFFFFFFFFFFFFFFF
             found_sync = False
             if is_tactical:
-                diff = self.bit_buf ^ self.syncword_64
-                if bin(diff).count('1') <= 4: self.is_inverted = False; found_sync = True
+                if bin(self.bit_buf ^ self.syncword_64).count('1') <= 4: self.is_inverted = False; found_sync = True
                 elif bin(self.bit_buf ^ (0xFFFFFFFFFFFFFFFF ^ self.syncword_64)).count('1') <= 4: self.is_inverted = True; found_sync = True
             else:
                 buf32 = self.bit_buf & 0xFFFFFFFF
                 if bin(buf32 ^ self.syncword_32).count('1') <= 2: self.is_inverted = False; found_sync = True
                 elif bin(buf32 ^ (0xFFFFFFFF ^ self.syncword_32)).count('1') <= 2: self.is_inverted = True; found_sync = True
+            
             if found_sync:
                 self.state, self.recovered_bits, self.ccsk_buf = "COLLECT", [], []
                 self.nrzi.rx_state = 0; self.scrambler.reset(); self.ccsk_conf_sum, self.ccsk_sym_count = 0, 0
                 self.add_item_tag(0, self.nitems_written(0) + i - 64, pmt.intern("rx_sync"), pmt.from_long(0))
                 continue
+            
             if self.state == "COLLECT":
                 rx_bit = bit ^ (1 if self.is_inverted else 0)
                 if self.use_ccsk:
@@ -83,11 +85,13 @@ class depacketizer(gr.basic_block):
                         for j in range(5): self.recovered_bits.append((sym >> (4-j)) & 1)
                         self.ccsk_buf = []
                 else: self.recovered_bits.append(rx_bit)
+                
                 target_bytes = 320 if is_tactical else 120
                 target_bits = target_bytes * 8
                 if len(self.recovered_bits) >= target_bits:
                     avg_conf = self.ccsk_conf_sum / self.ccsk_sym_count if self.ccsk_sym_count > 0 else 1.0
-                    if avg_conf < 0.5: self.state, self.bit_buf = "SEARCH", 0; continue
+                    if avg_conf < 0.7: self.state, self.bit_buf = "SEARCH", 0; continue
+                    
                     bits = self.recovered_bits[:target_bits]
                     try:
                         if self.use_nrzi and not is_tactical: bits = self.nrzi.decode(bits)
@@ -97,18 +101,16 @@ class depacketizer(gr.basic_block):
                             for k in range(8): acc = (acc << 1) | bits[j+k]
                             bytes_data.append(acc)
                         data_block = bytes(bytes_data)
-                        raw_head = data_block[:4].hex()
-                        if self.use_whitening: self.scrambler.reset(); data_block = self.scrambler.process(data_block)
-                        white_head = data_block[:4].hex()
-                        if self.use_interleaving: data_block = self.interleaver.deinterleave(data_block)
-                        final_head = data_block[:4].hex()
                         
-                        sid, m_type, seq, plen = struct.unpack('BBBB', data_block[:4])
-                        if plen > 0 and plen < target_bytes:
-                            print(f"[DEBUG] Chain: Raw={raw_head} | White={white_head} | Final={final_head}")
-
+                        if self.use_whitening: self.scrambler.reset(); data_block = self.scrambler.process(data_block)
+                        if self.use_interleaving: data_block = self.interleaver.deinterleave(data_block)
+                        
+                        sid, m_type, seq, true_plen = struct.unpack('BBBB', data_block[:4])
+                        
                         # HEALING STAGE
-                        encoded_payload = data_block[4:4+plen]
+                        num_blocks = (true_plen + 2 + 10) // 11
+                        fec_size = num_blocks * 15
+                        encoded_payload = data_block[4:4+fec_size]
                         decoded_payload = encoded_payload
                         if self.use_fec:
                             from rs_helper import RS1511
@@ -118,15 +120,14 @@ class depacketizer(gr.basic_block):
                                 if len(chunk) < 15: break
                                 nibs = []
                                 for b in chunk: nibs.extend([(b >> 4) & 0x0F, b & 0x0F])
-                                # Reconstruct exactly 11 bytes from 15 byte block
                                 d_nibs = rs.decode(nibs[:15]) + rs.decode(nibs[15:])
                                 for k in range(0, 22, 2): healed += bytes([( (d_nibs[k] << 4) | d_nibs[k+1] )])
                             decoded_payload = healed
                         
-                        crc_pass = self.verify_crc(decoded_payload, sid, m_type, seq)
+                        crc_pass = self.verify_crc(decoded_payload, sid, m_type, seq, true_plen)
                         if crc_pass:
                             if not (self.ignore_self and sid == self.src_id):
-                                payload = decoded_payload[:-2]
+                                payload = decoded_payload[:true_plen]
                                 if self.use_comsec and self.comsec_key and m_type == 0:
                                     nonce, ct = payload[:16], payload[16:]
                                     cipher = Cipher(algorithms.AES(self.comsec_key), modes.CTR(nonce), backend=default_backend())
@@ -137,8 +138,8 @@ class depacketizer(gr.basic_block):
                                 meta = pmt.make_dict()
                                 meta = pmt.dict_add(meta, pmt.intern("type"), pmt.from_long(m_type))
                                 self.message_port_pub(pmt.intern("out"), pmt.cons(meta, pmt.init_u8vector(len(payload), list(payload))))
-                        elif plen > 0 and plen < target_bytes:
-                            print(f"\033[91m[CRC FAIL]\033[0m ID: {seq:03} | LEN: {plen} | CONF: {avg_conf:.2f}")
+                        elif true_plen > 0 and true_plen < 300:
+                            print(f"\033[91m[CRC FAIL]\033[0m ID: {seq:03} | LEN: {true_plen} | CONF: {avg_conf:.2f}")
                         
                         diag_dict = pmt.make_dict()
                         diag_dict = pmt.dict_add(diag_dict, pmt.intern("crc_ok"), pmt.from_bool(crc_pass))

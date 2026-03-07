@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Opal Vanguard - Mission-Controlled Packetizer (Symmetric RS Build v9.3)
+# Opal Vanguard - Mission-Controlled Packetizer (True Symmetry Build v9.4)
 
 import numpy as np
 from gnuradio import gr
@@ -51,6 +51,7 @@ class packetizer(gr.basic_block):
 
         # 2. INNER CRC (Protect header and payload)
         crc = 0xFFFF
+        true_plen = len(payload)
         header_base = struct.pack('BBB', self.src_id, m_type, seq)
         for byte in (header_base + payload):
             crc ^= (byte << 8)
@@ -58,6 +59,8 @@ class packetizer(gr.basic_block):
                 if crc & 0x8000: crc = (crc << 1) ^ 0x1021
                 else: crc <<= 1
             crc &= 0xFFFF
+        
+        # Block to encode is [Payload + 2-byte CRC]
         data_to_encode = payload + struct.pack('>H', crc)
 
         # 3. FEC Encoding (Symmetric 11-to-15 byte mapping)
@@ -69,13 +72,13 @@ class packetizer(gr.basic_block):
                 chunk = data_to_encode[i:i+11].ljust(11, b'\x00')
                 nibs = []
                 for b in chunk: nibs.extend([(b >> 4) & 0x0F, b & 0x0F])
-                # Pack two 15-nibble encoded blocks into 15 bytes
                 all_e = rs.encode(nibs[:11]) + rs.encode(nibs[11:])
                 for k in range(0, 30, 2): fec_payload += bytes([(all_e[k] << 4) | all_e[k+1]])
             data_to_encode = fec_payload
 
-        # 4. Assembly
-        header = struct.pack('BBBB', self.src_id, m_type, seq, len(data_to_encode))
+        # 4. Final Assembly
+        # plen in header is now the TRUE DATA LENGTH
+        header = struct.pack('BBBB', self.src_id, m_type, seq, true_plen)
         packet = header + data_to_encode
 
         # 5. Padding & Interleaving
@@ -85,7 +88,7 @@ class packetizer(gr.basic_block):
         if self.use_interleaving: packet = self.interleaver.interleave(packet)
         if self.use_whitening: self.scrambler.reset(); packet = self.scrambler.process(packet)
 
-        # 6. Conversion
+        # 6. Bit Conversion
         bits = []
         for b in packet: [bits.append((b >> (7-i)) & 1) for i in range(8)]
         if self.use_nrzi and not is_tactical: self.nrzi.tx_state = 0; bits = self.nrzi.encode(bits)
