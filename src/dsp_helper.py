@@ -17,7 +17,7 @@ class MatrixInterleaver:
     def deinterleave(self, data, *args):
         data_len = len(data)
         original_len = args[0] if args else data_len
-        cols = data_len // self.rows
+        cols = (data_len + self.rows - 1) // self.rows
         matrix = np.array(list(data)).reshape((cols, self.rows))
         deinterleaved = matrix.T.flatten()
         return bytes(deinterleaved[:original_len].tolist())

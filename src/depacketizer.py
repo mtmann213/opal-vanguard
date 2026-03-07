@@ -85,7 +85,7 @@ class depacketizer(gr.basic_block):
                         self.ccsk_buf = []
                 else: self.recovered_bits.append(rx_bit)
                 
-                target_bytes = 120
+                target_bytes = 128 if is_tactical else 120
                 target_bits = target_bytes * 8
                 if len(self.recovered_bits) >= target_bits:
                     avg_conf = self.ccsk_conf_sum / self.ccsk_sym_count if self.ccsk_sym_count > 0 else 1.0
