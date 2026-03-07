@@ -173,9 +173,10 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
             self.depkt_b.use_comsec = True; self.depkt_b.aes_gcm = AESGCM(key)
             print("[TERMINAL] COMSEC (AES-GCM) ENABLED")
 
-        self.pdu_in = pdu.pdu_to_tagged_stream(gr.types.byte_t, "packet_len")
+        self.p2s_a = pdu.pdu_to_tagged_stream(gr.types.byte_t, "packet_len")
         
         mod_type = self.cfg['physical'].get('modulation', 'GFSK'); sps = self.cfg['physical'].get('samples_per_symbol', 8)
+        self.mult_len = blocks.tagged_stream_multiply_length(gr.sizeof_gr_complex*1, "packet_len", sps)
         
         if mod_type in ["DBPSK", "DQPSK", "D8PSK"]:
             cp = 2 if "BPSK" in mod_type else (4 if "QPSK" in mod_type else 8)
@@ -188,15 +189,14 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
         if hcfg.get('sync_mode') == "TOD": self.hop_ctrl = tod_hop_generator(bytes.fromhex(hcfg.get('aes_key', '00'*32)), hcfg.get('num_channels', 50), self.center_freq, hcfg.get('channel_spacing', 150000), hcfg.get('dwell_time_ms', 200), hcfg.get('lookahead_ms', 0))
         else: self.hop_ctrl = aes_hop_generator(bytes.fromhex(hcfg.get('aes_key', '00'*32)), hcfg.get('num_channels', 50), self.center_freq, hcfg.get('channel_spacing', 150000))
         
-        self.rot_tx = blocks.rotator_cc(0); self.rot_rx = blocks.rotator_cc(0)
         self.rx_filter = filter.fir_filter_ccf(1, filter.firdes.low_pass(1.0, self.samp_rate, 100e3, 50e3)); self.iq_probe = IQDiagnosticProbe(self)
 
         # Connect
         src_port = "out" if self.payload_type in ['chat', 'file'] else "strobe"
-        self.msg_connect((self.pdu_src, src_port), (self.session, "data_in")); self.msg_connect((self.session, "pkt_out"), (self.pkt_a, "in")); self.msg_connect((self.pkt_a, "out"), (self.pdu_in, "pdus"))
+        self.msg_connect((self.pdu_src, src_port), (self.session, "data_in")); self.msg_connect((self.session, "pkt_out"), (self.pkt_a, "in")); self.msg_connect((self.pkt_a, "out"), (self.p2s_a, "pdus"))
         
-        self.connect(self.pdu_in, self.mod_a, self.rot_tx, self.usrp_sink)
-        self.connect(self.usrp_source, self.rx_filter, self.rot_rx, self.demod_b, self.depkt_b); self.connect(self.usrp_source, self.iq_probe)
+        self.connect(self.p2s_a, self.mod_a, self.mult_len, self.usrp_sink)
+        self.connect(self.usrp_source, self.rx_filter, self.demod_b, self.depkt_b); self.connect(self.usrp_source, self.iq_probe)
         self.msg_connect((self.depkt_b, "out"), (self.session, "msg_in")); self.msg_connect((self.depkt_b, "diagnostics"), (self.session, "crc_fail")); self.msg_connect((self.session, "blacklist_out"), (self.hop_ctrl, "blacklist"))
 
         class UHDHandler(gr.basic_block):
@@ -207,10 +207,7 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
                 try:
                     f = pmt.to_double(pmt.dict_ref(msg, pmt.intern("freq"), pmt.from_double(0))) if pmt.is_dict(msg) else pmt.to_double(msg)
                     if f > 0:
-                        offset = f - self.p.center_freq
-                        phase_inc = 2 * np.pi * offset / self.p.samp_rate
-                        self.p.rot_tx.set_phase_inc(phase_inc)
-                        self.p.rot_rx.set_phase_inc(-phase_inc)
+                        Qt.QMetaObject.invokeMethod(self.p, "set_usrp_freq", Qt.Qt.QueuedConnection, Qt.Q_ARG(float, f))
                 except: pass
             def work(self, i, o): return 0
         self.uhd_h = UHDHandler(self); self.msg_connect((self.hop_ctrl, "freq"), (self.uhd_h, "msg"))
