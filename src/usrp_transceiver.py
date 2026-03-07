@@ -182,21 +182,13 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
             # Tag-Safe GFSK Modulator
             freq_dev = self.cfg['physical'].get('freq_dev', 125000)
             bt = 0.35
-            
-            # 1. Map 0/1 bits to -1.0/1.0 floats
             self.char_to_float = blocks.uchar_to_float()
             self.map_bits = blocks.add_const_ff(-0.5)
             self.scale_bits = blocks.multiply_const_ff(2.0)
-            
-            # 2. Gaussian Filter (Tag-Safe)
             ntaps = 4 * sps
             taps = filter.firdes.gaussian(1.0, sps, 0.35, ntaps)
             self.gaussian_filter = filter.interp_fir_filter_fff(sps, taps)
             
-            # 3. Burst Tagger (SOB/EOB)
-            # This block adds the Start-of-Burst and End-of-Burst tags that the USRP loves.
-            self.burst_tagger = blocks.tagged_stream_to_pdu(gr.types.float_t, "packet_len") # Just to find boundaries
-            # Wait, easier way: Use a python block to inject SOB/EOB based on packet_len
             class BurstTagger(gr.sync_block):
                 def __init__(self, sps):
                     gr.sync_block.__init__(self, "BurstTagger", in_sig=[np.float32], out_sig=[np.float32])
@@ -211,20 +203,22 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
                             self.add_item_tag(0, tag.offset + length - 1, pmt.intern("tx_eob"), pmt.PMT_T)
                     out[:] = in0; return len(out)
             self.tagger = BurstTagger(sps)
-
-            # 4. Frequency Mod
             sens = (2.0 * np.pi * freq_dev) / self.samp_rate
             self.mod_a = analog.frequency_modulator_fc(sens)
-            
             self.demod_b = digital.gfsk_demod(sps, sens, 0.2, 0.5, 0.01, 0.0)
-        
-        # ... rest of mod_types ...
+            
+        elif mod_type in ["DBPSK", "DQPSK", "D8PSK"]:
             cp = 2 if "BPSK" in mod_type else (4 if "QPSK" in mod_type else 8)
             self.mod_a = digital.psk_mod(constellation_points=cp, mod_code=digital.mod_codes.GRAY_CODE, differential=True, samples_per_symbol=sps, excess_bw=0.35, verbose=False, log=False)
             self.demod_b = digital.psk_demod(constellation_points=cp, mod_code=digital.mod_codes.GRAY_CODE, differential=True, samples_per_symbol=sps, excess_bw=0.35, phase_bw=6.28/100, timing_bw=6.28/100, verbose=False, log=False)
-        elif mod_type == "MSK": self.mod_a = digital.gmsk_mod(sps, 0.5); self.demod_b = digital.gmsk_demod(sps, 0.1, 0.5, 0.005, 0.0)
-        elif mod_type == "OFDM": self.mod_a = digital.ofdm_tx(64, 16, "packet_len"); self.demod_b = digital.ofdm_rx(64, 16, "packet_len")
+        elif mod_type == "MSK": 
+            self.mod_a = digital.gmsk_mod(sps, 0.5)
+            self.demod_b = digital.gmsk_demod(sps, 0.1, 0.5, 0.005, 0.0)
+        elif mod_type == "OFDM": 
+            self.mod_a = digital.ofdm_tx(64, 16, "packet_len")
+            self.demod_b = digital.ofdm_rx(64, 16, "packet_len")
         else:
+            # Fallback to standard GFSK
             freq_dev = self.cfg['physical'].get('freq_dev', 125000)
             sens = (2.0 * np.pi * freq_dev) / self.samp_rate
             self.mod_a = digital.gfsk_mod(sps, sens, 0.35, False, False, False)
