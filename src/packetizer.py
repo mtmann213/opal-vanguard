@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Opal Vanguard - Mission-Controlled Packetizer (Link-16 Build v8.6)
+# Opal Vanguard - Mission-Controlled Packetizer (Self-Healing Build v9.1)
 
 import numpy as np
 from gnuradio import gr
@@ -52,34 +52,38 @@ class packetizer(gr.basic_block):
             encryptor = cipher.encryptor()
             payload = nonce + encryptor.update(payload) + encryptor.finalize()
 
-        # 2. FEC
-        if self.use_fec:
-            from rs_helper import RS1511
-            rs = RS1511()
-            fec_payload = b''
-            for i in range(0, len(payload), 11):
-                chunk = payload[i:i+11].ljust(11, b'\x00')
-                nibs = []
-                for b in chunk: nibs.extend([(b >> 4) & 0x0F, b & 0x0F])
-                all_e = rs.encode(nibs[:11]) + rs.encode(nibs[11:])
-                for k in range(0, 30, 2): fec_payload += bytes([(all_e[k] << 4) | all_e[k+1]])
-            payload = fec_payload
-
-        # 3. Assemble Header & Packet
-        header = struct.pack('BBBB', self.src_id, m_type, seq, len(payload))
-        packet = header + payload
-        
-        # CRC16
+        # 2. INNER CRC (Protect data before FEC)
         crc = 0xFFFF
-        for byte in packet:
+        # CRC includes src_id, m_type, seq, and payload
+        header_base = struct.pack('BBB', self.src_id, m_type, seq)
+        for byte in (header_base + payload):
             crc ^= (byte << 8)
             for _ in range(8):
                 if crc & 0x8000: crc = (crc << 1) ^ 0x1021
                 else: crc <<= 1
             crc &= 0xFFFF
-        packet += struct.pack('>H', crc)
+        
+        # Data block is now [Payload + CRC]
+        data_to_encode = payload + struct.pack('>H', crc)
 
-        # 4. Padding & Interleaving
+        # 3. FEC Encoding
+        if self.use_fec:
+            from rs_helper import RS1511
+            rs = RS1511()
+            fec_payload = b''
+            for i in range(0, len(data_to_encode), 11):
+                chunk = data_to_encode[i:i+11].ljust(11, b'\x00')
+                nibs = []
+                for b in chunk: nibs.extend([(b >> 4) & 0x0F, b & 0x0F])
+                all_e = rs.encode(nibs[:11]) + rs.encode(nibs[11:])
+                for k in range(0, 30, 2): fec_payload += bytes([(all_e[k] << 4) | all_e[k+1]])
+            data_to_encode = fec_payload
+
+        # 4. Final Assembly (Header + Encoded Block)
+        header = struct.pack('BBBB', self.src_id, m_type, seq, len(data_to_encode))
+        packet = header + data_to_encode
+
+        # 5. Padding & Interleaving
         is_tactical = ("LINK-16" in self.fec_mode or "LEVEL_6" in self.fec_mode)
         target_bytes = 320 if is_tactical else 120
         packet = packet.ljust(target_bytes, b'\x00')[:target_bytes]
@@ -87,15 +91,12 @@ class packetizer(gr.basic_block):
         if self.use_interleaving: packet = self.interleaver.interleave(packet)
         if self.use_whitening: self.scrambler.reset(); packet = self.scrambler.process(packet)
 
-        # 5. Bit Conversion
+        # 6. Bit Conversion
         bits = []
         for b in packet: [bits.append((b >> (7-i)) & 1) for i in range(8)]
-        
-        # Disable NRZI for tactical missions (state-drift kills CCSK correlation)
-        if self.use_nrzi and not is_tactical:
-            self.nrzi.tx_state = 0; bits = self.nrzi.encode(bits)
+        if self.use_nrzi and not is_tactical: self.nrzi.tx_state = 0; bits = self.nrzi.encode(bits)
 
-        # 6. Tactical CCSK Spreading (5 bits -> 32 chips)
+        # 7. Tactical CCSK Spreading
         final_bits = []
         if self.use_ccsk:
             for i in range(0, len(bits), 5):
@@ -108,17 +109,9 @@ class packetizer(gr.basic_block):
         else:
             final_bits = bits
 
-        # 7. Framing
-        preamble = [1,0]*512 # Extended 4ms preamble for 1Msps stability
-        is_tactical = ("LINK-16" in self.fec_mode or "LEVEL_6" in self.fec_mode)
-        
-        if is_tactical:
-            # 64-bit Extended Syncword for tactical mode
-            syncword = [int(b) for b in format(0x3D4C5B6AACE12345, '064b')]
-        else:
-            # Standard 32-bit syncword
-            syncword = [int(b) for b in format(0x3D4C5B6A, '032b')]
-            
+        # 8. Framing
+        preamble = [1,0]*512
+        syncword = [int(b) for b in format(0x3D4C5B6AACE12345 if is_tactical else 0x3D4C5B6A, '064b' if is_tactical else '032b')]
         out_bits = preamble + syncword + final_bits
         self.message_port_pub(pmt.intern("out"), pmt.cons(pmt.make_dict(), pmt.init_u8vector(len(out_bits), out_bits)))
 
