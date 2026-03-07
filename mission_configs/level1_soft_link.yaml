@@ -6,7 +6,7 @@ physical:
   center_freq: 915000000
   modulation: GFSK
   freq_dev: 125000
-  samples_per_symbol: 8
+  samples_per_symbol: 10
 mac_layer:
   amc_enabled: false
   arq_enabled: false
