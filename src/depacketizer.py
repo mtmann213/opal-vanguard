@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Opal Vanguard - Mission-Controlled Depacketizer (Self-Healing Build v9.2)
+# Opal Vanguard - Mission-Controlled Depacketizer (Symmetric RS Build v9.3)
 
 import numpy as np
 from gnuradio import gr
@@ -40,10 +40,8 @@ class depacketizer(gr.basic_block):
     def verify_crc(self, payload_data, sid, m_type, seq):
         """Reconstructs the original packet structure to verify the inner CRC."""
         if len(payload_data) < 2: return False
-        # The data passed here is [Original Payload + CRC]
         payload = payload_data[:-2]
         received_crc = struct.unpack('>H', payload_data[-2:])[0]
-        
         crc = 0xFFFF
         header_base = struct.pack('BBB', sid, m_type, seq)
         for byte in (header_base + payload):
@@ -70,13 +68,11 @@ class depacketizer(gr.basic_block):
                 buf32 = self.bit_buf & 0xFFFFFFFF
                 if bin(buf32 ^ self.syncword_32).count('1') <= 2: self.is_inverted = False; found_sync = True
                 elif bin(buf32 ^ (0xFFFFFFFF ^ self.syncword_32)).count('1') <= 2: self.is_inverted = True; found_sync = True
-            
             if found_sync:
                 self.state, self.recovered_bits, self.ccsk_buf = "COLLECT", [], []
                 self.nrzi.rx_state = 0; self.scrambler.reset(); self.ccsk_conf_sum, self.ccsk_sym_count = 0, 0
                 self.add_item_tag(0, self.nitems_written(0) + i - 64, pmt.intern("rx_sync"), pmt.from_long(0))
                 continue
-            
             if self.state == "COLLECT":
                 rx_bit = bit ^ (1 if self.is_inverted else 0)
                 if self.use_ccsk:
@@ -87,13 +83,11 @@ class depacketizer(gr.basic_block):
                         for j in range(5): self.recovered_bits.append((sym >> (4-j)) & 1)
                         self.ccsk_buf = []
                 else: self.recovered_bits.append(rx_bit)
-                
                 target_bytes = 320 if is_tactical else 120
                 target_bits = target_bytes * 8
                 if len(self.recovered_bits) >= target_bits:
                     avg_conf = self.ccsk_conf_sum / self.ccsk_sym_count if self.ccsk_sym_count > 0 else 1.0
                     if avg_conf < 0.5: self.state, self.bit_buf = "SEARCH", 0; continue
-                    
                     bits = self.recovered_bits[:target_bits]
                     try:
                         if self.use_nrzi and not is_tactical: bits = self.nrzi.decode(bits)
@@ -103,12 +97,16 @@ class depacketizer(gr.basic_block):
                             for k in range(8): acc = (acc << 1) | bits[j+k]
                             bytes_data.append(acc)
                         data_block = bytes(bytes_data)
-                        
+                        raw_head = data_block[:4].hex()
                         if self.use_whitening: self.scrambler.reset(); data_block = self.scrambler.process(data_block)
+                        white_head = data_block[:4].hex()
                         if self.use_interleaving: data_block = self.interleaver.deinterleave(data_block)
+                        final_head = data_block[:4].hex()
                         
                         sid, m_type, seq, plen = struct.unpack('BBBB', data_block[:4])
-                        
+                        if plen > 0 and plen < target_bytes:
+                            print(f"[DEBUG] Chain: Raw={raw_head} | White={white_head} | Final={final_head}")
+
                         # HEALING STAGE
                         encoded_payload = data_block[4:4+plen]
                         decoded_payload = encoded_payload
@@ -120,12 +118,9 @@ class depacketizer(gr.basic_block):
                                 if len(chunk) < 15: break
                                 nibs = []
                                 for b in chunk: nibs.extend([(b >> 4) & 0x0F, b & 0x0F])
-                                # RS(15,11) decode - can fix up to 2 corrupted nibbles
-                                d_nibs = rs.decode(nibs)
-                                # Pack 11 nibbles (5.5 bytes)
-                                for k in range(0, 10, 2):
-                                    healed += bytes([( (d_nibs[k] << 4) | d_nibs[k+1] )])
-                                healed += bytes([( (d_nibs[10] << 4) )]) # Final partial nibble
+                                # Reconstruct exactly 11 bytes from 15 byte block
+                                d_nibs = rs.decode(nibs[:15]) + rs.decode(nibs[15:])
+                                for k in range(0, 22, 2): healed += bytes([( (d_nibs[k] << 4) | d_nibs[k+1] )])
                             decoded_payload = healed
                         
                         crc_pass = self.verify_crc(decoded_payload, sid, m_type, seq)
