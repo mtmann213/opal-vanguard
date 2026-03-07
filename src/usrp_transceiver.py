@@ -307,8 +307,8 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
         self.snk_scope = qtgui.time_sink_f(1024, self.samp_rate, "Signal Scope (Bits)", 1)
         self.snk_scope.set_y_axis(-0.5, 1.5)
         self.snk_scope.set_update_time(0.1)
-        # Enable Tag Triggering
-        self.snk_scope.set_trigger_mode(qtgui.TRIG_MODE_TAG, qtgui.TRIG_SLOPE_POS, 0.5, 0.125, 0, "rx_sync")
+        # Enable Tag Triggering (Delay 0.0 to start scope at the tag)
+        self.snk_scope.set_trigger_mode(qtgui.TRIG_MODE_TAG, qtgui.TRIG_SLOPE_POS, 0.5, 0.0, 0, "rx_sync")
         self.rx_b2f = blocks.uchar_to_float()
         
         self.viz_panel.addWidget(sip.wrapinstance(self.snk_waterfall.qwidget(), Qt.QWidget))

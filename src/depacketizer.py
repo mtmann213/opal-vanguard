@@ -79,10 +79,11 @@ class depacketizer(gr.basic_block):
         in0 = input_items[0]
         out = output_items[0]
         
-        # Pass bits to output for scope
-        out[:len(in0)] = in0
+        # Safely pass bits to output for scope
+        n = min(len(in0), len(out))
+        out[:n] = in0[:n]
 
-        for i in range(len(in0)):
+        for i in range(n):
             bit = int(in0[i]) & 1
             self.bit_buf = ((self.bit_buf << 1) | bit) & 0xFFFFFFFF
 
@@ -225,8 +226,8 @@ class depacketizer(gr.basic_block):
                         print(f"Decode Error: {e}")
                         self.state = "SEARCH"; self.bit_buf = 0
         
-        self.produce(0, len(in0))
-        self.consume(0, len(in0))
+        self.produce(0, n)
+        self.consume(0, n)
         return 0
 
     def __del__(self):
