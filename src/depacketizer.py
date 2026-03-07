@@ -59,12 +59,17 @@ class depacketizer(gr.basic_block):
                 continue
             if self.state == "COLLECT":
                 self.recovered_bits.append(bit ^ (1 if self.is_inverted else 0))
-                if len(self.recovered_bits) >= 960:
-                    bits = self.recovered_bits[:960]
+                
+                # Dynamic collection length based on mission mode
+                target_bytes = 320 if "LINK-16" in self.fec_mode or "LEVEL_6" in self.fec_mode else 120
+                target_bits = target_bytes * 8
+                
+                if len(self.recovered_bits) >= target_bits:
+                    bits = self.recovered_bits[:target_bits]
                     try:
                         if self.use_nrzi: bits = self.nrzi.decode(bits)
                         bytes_data = []
-                        for j in range(0, 960, 8):
+                        for j in range(0, target_bits, 8):
                             acc = 0
                             for k in range(8): acc = (acc << 1) | bits[j+k]
                             bytes_data.append(acc)

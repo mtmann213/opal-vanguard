@@ -54,8 +54,11 @@ class packetizer(gr.basic_block):
                 for k in range(0, 30, 2): fec_payload += bytes([(all_e[k] << 4) | all_e[k+1]])
             payload = fec_payload
 
+        # 3. Assemble Header & Packet
         header = struct.pack('BBBB', self.src_id, m_type, seq, len(payload))
         packet = header + payload
+        
+        # CRC16
         crc = 0xFFFF
         for byte in packet:
             crc ^= (byte << 8)
@@ -65,7 +68,9 @@ class packetizer(gr.basic_block):
             crc &= 0xFFFF
         packet += struct.pack('>H', crc)
 
-        packet = packet.ljust(120, b'\x00')[:120]
+        # 4. Padding & Interleaving
+        target_bytes = 320 if "LINK-16" in self.fec_mode or "LEVEL_6" in self.fec_mode else 120
+        packet = packet.ljust(target_bytes, b'\x00')[:target_bytes]
         if self.use_interleaving: packet = self.interleaver.interleave(packet)
         if self.use_whitening: self.scrambler.reset(); packet = self.scrambler.process(packet)
 
