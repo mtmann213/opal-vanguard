@@ -93,8 +93,9 @@ class depacketizer(gr.basic_block):
                 
                 target_bytes = 320 if is_tactical else 120
                 target_bits = target_bytes * 8
-                
+
                 if len(self.recovered_bits) >= target_bits:
+
                     # Coarse LQI Check for CCSK
                     if self.use_ccsk and self.ccsk_sym_count > 0:
                         avg_conf = self.ccsk_conf_sum / self.ccsk_sym_count
