@@ -201,33 +201,25 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
         
         mod_type = self.cfg['physical'].get('modulation', 'GFSK'); sps = self.cfg['physical'].get('samples_per_symbol', 8)
         
-        # Calculate rates for two-stage architecture
-        mod_rate = 125000
-        interpolation = int(self.samp_rate / mod_rate) # 5000000 / 125000 = 40
-        
         if mod_type in ["DBPSK", "DQPSK", "D8PSK"]:
             cp = 2 if "BPSK" in mod_type else (4 if "QPSK" in mod_type else 8)
             self.mod_a = digital.psk_mod(constellation_points=cp, mod_code=digital.mod_codes.GRAY_CODE, differential=True, samples_per_symbol=sps, excess_bw=0.35, verbose=False, log=False)
             self.demod_b = digital.psk_demod(constellation_points=cp, mod_code=digital.mod_codes.GRAY_CODE, differential=True, samples_per_symbol=sps, excess_bw=0.35, phase_bw=6.28/100, timing_bw=6.28/100, verbose=False, log=False)
         elif mod_type == "MSK": self.mod_a = digital.gmsk_mod(sps, 0.5); self.demod_b = digital.gmsk_demod(sps, 0.1, 0.5, 0.005, 0.0)
         elif mod_type == "OFDM": self.mod_a = digital.ofdm_tx(64, 16, "packet_len"); self.demod_b = digital.ofdm_rx(64, 16, "packet_len")
-        else: self.mod_a = digital.gfsk_mod(sps, (2.0*np.pi*125000)/mod_rate, 0.35, False, False, False); self.demod_b = digital.gfsk_demod(sps, 0.1, 0.5, 0.005, 0.0)
-
-        self.resamp_tx = filter.rational_resampler_ccc(interpolation, 1, [], 0)
-        self.resamp_rx = filter.rational_resampler_ccc(1, interpolation, [], 0)
+        else: self.mod_a = digital.gfsk_mod(sps, (2.0*np.pi*125000)/self.samp_rate, 0.35, False, False, False); self.demod_b = digital.gfsk_demod(sps, 0.1, 0.5, 0.005, 0.0)
 
         if hcfg.get('sync_mode') == "TOD": self.hop_ctrl = tod_hop_generator(bytes.fromhex(hcfg.get('aes_key', '00'*32)), hcfg.get('num_channels', 50), self.center_freq, hcfg.get('channel_spacing', 150000), hcfg.get('dwell_time_ms', 200), hcfg.get('lookahead_ms', 0))
         else: self.hop_ctrl = aes_hop_generator(bytes.fromhex(hcfg.get('aes_key', '00'*32)), hcfg.get('num_channels', 50), self.center_freq, hcfg.get('channel_spacing', 150000))
         
-        self.rot_tx = blocks.rotator_cc(0); self.rot_rx = blocks.rotator_cc(0)
-        self.rx_filter = filter.fir_filter_ccf(1, filter.firdes.low_pass(1.0, self.samp_rate, 500e3, 100e3)); self.iq_probe = IQDiagnosticProbe(self)
+        self.rx_filter = filter.fir_filter_ccf(1, filter.firdes.low_pass(1.0, self.samp_rate, 100e3, 50e3)); self.iq_probe = IQDiagnosticProbe(self)
 
         # Connect
         src_port = "out" if self.payload_type in ['chat', 'file'] else "strobe"
         self.msg_connect((self.pdu_src, src_port), (self.session, "data_in")); self.msg_connect((self.session, "pkt_out"), (self.pkt_a, "in")); self.msg_connect((self.pkt_a, "out"), (self.p2s_a, "pdus"))
         
-        self.connect(self.p2s_a, self.mod_a, self.resamp_tx, self.rot_tx, self.usrp_sink)
-        self.connect(self.usrp_source, self.rx_filter, self.rot_rx, self.resamp_rx, self.demod_b, self.depkt_b); self.connect(self.usrp_source, self.iq_probe)
+        self.connect(self.p2s_a, self.mod_a, self.usrp_sink)
+        self.connect(self.usrp_source, self.rx_filter, self.demod_b, self.depkt_b); self.connect(self.usrp_source, self.iq_probe)
         self.msg_connect((self.depkt_b, "out"), (self.session, "msg_in")); self.msg_connect((self.depkt_b, "diagnostics"), (self.session, "crc_fail")); self.msg_connect((self.session, "blacklist_out"), (self.hop_ctrl, "blacklist"))
 
         class UHDHandler(gr.basic_block):
@@ -236,12 +228,24 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
                 self.message_port_register_in(pmt.intern("msg")); self.set_msg_handler(pmt.intern("msg"), self.handle)
             def handle(self, msg):
                 try:
-                    f = pmt.to_double(pmt.dict_ref(msg, pmt.intern("freq"), pmt.from_double(0))) if pmt.is_dict(msg) else pmt.to_double(msg)
-                    if f > 0:
-                        offset = f - self.p.center_freq
-                        phase_inc = 2 * np.pi * offset / self.p.samp_rate
-                        self.p.rot_tx.set_phase_inc(phase_inc)
-                        self.p.rot_rx.set_phase_inc(-phase_inc)
+                    if pmt.is_dict(msg):
+                        f = pmt.to_double(pmt.dict_ref(msg, pmt.intern("freq"), pmt.from_double(0)))
+                        t = pmt.to_double(pmt.dict_ref(msg, pmt.intern("time"), pmt.from_double(0)))
+                        if f > 0:
+                            if t > 0:
+                                # Synchronized Timed Command
+                                self.p.usrp_sink.set_command_time(uhd.time_spec(t))
+                                self.p.usrp_source.set_command_time(uhd.time_spec(t))
+                                self.p.usrp_sink.set_center_freq(f)
+                                self.p.usrp_source.set_center_freq(f)
+                                self.p.usrp_sink.clear_command_time()
+                                self.p.usrp_source.clear_command_time()
+                            else:
+                                self.p.usrp_sink.set_center_freq(f)
+                                self.p.usrp_source.set_center_freq(f)
+                    else:
+                        f = pmt.to_double(msg)
+                        if f > 0: self.p.usrp_sink.set_center_freq(f); self.p.usrp_source.set_center_freq(f)
                 except: pass
             def work(self, i, o): return 0
         self.uhd_h = UHDHandler(self); self.msg_connect((self.hop_ctrl, "freq"), (self.uhd_h, "msg"))
