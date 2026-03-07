@@ -205,8 +205,8 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
             self.tagger = BurstTagger(sps)
             sens = (2.0 * np.pi * freq_dev) / self.samp_rate
             self.mod_a = analog.frequency_modulator_fc(sens)
-            # Receiver remains standard - Tuned for extremely fast burst lock
-            self.demod_b = digital.gfsk_demod(sps, sens, 0.3, 0.5, 0.01, 0.0)
+            # Receiver remains standard - Tuned for narrowband instantaneous lock
+            self.demod_b = digital.gfsk_demod(sps, sens, 0.4, 0.5, 0.01, 0.0)
             
         elif mod_type in ["DBPSK", "DQPSK", "D8PSK"]:
             cp = 2 if "BPSK" in mod_type else (4 if "QPSK" in mod_type else 8)
