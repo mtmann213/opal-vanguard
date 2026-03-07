@@ -88,7 +88,7 @@ class depacketizer(gr.basic_block):
                 target_bits = target_bytes * 8
                 if len(self.recovered_bits) >= target_bits:
                     avg_conf = self.ccsk_conf_sum / self.ccsk_sym_count if self.ccsk_sym_count > 0 else 1.0
-                    if avg_conf < 0.7: self.state, self.bit_buf = "SEARCH", 0; continue
+                    if avg_conf < 0.6: self.state, self.bit_buf = "SEARCH", 0; continue
                     
                     bits = self.recovered_bits[:target_bits]
                     try:

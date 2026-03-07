@@ -101,7 +101,7 @@ class packetizer(gr.basic_block):
         else: final_bits = bits
 
         # 8. Framing
-        preamble = [1,0]*512
+        preamble = [1,0]*1024 # Maximum 8ms preamble for USRP AGC settling
         syncword = [int(b) for b in format(0x3D4C5B6AACE12345 if is_tactical else 0x3D4C5B6A, '064b' if is_tactical else '032b')]
         out_bits = preamble + syncword + final_bits
         self.message_port_pub(pmt.intern("out"), pmt.cons(pmt.make_dict(), pmt.init_u8vector(len(out_bits), out_bits)))
