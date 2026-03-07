@@ -173,12 +173,10 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
             self.depkt_b.use_comsec = True; self.depkt_b.aes_gcm = AESGCM(key)
             print("[TERMINAL] COMSEC (AES-GCM) ENABLED")
 
-        # 100% Continuous Flowgraph - No Tagged Streams
-        self.noise_src = analog.noise_source_b(analog.GR_UNIFORM, 0)
-        self.pdu_injector = blocks.pdu_to_stream(gr.types.byte_t)
-        self.add = blocks.add_bb()
+        self.p2s_a = pdu.pdu_to_tagged_stream(gr.types.byte_t, "packet_len")
         
         mod_type = self.cfg['physical'].get('modulation', 'GFSK'); sps = self.cfg['physical'].get('samples_per_symbol', 8)
+        self.mult_len = blocks.tagged_stream_multiply_length(gr.sizeof_gr_complex*1, "packet_len", sps)
         
         if mod_type in ["DBPSK", "DQPSK", "D8PSK"]:
             cp = 2 if "BPSK" in mod_type else (4 if "QPSK" in mod_type else 8)
@@ -195,11 +193,13 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
 
         # Connect
         src_port = "out" if self.payload_type in ['chat', 'file'] else "strobe"
-        self.msg_connect((self.pdu_src, src_port), (self.session, "data_in")); self.msg_connect((self.session, "pkt_out"), (self.pkt_a, "in")); self.msg_connect((self.pkt_a, "out"), (self.pdu_injector, "pdus"))
+        self.msg_connect((self.pdu_src, src_port), (self.session, "data_in")); self.msg_connect((self.session, "pkt_out"), (self.pkt_a, "in")); self.msg_connect((self.pkt_a, "out"), (self.p2s_a, "pdus"))
         
-        self.connect(self.noise_src, (self.add, 0))
-        self.connect(self.pdu_injector, (self.add, 1))
-        self.connect(self.add, self.mod_a, self.usrp_sink)
+        if mod_type == "OFDM":
+            self.connect(self.p2s_a, self.mod_a, self.usrp_sink)
+        else:
+            self.connect(self.p2s_a, self.mod_a, self.mult_len, self.usrp_sink)
+        
         self.connect(self.usrp_source, self.rx_filter, self.demod_b, self.depkt_b); self.connect(self.usrp_source, self.iq_probe)
         self.msg_connect((self.depkt_b, "out"), (self.session, "msg_in")); self.msg_connect((self.depkt_b, "diagnostics"), (self.session, "crc_fail")); self.msg_connect((self.session, "blacklist_out"), (self.hop_ctrl, "blacklist"))
 
