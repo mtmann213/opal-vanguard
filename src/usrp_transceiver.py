@@ -176,6 +176,7 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
         self.p2s_a = pdu.pdu_to_tagged_stream(gr.types.byte_t, "packet_len")
         
         mod_type = self.cfg['physical'].get('modulation', 'GFSK'); sps = self.cfg['physical'].get('samples_per_symbol', 8)
+        self.mult_len = blocks.tagged_stream_multiply_length(gr.sizeof_gr_complex*1, "packet_len", sps)
         
         if mod_type == "GFSK":
             # Tag-Safe GFSK Modulator
