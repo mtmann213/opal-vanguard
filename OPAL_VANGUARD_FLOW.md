@@ -1,65 +1,38 @@
-# Opal Vanguard: Modular FHSS Messaging System
-## Full System Architectural Flow & Technical Specification
+# Opal Vanguard: Development Retrospective & Architecture Evolution
 
-Opal Vanguard is a high-fidelity GNU Radio implementation of a Frequency Hopping Spread Spectrum (FHSS) messaging system with multi-layer signal protection.
-
----
-
-## 1. System Overview
-The system is designed for Electronic Warfare (EW) training, allowing operators to ramp up signal hardening layers to combat noise, jamming, and manipulation.
-
-### Core Technical Stack:
-*   **Modulations:** GFSK, MSK, DBPSK, DQPSK, D8PSK.
-*   **Hopping:** AES-CTR and TOD-based frequency hopping.
-*   **Sync:** Precision TOD-Sync (Time-of-Day) for nanosecond alignment.
-*   **Configuration:** Tiered mission control via YAML files in `mission_configs/`.
+This document traces the technical journey of the Opal Vanguard project, documenting the major challenges, "Smoking Guns," and the definitive fixes that led to the v8.2 stable baseline.
 
 ---
 
-## 2. Signal Hardening Layers (Top to Bottom)
+## 🛡️ Milestone 1: The Burst Timing Crisis
+**Symptoms**: USRP T/R switches "clipping" the start of packets; `check_topology` scheduler crashes.
+- **Discovery**: GNU Radio hierarchical modulators (like `gfsk_mod`) were "Tag Black Holes"—they consumed the `packet_len` tags but didn't pass them to the USRP, leaving the hardware "deaf" or "blind" to burst boundaries.
+- **The Fix**: Rebuilt the modulator using raw primitives (Gaussian Filter + Frequency Modulator) that preserve tags. Implemented a custom `BurstTagger` to explicitly inject `tx_sob` and `tx_eob` tags.
 
-### Layer 1: Error Detection (CRC16 / CRC32)
-*   Provides the final validation of packet integrity.
+## 📡 Milestone 2: The DSSS Physics Trap
+**Symptoms**: Blank waterfalls at high sample rates; sporadic heartbeats; "blurry" Inspectrum signals.
+- **Discovery**: Work backward from the channel width! We found that a DSSS Spreading Factor of 31 was expanding our 100kbps signal to 6.3 MHz—physically impossible to fit in 200kHz channels or a 5MHz capture window.
+- **The Fix**: Standardized on the "Winning Baseline": 1 Msps / 2 Msps sample rates, SPS of 10, and a narrow 25kHz deviation. This kept the signal "sharp" and perfectly contained within the mission-alloted spectrum.
 
-### Layer 2: Error Correction (RS 15,11 or RS 31,15)
-*   **RS 15,11:** Standard protection against random bit flips.
-*   **RS 31,15:** Military-grade protection used in Link-16 mission modes.
+## 🔐 Milestone 3: The COMSEC Deadlock
+**Symptoms**: `Decryption failed` errors; handshake loops; heartbeats not appearing despite good sync.
+- **Discovery A**: The Packetizer was calculating the header length *before* encryption added its nonce/tag overhead. The header was "lying" about the packet size.
+- **Discovery B**: AES-GCM is "fragile." A single flipped bit in the air causes the entire packet to be discarded.
+- **The Fix**: Refactored to **AES-CTR** (Stream Cipher) for bit-error tolerance. Standardized the encryption sequence so the header is packed *after* the payload is fully secured. Restricted encryption to DATA packets only to ensure the initial SYN/ACK handshake is never blocked.
 
-### Layer 3: Burst Resilience (Matrix Interleaving)
-*   Shuffles data in a matrix (up to 32x32) before transmission.
-*   Spreads concentrated "burst" jamming across multiple FEC blocks.
+## 📊 Milestone 4: Diagnostic Visibility
+**Symptoms**: Hard to tune gains; difficulty verifying bit-level recovery.
+- **The Fix**: Implemented the **Signal Scope** in the GUI. Added a 64-bit "Early Trigger" so the scope centers on the syncword while showing the preamble history. This allows the operator to see exactly how "clean" the recovered bits are in real-time.
 
-### Layer 4: DC Balance (Whitening)
-*   Scrambles data using an $x^7+x^4+1$ LFSR to ensure high transition density.
-
-### Layer 5: Phase Resilience (NRZ-I)
-*   Differential encoding providing immunity to 180-degree phase inversions.
-
-### Layer 6: Stealth & Spreading (DSSS or CCSK)
-*   **DSSS:** 31-chip M-sequence spreading for processing gain.
-*   **CCSK:** Cyclic Code Shift Keying (32-chip) for authentic Link-16 emulation.
-
----
-
-## 3. Data Flow (TX Chain)
-1.  **Application Layer:** Generates payload (Heartbeat strobe, Chat message, or FTP file chunk).
-2.  **Session (MAC):** Controls state, ARQ history buffering, and AFH blacklist tracking.
-3.  **COMSEC:** Encrypts payload bytes using AES-256-GCM with sequence-based nonces.
-4.  **FEC:** Encodes data into Reed-Solomon blocks (5-bit or 4-bit symbols).
-5.  **Header:** Assembles Type, Sequence, and Length metadata.
-6.  **Interleave:** Shuffles the full data block based on mission level.
-7.  **Whiten:** Scrambles the block using a synchronized LFSR.
-8.  **Spreading:**
-    *   **CCSK Path:** Maps 5-bit symbols directly to 32-chip sequences.
-    *   **DSSS Path:** Spreads serialized bits into 31-chip sequences.
-9.  **Modulation:** Converts bits/chips to complex baseband (MSK, GFSK, PSK, or OFDM).
-10. **LPI/LPD Controller:** Triggers hardware "Ghost Mode" to instantly spike/cut TX power.
-11. **UHD Sink:** Transmits bursts via USRP hardware with nanosecond TOD frequency control.
+## 🧪 Milestone 5: The Safeguard Baseline
+**Symptoms**: Fear of regressions when moving to higher levels (Level 6/7).
+- **The Fix**: Created `verify_mission_baseline.py`. This provides a pure digital loopback test for Levels 1-5, ensuring that any future architectural changes for Link-16 (Level 6) don't break the already "won" missions.
 
 ---
 
-## 4. Diagnostics & Dashboard
-The system provides a real-time "Health Dashboard" via the `diagnostics` message port:
-*   **CRC Status:** Green/Red integrity indicator.
-*   **Confidence (Conf):** Real-time correlation quality from the despreader.
-*   **Inversion Alert:** Flags 180-degree phase flips in the received stream.
+## 🏆 Current "Golden State" (v8.2)
+- **Modulation**: GFSK (Standard) / DBPSK (Tactical).
+- **Architecture**: Asynchronous PDU-based handshaking with SOB/EOB tagging.
+- **Sync**: 0x3D4C5B6A with 2-bit Hamming tolerance.
+- **Encryption**: AES-CTR (Error-resilient).
+- **Timing**: TOD-Synced Hardware Retuning (1 second dwell).
