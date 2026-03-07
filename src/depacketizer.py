@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Opal Vanguard - Mission-Controlled Depacketizer (Stability Build v8.2)
+# Opal Vanguard - Mission-Controlled Depacketizer (Stability Build v8.3)
 
 import numpy as np
 from gnuradio import gr
@@ -27,8 +27,10 @@ class depacketizer(gr.basic_block):
         self.interleaver = MatrixInterleaver(rows=l_cfg.get('interleaver_rows', 8))
         self.scrambler = Scrambler(mask=l_cfg.get('scrambler_mask', 0x48), seed=l_cfg.get('scrambler_seed', 0x7F))
         self.nrzi = NRZIEncoder()
+        
         self.message_port_register_out(pmt.intern("out"))
         self.message_port_register_out(pmt.intern("diagnostics"))
+        
         self.state, self.bit_buf, self.syncword_bits = "SEARCH", 0, 0x3D4C5B6A
 
     def verify_crc(self, data):
@@ -67,12 +69,11 @@ class depacketizer(gr.basic_block):
                             for k in range(8): acc = (acc << 1) | bits[j+k]
                             bytes_data.append(acc)
                         data_block = bytes(bytes_data)
+                        
                         if self.use_whitening: self.scrambler.reset(); data_block = self.scrambler.process(data_block)
                         if self.use_interleaving: data_block = self.interleaver.deinterleave(data_block)
                         
                         sid, m_type, seq, plen = struct.unpack('BBBB', data_block[:4])
-                        # plen in header is the length of the payload block (including FEC/COMSEC)
-                        
                         full_packet_len = 4 + plen + 2
                         crc_pass = False
                         if full_packet_len <= len(data_block):
@@ -87,12 +88,14 @@ class depacketizer(gr.basic_block):
                                     from rs_helper import RS1511
                                     rs, decoded = RS1511(), b''
                                     for j in range(0, len(payload), 15):
+                                        chunk = payload[j:j+15]
+                                        if len(chunk) < 15: break
                                         nibs = []
-                                        for b in payload[j:j+15]: nibs.extend([(b >> 4) & 0x0F, b & 0x0F])
+                                        for b in chunk: nibs.extend([(b >> 4) & 0x0F, b & 0x0F])
                                         b1, b2 = rs.decode(nibs[:15]), rs.decode(nibs[15:])
-                                        decoded += bytes([( (b1[k] << 4) | b1[k+1] ) for k in range(0, 22, 2)])
-                                        # Note: This is an approximation of the original length recovery
-                                        # To be perfect, we would need the original length in the header.
+                                        all_n = b1 + b2
+                                        for k in range(0, 22, 2):
+                                            decoded += bytes([( (all_n[k] << 4) | all_n[k+1] )])
                                     payload = decoded
                                 
                                 if self.use_comsec and self.comsec_key and m_type == 0:
@@ -101,24 +104,19 @@ class depacketizer(gr.basic_block):
                                     decryptor = cipher.decryptor()
                                     payload = decryptor.update(ct) + decryptor.finalize()
                                 
-                                # Final trim of null bytes if it's a heartbeat/text
-                                payload = payload.split(b'\x00')[0]
-                                
+                                payload = payload.split(b'\x00')[0] # Trim nulls
                                 t_name = {0:"DATA", 1:"SYN", 2:"ACK"}.get(m_type, "UNK")
                                 print(f"\033[92m[OK]\033[0m ID: {seq:03} | TYPE: {t_name} | RX: {payload}")
                                 meta = pmt.make_dict()
                                 meta = pmt.dict_add(meta, pmt.intern("type"), pmt.from_long(m_type))
                                 self.message_port_pub(pmt.intern("out"), pmt.cons(meta, pmt.init_u8vector(len(payload), list(payload))))
-                        else:
-                            # Only print CRC fail if it wasn't a noise trigger (seq != 0 or plen != 0 usually)
-                            if plen > 0:
-                                print(f"\033[91m[CRC FAIL]\033[0m ID: {seq:03} | LEN: {plen}")
+                        elif plen > 0 and plen < 120:
+                            print(f"\033[91m[CRC FAIL]\033[0m ID: {seq:03} | LEN: {plen}")
 
-                        # Link Health Diagnostics
+                        # Diagnostics
                         diag_dict = pmt.make_dict()
                         diag_dict = pmt.dict_add(diag_dict, pmt.intern("crc_ok"), pmt.from_bool(crc_pass))
                         diag_dict = pmt.dict_add(diag_dict, pmt.intern("confidence"), pmt.from_double(100.0))
-                        diag_dict = pmt.dict_add(diag_dict, pmt.intern("fec_repairs"), pmt.from_long(0))
                         self.message_port_pub(pmt.intern("diagnostics"), diag_dict)
 
                     except Exception as e: print(f"Decode Error: {e}")
