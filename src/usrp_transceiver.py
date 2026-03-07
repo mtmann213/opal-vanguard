@@ -175,10 +175,31 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
 
         self.p2s_a = pdu.pdu_to_tagged_stream(gr.types.byte_t, "packet_len")
         
-        mod_type = self.cfg['physical'].get('modulation', 'GFSK'); sps = self.cfg['physical'].get('samples_per_symbol', 8)
-        self.mult_len = blocks.tagged_stream_multiply_length(gr.sizeof_gr_complex*1, "packet_len", sps)
+        if mod_type == "GFSK":
+            # Tag-Safe GFSK Modulator
+            freq_dev = self.cfg['physical'].get('freq_dev', 125000)
+            bt = 0.35
+            
+            # 1. Map 0/1 bits to -1.0/1.0 floats
+            self.char_to_float = blocks.uchar_to_float()
+            self.map_bits = blocks.add_const_ff(-0.5)
+            self.scale_bits = blocks.multiply_const_ff(2.0)
+            
+            # 2. Gaussian Filter (This block propagates tags!)
+            ntaps = 4 * sps
+            taps = filter.firdes.gaussian(1.0, sps, bt, ntaps)
+            self.gaussian_filter = filter.interp_fir_filter_fff(sps, taps)
+            
+            # 3. Frequency Mod (This block propagates tags!)
+            sens = (2.0 * np.pi * freq_dev) / self.samp_rate
+            self.mod_a = analog.frequency_mod(sens)
+            
+            # Receiver remains standard
+            self.demod_b = digital.gfsk_demod(sps, sens, 0.1, 0.5, 0.005, 0.0)
+            
+            self.mult_len = blocks.tagged_stream_multiply_length(gr.sizeof_gr_complex*1, "packet_len", sps)
         
-        if mod_type in ["DBPSK", "DQPSK", "D8PSK"]:
+        elif mod_type in ["DBPSK", "DQPSK", "D8PSK"]:
             cp = 2 if "BPSK" in mod_type else (4 if "QPSK" in mod_type else 8)
             self.mod_a = digital.psk_mod(constellation_points=cp, mod_code=digital.mod_codes.GRAY_CODE, differential=True, samples_per_symbol=sps, excess_bw=0.35, verbose=False, log=False)
             self.demod_b = digital.psk_demod(constellation_points=cp, mod_code=digital.mod_codes.GRAY_CODE, differential=True, samples_per_symbol=sps, excess_bw=0.35, phase_bw=6.28/100, timing_bw=6.28/100, verbose=False, log=False)
@@ -199,7 +220,12 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
         src_port = "out" if self.payload_type in ['chat', 'file'] else "strobe"
         self.msg_connect((self.pdu_src, src_port), (self.session, "data_in")); self.msg_connect((self.session, "pkt_out"), (self.pkt_a, "in")); self.msg_connect((self.pkt_a, "out"), (self.p2s_a, "pdus"))
         
-        self.connect(self.p2s_a, self.mod_a, self.mult_len, self.usrp_sink)
+        if mod_type == "GFSK":
+            self.connect(self.p2s_a, self.char_to_float, self.map_bits, self.scale_bits, self.gaussian_filter, self.mod_a, self.mult_len, self.usrp_sink)
+        elif mod_type == "OFDM":
+            self.connect(self.p2s_a, self.mod_a, self.usrp_sink)
+        else:
+            self.connect(self.p2s_a, self.mod_a, self.mult_len, self.usrp_sink)
         self.connect(self.usrp_source, self.rx_filter, self.demod_b, self.depkt_b); self.connect(self.usrp_source, self.iq_probe)
         self.msg_connect((self.depkt_b, "out"), (self.session, "msg_in")); self.msg_connect((self.depkt_b, "diagnostics"), (self.session, "crc_fail")); self.msg_connect((self.session, "blacklist_out"), (self.hop_ctrl, "blacklist"))
 
