@@ -57,8 +57,8 @@ class depacketizer(gr.basic_block):
             bit = int(in0[i]) & 1
             self.bit_buf = ((self.bit_buf << 1) | bit) & 0xFFFFFFFF
             found_sync = False
-            # Standard 32-bit Sync Trigger (Strict for Tactical, 2-bit for Baseline)
-            threshold = 0 if is_tactical else 2
+            # Standard 32-bit Sync Trigger (Allow 2-bit tolerance even for Tactical)
+            threshold = 2
             if bin(self.bit_buf ^ self.syncword_32).count('1') <= threshold: self.is_inverted = False; found_sync = True
             elif bin(self.bit_buf ^ (0xFFFFFFFF ^ self.syncword_32)).count('1') <= threshold: self.is_inverted = True; found_sync = True
             
@@ -83,7 +83,9 @@ class depacketizer(gr.basic_block):
                 target_bits = target_bytes * 8
                 if len(self.recovered_bits) >= target_bits:
                     avg_conf = self.ccsk_conf_sum / self.ccsk_sym_count if self.ccsk_sym_count > 0 else 1.0
-                    if avg_conf < 0.6: self.state, self.bit_buf = "SEARCH", 0; continue
+                    if avg_conf < 0.6: 
+                        if is_tactical: print(f"[DEBUG] Guard Discard: CONF={avg_conf:.2f}")
+                        self.state, self.bit_buf = "SEARCH", 0; continue
                     
                     bits = self.recovered_bits[:target_bits]
                     try:
