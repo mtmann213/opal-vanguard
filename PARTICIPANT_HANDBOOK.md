@@ -39,6 +39,10 @@ Welcome to Project Opal Vanguard. You are tasked with operating or disrupting a 
 *   **Broadband vs. Narrowband:** A strong narrowband tone is easier to avoid via hopping. A wideband noise floor is harder to hide from but requires more power from your USRP.
 *   **The Handshake Snipe:** If Blue is in `HANDSHAKE` mode, a well-timed burst can prevent them from ever connecting.
 
+#### **Real-time Diagnostics:**
+*   **Signal Scope (Bits):** Use the scope panel in the GUI to verify bit-level recovery. A clean, stable square-wave pattern indicates a strong clock-recovery lock. If the scope is flat (0V), no packets are being detected.
+*   **Mission Observer Log:** Every terminal automatically records its low-level processing thoughts to `mission_observer.log`. If you are seeing `[CRC FAIL]` but nothing on the dashboard, check this log for hardware errors or buffer overflows.
+
 ---
 
 ### 5. Round Progression
