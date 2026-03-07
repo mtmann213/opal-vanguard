@@ -2,10 +2,10 @@ mission:
   id: LEVEL_7_OFDM_MASTER
 physical:
   ghost_mode: true
-  samp_rate: 2000000
+  samp_rate: 1000000
   center_freq: 915000000
   modulation: OFDM
-  samples_per_symbol: 8
+  samples_per_symbol: 10
 link_layer:
   use_comsec: true
   comsec_key: 5365637265744f70616c4b6579313233
@@ -35,7 +35,7 @@ hopping:
   initial_seed: 2766
 hardware:
   args: type=b200
-  samp_rate: 2000000
+  samp_rate: 1000000
   tx_gain: 70
   rx_gain: 70
   tx_antenna: TX/RX

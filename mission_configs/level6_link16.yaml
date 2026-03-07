@@ -2,11 +2,11 @@ mission:
   id: LEVEL_6_LINK16
 physical:
   ghost_mode: true
-  samp_rate: 2000000
+  samp_rate: 1000000
   center_freq: 915000000
   modulation: MSK
-  freq_dev: 125000
-  samples_per_symbol: 8
+  freq_dev: 25000
+  samples_per_symbol: 10
 mac_layer:
   amc_enabled: false
   arq_enabled: true
@@ -37,7 +37,7 @@ hopping:
   initial_seed: 5654
 hardware:
   args: type=b200
-  samp_rate: 2000000
+  samp_rate: 1000000
   tx_gain: 70
   rx_gain: 70
   tx_antenna: TX/RX
