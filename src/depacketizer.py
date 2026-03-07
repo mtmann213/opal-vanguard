@@ -120,8 +120,8 @@ class depacketizer(gr.basic_block):
 
                     bits = self.recovered_bits[:target_bits]
                     try:
-                        # Disable NRZI for tactical (redundant with CCSK and risk of bit-drift)
-                        if self.use_nrzi and not is_tactical:
+                        # Re-enable NRZI for tactical to match packetizer logic
+                        if self.use_nrzi:
                             bits = self.nrzi.decode(bits)
 
                         bytes_data = []
