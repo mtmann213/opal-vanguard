@@ -9,7 +9,7 @@ physical:
   samp_rate: 1000000
   center_freq: 915000000
   modulation: GFSK
-  freq_dev: 40000
+  freq_dev: 60000
   samples_per_symbol: 25
 
 mac_layer:

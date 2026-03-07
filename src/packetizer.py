@@ -82,7 +82,7 @@ class packetizer(gr.basic_block):
 
         # 5. Padding & Interleaving
         is_tactical = ("LINK-16" in self.fec_mode or "LEVEL_6" in self.fec_mode)
-        target_bytes = 320 if is_tactical else 120
+        target_bytes = 120
         packet = packet.ljust(target_bytes, b'\x00')[:target_bytes]
         if self.use_interleaving: packet = self.interleaver.interleave(packet)
         if self.use_whitening: self.scrambler.reset(); packet = self.scrambler.process(packet)
