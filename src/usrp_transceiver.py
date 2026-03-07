@@ -308,7 +308,7 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
         self.snk_scope.set_y_axis(-0.5, 1.5)
         self.snk_scope.set_update_time(0.1)
         # Enable Tag Triggering
-        self.snk_scope.set_trigger_mode(qtgui.TRIG_MODE_TAG, qtgui.TRIG_SLOPE_POS, 0.5, 0.125, "rx_sync")
+        self.snk_scope.set_trigger_mode(qtgui.TRIG_MODE_TAG, qtgui.TRIG_SLOPE_POS, 0.5, 0.125, 0, "rx_sync")
         self.rx_b2f = blocks.uchar_to_float()
         
         self.viz_panel.addWidget(sip.wrapinstance(self.snk_waterfall.qwidget(), Qt.QWidget))
