@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Opal Vanguard - Mission-Controlled Depacketizer (Self-Healing Build v9.1)
+# Opal Vanguard - Mission-Controlled Depacketizer (Self-Healing Build v9.2)
 
 import numpy as np
 from gnuradio import gr
@@ -37,11 +37,14 @@ class depacketizer(gr.basic_block):
         self.syncword_32 = 0x3D4C5B6A
         self.syncword_64 = 0x3D4C5B6AACE12345
 
-    def verify_crc(self, data, sid, m_type, seq):
-        if len(data) < 2: return False
-        payload, received_crc = data[:-2], struct.unpack('>H', data[-2:])[0]
+    def verify_crc(self, payload_data, sid, m_type, seq):
+        """Reconstructs the original packet structure to verify the inner CRC."""
+        if len(payload_data) < 2: return False
+        # The data passed here is [Original Payload + CRC]
+        payload = payload_data[:-2]
+        received_crc = struct.unpack('>H', payload_data[-2:])[0]
+        
         crc = 0xFFFF
-        # CRC check must include the header fields to be symmetric
         header_base = struct.pack('BBB', sid, m_type, seq)
         for byte in (header_base + payload):
             crc ^= (byte << 8)
@@ -67,11 +70,13 @@ class depacketizer(gr.basic_block):
                 buf32 = self.bit_buf & 0xFFFFFFFF
                 if bin(buf32 ^ self.syncword_32).count('1') <= 2: self.is_inverted = False; found_sync = True
                 elif bin(buf32 ^ (0xFFFFFFFF ^ self.syncword_32)).count('1') <= 2: self.is_inverted = True; found_sync = True
+            
             if found_sync:
                 self.state, self.recovered_bits, self.ccsk_buf = "COLLECT", [], []
                 self.nrzi.rx_state = 0; self.scrambler.reset(); self.ccsk_conf_sum, self.ccsk_sym_count = 0, 0
                 self.add_item_tag(0, self.nitems_written(0) + i - 64, pmt.intern("rx_sync"), pmt.from_long(0))
                 continue
+            
             if self.state == "COLLECT":
                 rx_bit = bit ^ (1 if self.is_inverted else 0)
                 if self.use_ccsk:
@@ -82,11 +87,13 @@ class depacketizer(gr.basic_block):
                         for j in range(5): self.recovered_bits.append((sym >> (4-j)) & 1)
                         self.ccsk_buf = []
                 else: self.recovered_bits.append(rx_bit)
+                
                 target_bytes = 320 if is_tactical else 120
                 target_bits = target_bytes * 8
                 if len(self.recovered_bits) >= target_bits:
                     avg_conf = self.ccsk_conf_sum / self.ccsk_sym_count if self.ccsk_sym_count > 0 else 1.0
                     if avg_conf < 0.5: self.state, self.bit_buf = "SEARCH", 0; continue
+                    
                     bits = self.recovered_bits[:target_bits]
                     try:
                         if self.use_nrzi and not is_tactical: bits = self.nrzi.decode(bits)
@@ -96,13 +103,15 @@ class depacketizer(gr.basic_block):
                             for k in range(8): acc = (acc << 1) | bits[j+k]
                             bytes_data.append(acc)
                         data_block = bytes(bytes_data)
+                        
                         if self.use_whitening: self.scrambler.reset(); data_block = self.scrambler.process(data_block)
                         if self.use_interleaving: data_block = self.interleaver.deinterleave(data_block)
+                        
                         sid, m_type, seq, plen = struct.unpack('BBBB', data_block[:4])
                         
-                        # HEALING STAGE: FEC Decoding happens BEFORE CRC check
+                        # HEALING STAGE
                         encoded_payload = data_block[4:4+plen]
-                        decoded_data = encoded_payload
+                        decoded_payload = encoded_payload
                         if self.use_fec:
                             from rs_helper import RS1511
                             rs, healed = RS1511(), b''
@@ -111,15 +120,18 @@ class depacketizer(gr.basic_block):
                                 if len(chunk) < 15: break
                                 nibs = []
                                 for b in chunk: nibs.extend([(b >> 4) & 0x0F, b & 0x0F])
-                                b1, b2 = rs.decode(nibs[:15]), rs.decode(nibs[15:])
-                                for k in range(0, 22, 2): healed += bytes([( (b1[k] << 4) | b1[k+1] )])
-                            decoded_data = healed
+                                # RS(15,11) decode - can fix up to 2 corrupted nibbles
+                                d_nibs = rs.decode(nibs)
+                                # Pack 11 nibbles (5.5 bytes)
+                                for k in range(0, 10, 2):
+                                    healed += bytes([( (d_nibs[k] << 4) | d_nibs[k+1] )])
+                                healed += bytes([( (d_nibs[10] << 4) )]) # Final partial nibble
+                            decoded_payload = healed
                         
-                        # CRC Check on HEALED data
-                        crc_pass = self.verify_crc(decoded_data, sid, m_type, seq)
+                        crc_pass = self.verify_crc(decoded_payload, sid, m_type, seq)
                         if crc_pass:
                             if not (self.ignore_self and sid == self.src_id):
-                                payload = decoded_data[:-2] # Strip INNER CRC
+                                payload = decoded_payload[:-2]
                                 if self.use_comsec and self.comsec_key and m_type == 0:
                                     nonce, ct = payload[:16], payload[16:]
                                     cipher = Cipher(algorithms.AES(self.comsec_key), modes.CTR(nonce), backend=default_backend())
@@ -132,6 +144,7 @@ class depacketizer(gr.basic_block):
                                 self.message_port_pub(pmt.intern("out"), pmt.cons(meta, pmt.init_u8vector(len(payload), list(payload))))
                         elif plen > 0 and plen < target_bytes:
                             print(f"\033[91m[CRC FAIL]\033[0m ID: {seq:03} | LEN: {plen} | CONF: {avg_conf:.2f}")
+                        
                         diag_dict = pmt.make_dict()
                         diag_dict = pmt.dict_add(diag_dict, pmt.intern("crc_ok"), pmt.from_bool(crc_pass))
                         diag_dict = pmt.dict_add(diag_dict, pmt.intern("confidence"), pmt.from_double(avg_conf * 100.0))
