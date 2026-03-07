@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Opal Vanguard - Mission-Controlled Depacketizer (Stability Build v8.3)
+# Opal Vanguard - Mission-Controlled Depacketizer (Link-16 Build v8.4)
 
 import numpy as np
 from gnuradio import gr
@@ -10,7 +10,7 @@ import os
 import yaml
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
-from dsp_helper import MatrixInterleaver, Scrambler, NRZIEncoder
+from dsp_helper import MatrixInterleaver, Scrambler, NRZIEncoder, CCSKProcessor
 
 class depacketizer(gr.basic_block):
     def __init__(self, config_path="mission_configs/level1_soft_link.yaml", src_id=0, ignore_self=False):
@@ -27,12 +27,18 @@ class depacketizer(gr.basic_block):
         self.interleaver = MatrixInterleaver(rows=l_cfg.get('interleaver_rows', 8))
         self.scrambler = Scrambler(mask=l_cfg.get('scrambler_mask', 0x48), seed=l_cfg.get('scrambler_seed', 0x7F))
         self.nrzi = NRZIEncoder()
+        
         self.fec_mode = self.cfg.get('mission', {}).get('id', "")
+        d_cfg = self.cfg.get('dsss', {})
+        self.use_ccsk = (d_cfg.get('enabled', False) and d_cfg.get('type') == "CCSK")
+        self.ccsk = CCSKProcessor()
         
         self.message_port_register_out(pmt.intern("out"))
         self.message_port_register_out(pmt.intern("diagnostics"))
         
         self.state, self.bit_buf, self.syncword_bits = "SEARCH", 0, 0x3D4C5B6A
+        self.recovered_bits = []
+        self.ccsk_buf = []
 
     def verify_crc(self, data):
         if len(data) < 2: return False
@@ -54,14 +60,22 @@ class depacketizer(gr.basic_block):
             self.bit_buf = ((self.bit_buf << 1) | bit) & 0xFFFFFFFF
             if self.bit_buf == self.syncword_bits or self.bit_buf == (0xFFFFFFFF ^ self.syncword_bits):
                 self.is_inverted = (self.bit_buf == (0xFFFFFFFF ^ self.syncword_bits))
-                self.state, self.recovered_bits = "COLLECT", []
+                self.state, self.recovered_bits, self.ccsk_buf = "COLLECT", [], []
                 self.nrzi.rx_state = 0; self.scrambler.reset()
                 self.add_item_tag(0, self.nitems_written(0) + i - 64, pmt.intern("rx_sync"), pmt.from_long(0))
                 continue
+            
             if self.state == "COLLECT":
-                self.recovered_bits.append(bit ^ (1 if self.is_inverted else 0))
+                rx_bit = bit ^ (1 if self.is_inverted else 0)
+                if self.use_ccsk:
+                    self.ccsk_buf.append(rx_bit)
+                    if len(self.ccsk_buf) >= 32:
+                        sym, conf = self.ccsk.decode_chips(self.ccsk_buf)
+                        for j in range(5): self.recovered_bits.append((sym >> (4-j)) & 1)
+                        self.ccsk_buf = []
+                else:
+                    self.recovered_bits.append(rx_bit)
                 
-                # Dynamic collection length based on mission mode
                 target_bytes = 320 if "LINK-16" in self.fec_mode or "LEVEL_6" in self.fec_mode else 120
                 target_bits = target_bytes * 8
                 
@@ -116,7 +130,7 @@ class depacketizer(gr.basic_block):
                                 meta = pmt.make_dict()
                                 meta = pmt.dict_add(meta, pmt.intern("type"), pmt.from_long(m_type))
                                 self.message_port_pub(pmt.intern("out"), pmt.cons(meta, pmt.init_u8vector(len(payload), list(payload))))
-                        elif plen > 0 and plen < 120:
+                        elif plen > 0 and plen < target_bytes:
                             print(f"\033[91m[CRC FAIL]\033[0m ID: {seq:03} | LEN: {plen}")
 
                         # Diagnostics

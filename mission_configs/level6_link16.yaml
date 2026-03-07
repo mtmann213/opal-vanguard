@@ -38,7 +38,7 @@ hopping:
   enabled: true
   type: AES
   sync_mode: TOD
-  dwell_time_ms: 200
+  dwell_time_ms: 500
   lookahead_ms: 50
   num_channels: 6
   channel_spacing: 150000
