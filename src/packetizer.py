@@ -90,7 +90,10 @@ class packetizer(gr.basic_block):
         # 5. Bit Conversion
         bits = []
         for b in packet: [bits.append((b >> (7-i)) & 1) for i in range(8)]
-        if self.use_nrzi: self.nrzi.tx_state = 0; bits = self.nrzi.encode(bits)
+        
+        # Disable NRZI for tactical missions (state-drift kills CCSK correlation)
+        if self.use_nrzi and not is_tactical:
+            self.nrzi.tx_state = 0; bits = self.nrzi.encode(bits)
 
         # 6. Tactical CCSK Spreading (5 bits -> 32 chips)
         final_bits = []
