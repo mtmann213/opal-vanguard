@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# Opal Vanguard - Mission-Controlled Depacketizer (Stability Build v8.2)
+
 import numpy as np
 from gnuradio import gr
 import pmt
@@ -66,45 +69,58 @@ class depacketizer(gr.basic_block):
                         data_block = bytes(bytes_data)
                         if self.use_whitening: self.scrambler.reset(); data_block = self.scrambler.process(data_block)
                         if self.use_interleaving: data_block = self.interleaver.deinterleave(data_block)
+                        
                         sid, m_type, seq, plen = struct.unpack('BBBB', data_block[:4])
-                        if plen + 6 <= 120:
-                            packet_for_crc = data_block[:plen+6]
-                            if self.verify_crc(packet_for_crc):
-                                if self.ignore_self and sid == self.src_id: pass
-                                else:
-                                    payload = packet_for_crc[4:-2]
-                                    if self.use_fec:
-                                        from rs_helper import RS1511
-                                        rs, decoded = RS1511(), b''
-                                        for j in range(0, len(payload), 15):
-                                            nibs = []
-                                            for b in payload[j:j+15]: nibs.extend([(b >> 4) & 0x0F, b & 0x0F])
-                                            b1, b2 = rs.decode(nibs[:15]), rs.decode(nibs[15:])
-                                            all_n = b1 + b2
-                                            for k in range(0, 22, 2): decoded += bytes([(all_n[k] << 4) | all_n[k+1]])
-                                        payload = decoded
-                                    if self.use_comsec and self.comsec_key and m_type == 0:
-                                        nonce, ct = payload[:16], payload[16:]
-                                        cipher = Cipher(algorithms.AES(self.comsec_key), modes.CTR(nonce), backend=default_backend())
-                                        decryptor = cipher.decryptor()
-                                        # Decrypt and then SLICE to plen (minus COMSEC overhead)
-                                        payload = (decryptor.update(ct) + decryptor.finalize())[:plen]
-                                    else:
-                                        # Slice non-encrypted payloads to plen
-                                        payload = payload[:plen]
+                        # plen in header is the length of the payload block (including FEC/COMSEC)
+                        
+                        full_packet_len = 4 + plen + 2
+                        crc_pass = False
+                        if full_packet_len <= len(data_block):
+                            packet_for_crc = data_block[:full_packet_len]
+                            crc_pass = self.verify_crc(packet_for_crc)
+                        
+                        if crc_pass:
+                            if self.ignore_self and sid == self.src_id: pass
+                            else:
+                                payload = data_block[4:4+plen]
+                                if self.use_fec:
+                                    from rs_helper import RS1511
+                                    rs, decoded = RS1511(), b''
+                                    for j in range(0, len(payload), 15):
+                                        nibs = []
+                                        for b in payload[j:j+15]: nibs.extend([(b >> 4) & 0x0F, b & 0x0F])
+                                        b1, b2 = rs.decode(nibs[:15]), rs.decode(nibs[15:])
+                                        decoded += bytes([( (b1[k] << 4) | b1[k+1] ) for k in range(0, 22, 2)])
+                                        # Note: This is an approximation of the original length recovery
+                                        # To be perfect, we would need the original length in the header.
+                                    payload = decoded
+                                
+                                if self.use_comsec and self.comsec_key and m_type == 0:
+                                    nonce, ct = payload[:16], payload[16:]
+                                    cipher = Cipher(algorithms.AES(self.comsec_key), modes.CTR(nonce), backend=default_backend())
+                                    decryptor = cipher.decryptor()
+                                    payload = decryptor.update(ct) + decryptor.finalize()
+                                
+                                # Final trim of null bytes if it's a heartbeat/text
+                                payload = payload.split(b'\x00')[0]
+                                
+                                t_name = {0:"DATA", 1:"SYN", 2:"ACK"}.get(m_type, "UNK")
+                                print(f"\033[92m[OK]\033[0m ID: {seq:03} | TYPE: {t_name} | RX: {payload}")
+                                meta = pmt.make_dict()
+                                meta = pmt.dict_add(meta, pmt.intern("type"), pmt.from_long(m_type))
+                                self.message_port_pub(pmt.intern("out"), pmt.cons(meta, pmt.init_u8vector(len(payload), list(payload))))
+                        else:
+                            # Only print CRC fail if it wasn't a noise trigger (seq != 0 or plen != 0 usually)
+                            if plen > 0:
+                                print(f"\033[91m[CRC FAIL]\033[0m ID: {seq:03} | LEN: {plen}")
 
-                                    t_name = {0:"DATA", 1:"SYN", 2:"ACK"}.get(m_type, "UNK")
-                                    print(f"\033[92m[OK]\033[0m ID: {seq:03} | TYPE: {t_name} | RX: {payload}")
-                                    meta = pmt.make_dict()
-                                    meta = pmt.dict_add(meta, pmt.intern("type"), pmt.from_long(m_type))
-                                    self.message_port_pub(pmt.intern("out"), pmt.cons(meta, pmt.init_u8vector(len(payload), list(payload))))
-                            
-                            # Link Health Diagnostics
-                            diag_dict = pmt.make_dict()
-                            diag_dict = pmt.dict_add(diag_dict, pmt.intern("crc_ok"), pmt.from_bool(crc_pass))
-                            diag_dict = pmt.dict_add(diag_dict, pmt.intern("confidence"), pmt.from_double(100.0))
-                            diag_dict = pmt.dict_add(diag_dict, pmt.intern("fec_repairs"), pmt.from_long(0))
-                            self.message_port_pub(pmt.intern("diagnostics"), diag_dict)
+                        # Link Health Diagnostics
+                        diag_dict = pmt.make_dict()
+                        diag_dict = pmt.dict_add(diag_dict, pmt.intern("crc_ok"), pmt.from_bool(crc_pass))
+                        diag_dict = pmt.dict_add(diag_dict, pmt.intern("confidence"), pmt.from_double(100.0))
+                        diag_dict = pmt.dict_add(diag_dict, pmt.intern("fec_repairs"), pmt.from_long(0))
+                        self.message_port_pub(pmt.intern("diagnostics"), diag_dict)
+
                     except Exception as e: print(f"Decode Error: {e}")
                     self.state, self.bit_buf = "SEARCH", 0
         self.produce(0, n); self.consume(0, n); return 0
