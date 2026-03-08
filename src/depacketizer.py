@@ -56,7 +56,7 @@ class depacketizer(gr.basic_block):
     def general_work(self, input_items, output_items):
         in0, out = input_items[0], output_items[0]
         n = min(len(in0), len(out)); out[:n] = in0[:n]
-        is_tactical = ("LINK-16" in self.fec_mode or "LEVEL_6" in self.fec_mode)
+        is_tactical = ("LINK-16" in self.fec_mode or "LEVEL_6" in self.fec_mode or "LEVEL_7" in self.fec_mode or "OFDM" in self.fec_mode)
         for i in range(n):
             bit = int(in0[i]) & 1
             self.bit_buf = ((self.bit_buf << 1) | bit) & 0xFFFFFFFF

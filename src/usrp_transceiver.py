@@ -201,6 +201,11 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
             cp = 2 if "BPSK" in mod_type else 4
             self.mod_a = digital.psk_mod(cp, digital.mod_codes.GRAY_CODE, True, sps, 0.35, False, False)
             self.demod_b = digital.psk_demod(cp, digital.mod_codes.GRAY_CODE, True, sps, 0.35, 6.28/100, 6.28/100, False, False)
+        elif mod_type == "OFDM":
+            # Native GNU Radio OFDM transceiver blocks
+            self.mod_a = digital.ofdm_tx(fft_len=64, cp_len=16, packet_length_tag_key="packet_len")
+            self.demod_b = digital.ofdm_rx(fft_len=64, cp_len=16, packet_length_tag_key="packet_len")
+            self.unpack = blocks.packed_to_unpacked_bb(1, gr.GR_MSB_FIRST)
         else:
             self.mod_a = digital.gfsk_mod(sps, (2.0*np.pi*25000)/self.samp_rate, 0.35, False, False, False)
             self.demod_b = digital.gfsk_demod(sps, (2.0*np.pi*25000)/self.samp_rate, 0.1, 0.5, 0.005, 0.0)
@@ -230,9 +235,12 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
         self.msg_connect((self.pdu_src, src_port), (self.session, "data_in"))
         
         if mod_type == "GFSK": self.connect(self.p2s_a, self.char_to_float, self.map_bits, self.scale_bits, self.gaussian_filter, self.tagger, self.mod_a, self.mult_len, self.usrp_sink)
+        elif mod_type == "OFDM": self.connect(self.p2s_a, self.mod_a, self.usrp_sink)
         else: self.connect(self.p2s_a, self.mod_a, self.mult_len, self.usrp_sink)
         
-        self.connect(self.usrp_source, self.rx_filter, self.demod_b, self.depkt_b); self.connect(self.usrp_source, self.iq_probe)
+        self.connect(self.usrp_source, self.rx_filter, self.iq_probe)
+        if mod_type == "OFDM": self.connect(self.rx_filter, self.demod_b, self.unpack, self.depkt_b)
+        else: self.connect(self.rx_filter, self.demod_b, self.depkt_b)
         
         self.msg_connect((self.depkt_b, "out"), (self.session, "msg_in"))
         self.msg_connect((self.session, "pkt_out"), (self.pkt_a, "in"))

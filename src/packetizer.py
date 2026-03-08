@@ -91,7 +91,7 @@ class packetizer(gr.basic_block):
         if self.use_whitening: self.scrambler.reset(); packet = self.scrambler.process(packet)
 
         # 6. Bit Conversion
-        is_tactical = ("LINK-16" in self.fec_mode or "LEVEL_6" in self.fec_mode)
+        is_tactical = ("LINK-16" in self.fec_mode or "LEVEL_6" in self.fec_mode or "LEVEL_7" in self.fec_mode or "OFDM" in self.fec_mode)
         bits = []
         for b in packet: [bits.append((b >> (7-i)) & 1) for i in range(8)]
         if self.use_nrzi and not is_tactical: self.nrzi.tx_state = 0; bits = self.nrzi.encode(bits)
@@ -109,6 +109,22 @@ class packetizer(gr.basic_block):
         preamble = [1,0]*256
         syncword = [int(b) for b in format(0x3D4C5B6A, '032b')]
         out_bits = preamble + syncword + final_bits
-        self.message_port_pub(pmt.intern("out"), pmt.cons(pmt.make_dict(), pmt.init_u8vector(len(out_bits), out_bits)))
+        
+        is_ofdm = self.cfg['physical'].get('modulation', 'GFSK') == 'OFDM'
+        if is_ofdm:
+            packed_bytes = []
+            for i in range(0, len(out_bits), 8):
+                byte = 0
+                for j in range(8):
+                    if i+j < len(out_bits):
+                        byte = (byte << 1) | out_bits[i+j]
+                    else:
+                        byte = byte << 1
+                packed_bytes.append(byte)
+            out_data = packed_bytes
+        else:
+            out_data = out_bits
+            
+        self.message_port_pub(pmt.intern("out"), pmt.cons(pmt.make_dict(), pmt.init_u8vector(len(out_data), out_data)))
 
     def work(self, i, o): return 0
