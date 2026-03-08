@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Opal Vanguard - Mission-Controlled Depacketizer (Tactical Symmetry Build v10.6)
+# Opal Vanguard - Mission-Controlled Depacketizer (Workstation Build v10.12)
 
 import numpy as np
 from gnuradio import gr
@@ -43,7 +43,6 @@ class depacketizer(gr.basic_block):
         extracted_crc = struct.unpack('>H', payload[true_plen:true_plen+2])[0]
         
         crc = 0xFFFF
-        # Reconstruct exactly as packetizer did: sid, type, seq, plen
         header_base = struct.pack('BBBB', sid, m_type, seq, true_plen)
         for byte in (header_base + extracted_data):
             crc ^= (byte << 8)
@@ -86,9 +85,7 @@ class depacketizer(gr.basic_block):
                 target_bits = target_bytes * 8
                 if len(self.recovered_bits) >= target_bits:
                     avg_conf = self.ccsk_conf_sum / self.ccsk_sym_count if self.ccsk_sym_count > 0 else 1.0
-                    if avg_conf < 0.6: 
-                        if is_tactical: print(f"[DEBUG] Guard Discard: CONF={avg_conf:.2f}")
-                        self.state, self.bit_buf = "SEARCH", 0; continue
+                    if avg_conf < 0.6: self.state, self.bit_buf = "SEARCH", 0; continue
                     
                     bits = self.recovered_bits[:target_bits]
                     try:
@@ -104,8 +101,8 @@ class depacketizer(gr.basic_block):
                         if self.use_whitening: self.scrambler.reset(); data_block = self.scrambler.process(data_block)
                         if self.use_interleaving: data_block = self.interleaver.deinterleave(data_block)
                         
-                        # 2. FEC Healing (Decode entire block)
-                        healed_block = data_block
+                        # 2. HEALING STAGE
+                        processed_block = data_block
                         if self.use_fec:
                             from rs_helper import RS1511
                             rs, healed = RS1511(), b''
@@ -116,13 +113,16 @@ class depacketizer(gr.basic_block):
                                 for b in chunk: nibs.extend([(b >> 4) & 0x0F, b & 0x0F])
                                 d_nibs = rs.decode(nibs[:15]) + rs.decode(nibs[15:])
                                 for k in range(0, 22, 2): healed += bytes([( (d_nibs[k] << 4) | d_nibs[k+1] )])
-                            healed_block = healed
+                            processed_block = healed
                         
                         # 3. Extract Header
-                        sid, m_type, seq, true_plen = struct.unpack('BBBB', healed_block[:4])
+                        sid, m_type, seq, true_plen = struct.unpack('BBBB', processed_block[:4])
                         
                         # 4. CRC Check
-                        payload_zone = healed_block[4:4+true_plen+2]
+                        # In v10.7+, the header itself is PROTECTED by the CRC. 
+                        # Header starts at index 0 of processed_block, data follows.
+                        # Total block is [sid, type, seq, plen, payload, crc_h, crc_l]
+                        payload_zone = processed_block[4:4+true_plen+2]
                         crc_pass = self.verify_crc(payload_zone, true_plen, sid, m_type, seq)
                         
                         if crc_pass:
