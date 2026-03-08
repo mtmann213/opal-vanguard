@@ -50,19 +50,20 @@ class packetizer(gr.basic_block):
             cipher = Cipher(algorithms.AES(self.comsec_key), modes.CTR(nonce), backend=default_backend())
             payload = nonce + cipher.encryptor().update(payload) + cipher.encryptor().finalize()
 
-        # 2. INNER CRC (Protect payload only)
+        # 2. INNER CRC (Protect header and payload for full integrity)
         crc = 0xFFFF
         true_plen = len(payload)
-        for byte in payload:
+        header_base = struct.pack('BBBB', self.src_id, m_type, seq, true_plen)
+        for byte in (header_base + payload):
             crc ^= (byte << 8)
             for _ in range(8):
                 if crc & 0x8000: crc = (crc << 1) ^ 0x1021
                 else: crc <<= 1
             crc &= 0xFFFF
         
-        # 3. Assemble Raw Block (Header + Payload + CRC)
-        # Total data before FEC: 4 + len(payload) + 2
-        raw_data = struct.pack('BBBB', self.src_id, m_type, seq, true_plen) + payload + struct.pack('>H', crc)
+        # 3. Assemble Unified Raw Block
+        # Total data before FEC: 4 (Header) + len(payload) + 2 (CRC)
+        raw_data = header_base + payload + struct.pack('>H', crc)
         
         # Pad raw_data to a multiple of 11 bytes for RS(15,11) alignment
         # Total capacity of 8 blocks is 88 bytes. 

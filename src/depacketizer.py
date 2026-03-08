@@ -43,7 +43,8 @@ class depacketizer(gr.basic_block):
         extracted_crc = struct.unpack('>H', payload[true_plen:true_plen+2])[0]
         
         crc = 0xFFFF
-        header_base = struct.pack('BBB', sid, m_type, seq)
+        # Reconstruct exactly as packetizer did: sid, type, seq, plen
+        header_base = struct.pack('BBBB', sid, m_type, seq, true_plen)
         for byte in (header_base + extracted_data):
             crc ^= (byte << 8)
             for _ in range(8):
