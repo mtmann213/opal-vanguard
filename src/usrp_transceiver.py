@@ -290,6 +290,9 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
         self.uhd_h = UHDHandler(self); self.msg_connect((self.hop_ctrl, "freq"), (self.uhd_h, "msg"))
 
         self.snk_waterfall = qtgui.waterfall_sink_c(2048, fft.window.WIN_BLACKMAN_HARRIS, self.center_freq, self.samp_rate, "Spectrum", 1)
+        self.snk_freq = qtgui.freq_sink_c(1024, fft.window.WIN_BLACKMAN_HARRIS, self.center_freq, self.samp_rate, "Baseband Spectrum", 1)
+        self.snk_freq.set_update_time(0.1); self.snk_freq.set_y_axis(-140, 10)
+        
         self.snk_scope = qtgui.time_sink_f(4096, self.samp_rate, "Signal Scope (Bits)", 1)
         self.snk_scope.set_trigger_mode(qtgui.TRIG_MODE_TAG, qtgui.TRIG_SLOPE_POS, 0.5, 0.0, 0, "rx_sync")
         self.rx_b2f = blocks.uchar_to_float()
