@@ -239,8 +239,10 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
         else: self.connect(self.p2s_a, self.mod_a, self.mult_len, self.usrp_sink)
         
         self.connect(self.usrp_source, self.rx_filter, self.iq_probe)
-        if mod_type == "OFDM": self.connect(self.rx_filter, self.demod_b, self.unpack, self.depkt_b)
-        else: self.connect(self.rx_filter, self.demod_b, self.depkt_b)
+        if mod_type == "OFDM": 
+            self.msg_connect((self.demod_b, "pdus"), (self.depkt_b, "pdu_in"))
+        else: 
+            self.connect(self.rx_filter, self.demod_b, self.depkt_b)
         
         self.msg_connect((self.depkt_b, "out"), (self.session, "msg_in"))
         self.msg_connect((self.session, "pkt_out"), (self.pkt_a, "in"))

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Opal Vanguard - Mission-Controlled Depacketizer (OFDM Master Build v10.14)
+# Opal Vanguard - Mission-Controlled Depacketizer (OFDM Native Build v10.15)
 
 import numpy as np
 from gnuradio import gr
@@ -24,26 +24,28 @@ class depacketizer(gr.basic_block):
         self.use_nrzi = l_cfg.get('use_nrzi', True)
         self.use_comsec = False
         self.comsec_key = None
-        self.fec_mode = self.cfg.get('mission', {}).get('id', "")
-        
-        # Level 7 requires much deeper interleaving
-        rows = 64 if "LEVEL_7" in self.fec_mode else 15
-        self.interleaver = MatrixInterleaver(rows=rows)
+        self.interleaver = MatrixInterleaver(rows=l_cfg.get('interleaver_rows', 15))
         self.scrambler = Scrambler(mask=l_cfg.get('scrambler_mask', 0x48), seed=l_cfg.get('scrambler_seed', 0x7F))
         self.nrzi = NRZIEncoder()
+        self.fec_mode = self.cfg.get('mission', {}).get('id', "")
         
         d_cfg = self.cfg.get('dsss', {})
         self.use_ccsk = (d_cfg.get('enabled', False) and d_cfg.get('type') == "CCSK")
         self.ccsk = CCSKProcessor()
+        
         self.message_port_register_out(pmt.intern("out"))
         self.message_port_register_out(pmt.intern("diagnostics"))
+        
+        # New: Message Port for Native OFDM Packets
+        self.message_port_register_in(pmt.intern("pdu_in"))
+        self.set_msg_handler(pmt.intern("pdu_in"), self.handle_pdu)
+        
         self.state, self.bit_buf = "SEARCH", 0
         self.syncword_32 = 0x3D4C5B6A
 
     def verify_crc(self, payload, true_plen, sid, m_type, seq):
         if len(payload) < (true_plen + 2): return False
-        extracted_data = payload[:true_plen]
-        extracted_crc = struct.unpack('>H', payload[true_plen:true_plen+2])[0]
+        extracted_data = payload[:true_plen]; extracted_crc = struct.unpack('>H', payload[true_plen:true_plen+2])[0]
         crc = 0xFFFF
         header_base = struct.pack('BBBB', sid, m_type, seq, true_plen)
         for byte in (header_base + extracted_data):
@@ -53,6 +55,58 @@ class depacketizer(gr.basic_block):
                 else: crc <<= 1
             crc &= 0xFFFF
         return crc == extracted_crc
+
+    def handle_pdu(self, msg):
+        """Processes pre-synchronized OFDM packets directly."""
+        data_block = bytes(pmt.u8vector_elements(pmt.cdr(msg)))
+        self.process_recovered_block(data_block, 1.0)
+
+    def process_recovered_block(self, data_block, avg_conf):
+        """Unified processing for both bitstream and OFDM recovery."""
+        try:
+            is_tactical = ("LINK-16" in self.fec_mode or "LEVEL_6" in self.fec_mode or "LEVEL_7" in self.fec_mode)
+            
+            # 1. De-whiten & De-interleave
+            if self.use_whitening: self.scrambler.reset(); data_block = self.scrambler.process(data_block)
+            if self.use_interleaving: data_block = self.interleaver.deinterleave(data_block)
+            
+            # 2. FEC Healing
+            processed_block = data_block
+            if self.use_fec:
+                from rs_helper import RS1511
+                rs, healed = RS1511(), b''
+                for j in range(0, len(data_block), 15):
+                    chunk = data_block[j:j+15]
+                    if len(chunk) < 15: break
+                    nibs = []
+                    for b in chunk: nibs.extend([(b >> 4) & 0x0F, b & 0x0F])
+                    d_nibs = rs.decode(nibs[:15]) + rs.decode(nibs[15:])
+                    for k in range(0, 22, 2): healed += bytes([( (d_nibs[k] << 4) | d_nibs[k+1] )])
+                processed_block = healed
+            
+            sid, m_type, seq, true_plen = struct.unpack('BBBB', processed_block[:4])
+            payload_zone = processed_block[4:4+true_plen+2]
+            crc_pass = self.verify_crc(payload_zone, true_plen, sid, m_type, seq)
+            
+            if crc_pass:
+                if not (self.ignore_self and sid == self.src_id):
+                    payload = payload_zone[:true_plen]
+                    if self.use_comsec and self.comsec_key and m_type == 0:
+                        nonce, ct = payload[:16], payload[16:]
+                        cipher = Cipher(algorithms.AES(self.comsec_key), modes.CTR(nonce), backend=default_backend())
+                        payload = cipher.decryptor().update(ct) + cipher.decryptor().finalize()
+                    payload = payload.split(b'\x00')[0]
+                    t_name = {0:"DATA", 1:"SYN", 2:"ACK"}.get(m_type, "UNK")
+                    print(f"\033[92m[OK]\033[0m ID: {seq:03} | TYPE: {t_name} | RX: {payload} | CONF: {avg_conf:.2f}")
+                    meta = pmt.make_dict()
+                    meta = pmt.dict_add(meta, pmt.intern("type"), pmt.from_long(m_type))
+                    self.message_port_pub(pmt.intern("out"), pmt.cons(meta, pmt.init_u8vector(len(payload), list(payload))))
+            
+            diag_dict = pmt.make_dict()
+            diag_dict = pmt.dict_add(diag_dict, pmt.intern("crc_ok"), pmt.from_bool(crc_pass))
+            diag_dict = pmt.dict_add(diag_dict, pmt.intern("confidence"), pmt.from_double(avg_conf * 100.0))
+            self.message_port_pub(pmt.intern("diagnostics"), diag_dict)
+        except Exception as e: print(f"Decode Error: {e}")
 
     def general_work(self, input_items, output_items):
         in0, out = input_items[0], output_items[0]
@@ -97,49 +151,7 @@ class depacketizer(gr.basic_block):
                             acc = 0
                             for k in range(8): acc = (acc << 1) | bits[j+k]
                             bytes_data.append(acc)
-                        data_block = bytes(bytes_data)
-                        
-                        if self.use_whitening: self.scrambler.reset(); data_block = self.scrambler.process(data_block)
-                        if self.use_interleaving: data_block = self.interleaver.deinterleave(data_block)
-                        
-                        # FEC Healing
-                        processed_block = data_block
-                        if self.use_fec:
-                            from rs_helper import RS1511
-                            rs, healed = RS1511(), b''
-                            for j in range(0, len(data_block), 15):
-                                chunk = data_block[j:j+15]
-                                if len(chunk) < 15: break
-                                nibs = []
-                                for b in chunk: nibs.extend([(b >> 4) & 0x0F, b & 0x0F])
-                                d_nibs = rs.decode(nibs[:15]) + rs.decode(nibs[15:])
-                                for k in range(0, 22, 2): healed += bytes([( (d_nibs[k] << 4) | d_nibs[k+1] )])
-                            processed_block = healed
-                        
-                        sid, m_type, seq, true_plen = struct.unpack('BBBB', processed_block[:4])
-                        payload_zone = processed_block[4:4+true_plen+2]
-                        crc_pass = self.verify_crc(payload_zone, true_plen, sid, m_type, seq)
-                        
-                        if crc_pass:
-                            if not (self.ignore_self and sid == self.src_id):
-                                payload = payload_zone[:true_plen]
-                                if self.use_comsec and self.comsec_key and m_type == 0:
-                                    nonce, ct = payload[:16], payload[16:]
-                                    cipher = Cipher(algorithms.AES(self.comsec_key), modes.CTR(nonce), backend=default_backend())
-                                    payload = cipher.decryptor().update(ct) + cipher.decryptor().finalize()
-                                payload = payload.split(b'\x00')[0]
-                                t_name = {0:"DATA", 1:"SYN", 2:"ACK"}.get(m_type, "UNK")
-                                print(f"\033[92m[OK]\033[0m ID: {seq:03} | TYPE: {t_name} | RX: {payload} | CONF: {avg_conf:.2f}")
-                                meta = pmt.make_dict()
-                                meta = pmt.dict_add(meta, pmt.intern("type"), pmt.from_long(m_type))
-                                self.message_port_pub(pmt.intern("out"), pmt.cons(meta, pmt.init_u8vector(len(payload), list(payload))))
-                        elif true_plen > 0 and true_plen < 100:
-                            print(f"\033[91m[CRC FAIL]\033[0m ID: {seq:03} | LEN: {true_plen} | CONF: {avg_conf:.2f}")
-                        
-                        diag_dict = pmt.make_dict()
-                        diag_dict = pmt.dict_add(diag_dict, pmt.intern("crc_ok"), pmt.from_bool(crc_pass))
-                        diag_dict = pmt.dict_add(diag_dict, pmt.intern("confidence"), pmt.from_double(avg_conf * 100.0))
-                        self.message_port_pub(pmt.intern("diagnostics"), diag_dict)
+                        self.process_recovered_block(bytes(bytes_data), avg_conf)
                     except Exception as e: print(f"Decode Error: {e}")
                     self.state, self.bit_buf = "SEARCH", 0
         self.produce(0, n); self.consume(0, n); return 0
