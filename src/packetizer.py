@@ -109,7 +109,7 @@ class packetizer(gr.basic_block):
         preamble = [1,0]*256
         syncword = [int(b) for b in format(0x3D4C5B6A, '032b')]
         out_bits = preamble + syncword + final_bits
-        
+
         is_ofdm = self.cfg['physical'].get('modulation', 'GFSK') == 'OFDM'
         if is_ofdm:
             packed_bytes = []
@@ -121,10 +121,7 @@ class packetizer(gr.basic_block):
                     else:
                         byte = byte << 1
                 packed_bytes.append(byte)
-            out_data = packed_bytes
+            self.message_port_pub(pmt.intern("out"), pmt.cons(pmt.make_dict(), pmt.init_u8vector(len(packed_bytes), packed_bytes)))
         else:
-            out_data = out_bits
-            
-        self.message_port_pub(pmt.intern("out"), pmt.cons(pmt.make_dict(), pmt.init_u8vector(len(out_data), out_data)))
-
+            self.message_port_pub(pmt.intern("out"), pmt.cons(pmt.make_dict(), pmt.init_u8vector(len(out_bits), out_bits)))
     def work(self, i, o): return 0

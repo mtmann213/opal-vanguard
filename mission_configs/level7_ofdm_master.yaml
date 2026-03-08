@@ -37,10 +37,10 @@ hopping:
   enabled: true
   type: AES
   sync_mode: TOD
-  dwell_time_ms: 20
-  lookahead_ms: 5
-  num_channels: 100
-  channel_spacing: 200000
+  dwell_time_ms: 1000
+  lookahead_ms: 50
+  num_channels: 20
+  channel_spacing: 150000
 
 hardware:
   args: type=b200

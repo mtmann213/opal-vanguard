@@ -72,7 +72,8 @@ def main():
         "mission_configs/level2_repairable.yaml",
         "mission_configs/level3_resilient.yaml",
         "mission_configs/level4_stealth.yaml",
-        "mission_configs/level5_blackout.yaml"
+        "mission_configs/level5_blackout.yaml",
+        "mission_configs/level6_link16.yaml"
     ]
     
     results = []
