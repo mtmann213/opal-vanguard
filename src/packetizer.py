@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Opal Vanguard - Mission-Controlled Packetizer (Tactical Standard Build v10.5)
+# Opal Vanguard - Mission-Controlled Packetizer (Self-Healing Header Build v10.7)
 
 import numpy as np
 from gnuradio import gr
@@ -60,39 +60,35 @@ class packetizer(gr.basic_block):
                 else: crc <<= 1
             crc &= 0xFFFF
         
-        # 3. Assemble Unified Raw Block (Header + Payload + CRC)
+        # 3. Assemble Unified Block (Header + Payload + CRC)
+        # Total size: 4 + len(payload) + 2
         raw_block = struct.pack('BBBB', self.src_id, m_type, seq, true_plen) + payload + struct.pack('>H', crc)
 
-        # 4. FEC Encoding (RS 31,15)
+        # 4. FEC Encoding (RS 15,11 over GF(16))
+        # Self-Heals Header AND Payload
         data_to_transmit = raw_block
         if self.use_fec:
-            from rs_helper import RS3115
-            rs = RS3115()
+            from rs_helper import RS1511
+            rs = RS1511()
             fec_payload = b''
-            for i in range(0, len(raw_block), 15):
-                chunk = list(raw_block[i:i+15].ljust(15, b'\x00'))
-                encoded = rs.encode(chunk)
-                # Pack 31 symbols (5 bits each) into bytes
-                bits = []
-                for sym in encoded:
-                    for k in range(5): bits.append((sym >> (4-k)) & 1)
-                # Convert 155 bits to 20 bytes
-                bits += [0] * 5 # Pad to 160 bits
-                for j in range(0, 160, 8):
-                    acc = 0
-                    for k in range(8): acc = (acc << 1) | bits[j+k]
-                    fec_payload += bytes([acc])
+            for i in range(0, len(raw_block), 11):
+                chunk = raw_block[i:i+11].ljust(11, b'\x00')
+                nibs = []
+                for b in chunk: nibs.extend([(b >> 4) & 0x0F, b & 0x0F])
+                # RS(15,11) encode two blocks into 15 bytes
+                all_e = rs.encode(nibs[:11]) + rs.encode(nibs[11:])
+                for k in range(0, 30, 2): fec_payload += bytes([( (all_e[k] << 4) | all_e[k+1] )])
             data_to_transmit = fec_payload
 
-        # 5. Final Assembly & Interleaving
-        is_tactical = ("LINK-16" in self.fec_mode or "LEVEL_6" in self.fec_mode)
-        target_bytes = 160 if is_tactical else 120
+        # 5. Padding & Interleaving (Target 120 bytes = 8 RS blocks)
+        target_bytes = 120
         packet = data_to_transmit.ljust(target_bytes, b'\x00')[:target_bytes]
         
         if self.use_interleaving: packet = self.interleaver.interleave(packet)
         if self.use_whitening: self.scrambler.reset(); packet = self.scrambler.process(packet)
 
-        # 6. Conversion
+        # 6. Bit Conversion
+        is_tactical = ("LINK-16" in self.fec_mode or "LEVEL_6" in self.fec_mode)
         bits = []
         for b in packet: [bits.append((b >> (7-i)) & 1) for i in range(8)]
         if self.use_nrzi and not is_tactical: self.nrzi.tx_state = 0; bits = self.nrzi.encode(bits)
@@ -107,8 +103,7 @@ class packetizer(gr.basic_block):
         else: final_bits = bits
 
         # 8. Framing
-        preamble = [1,0]*256
-        # Revert to 32-bit Sync for better trigger reliability
+        preamble = [1,0]*512
         syncword = [int(b) for b in format(0x3D4C5B6A, '032b')]
         out_bits = preamble + syncword + final_bits
         self.message_port_pub(pmt.intern("out"), pmt.cons(pmt.make_dict(), pmt.init_u8vector(len(out_bits), out_bits)))
