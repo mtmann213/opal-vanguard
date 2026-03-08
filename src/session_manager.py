@@ -66,8 +66,9 @@ class session_manager(gr.basic_block):
                 self.current_seed = peer_seed
                 print(f"\033[96m[MAC] Handshake SYN Received. Seed: 0x{peer_seed:04X}\033[0m")
             except: pass
-            # Always reply with ACK to clear the peer's CONNECTING state
-            self.send_packet(b"ACK", msg_type=2)
+            # Flood with ACKs to ensure peer connects
+            for _ in range(3):
+                self.send_packet(b"ACK", msg_type=2)
             self.state = "CONNECTED"
             self.consecutive_fails = 0
         elif m_type == 2: # ACK
@@ -77,10 +78,9 @@ class session_manager(gr.basic_block):
                 self.consecutive_fails = 0
                 while self.tx_buffer:
                     self.send_data_packet(self.tx_buffer.pop(0))
-            try:
-                seq = struct.unpack('B', payload)[0]
-                if seq in self.sent_history: del self.sent_history[seq]
-            except: pass
+            elif self.state == "CONNECTED":
+                # Peer confirmed connection, clear any retries
+                self.consecutive_fails = 0
         elif m_type == 3: # NACK
             if self.arq_enabled:
                 try:
