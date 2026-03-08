@@ -293,8 +293,13 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
         self.snk_scope = qtgui.time_sink_f(4096, self.samp_rate, "Signal Scope (Bits)", 1)
         self.snk_scope.set_trigger_mode(qtgui.TRIG_MODE_TAG, qtgui.TRIG_SLOPE_POS, 0.5, 0.0, 0, "rx_sync")
         self.rx_b2f = blocks.uchar_to_float()
-        self.viz_panel.addWidget(sip.wrapinstance(self.snk_waterfall.qwidget(), Qt.QWidget)); self.viz_panel.addWidget(sip.wrapinstance(self.snk_scope.qwidget(), Qt.QWidget))
-        self.connect(self.usrp_source, self.snk_waterfall); self.connect(self.depkt_b, self.rx_b2f, self.snk_scope)
+        self.viz_panel.addWidget(sip.wrapinstance(self.snk_waterfall.qwidget(), Qt.QWidget))
+        self.viz_panel.addWidget(sip.wrapinstance(self.snk_freq.qwidget(), Qt.QWidget))
+        self.viz_panel.addWidget(sip.wrapinstance(self.snk_scope.qwidget(), Qt.QWidget))
+        
+        self.connect(self.usrp_source, self.snk_waterfall)
+        self.connect(self.rx_filter, self.snk_freq)
+        self.connect(self.depkt_b, self.rx_b2f, self.snk_scope)
 
         self.ghost_mode = self.cfg['physical'].get('ghost_mode', False); self.ghost_timer = QTimer(); self.ghost_timer.setSingleShot(True); self.ghost_timer.timeout.connect(lambda: self.usrp_sink.set_gain(0, 0))
         self.ghost_trigger_signal.connect(lambda: (self.usrp_sink.set_gain(self.tx_gain_slider.value(), 0), self.ghost_timer.start(150)) if self.ghost_mode else None)
