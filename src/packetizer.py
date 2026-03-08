@@ -29,7 +29,7 @@ class packetizer(gr.basic_block):
         d_cfg = self.cfg.get('dsss', {})
         self.use_ccsk = (d_cfg.get('enabled', False) and d_cfg.get('type') == "CCSK")
         self.ccsk = CCSKProcessor()
-        self.interleaver = MatrixInterleaver(rows=l_cfg.get('interleaver_rows', 16))
+        self.interleaver = MatrixInterleaver(rows=l_cfg.get('interleaver_rows', 15))
         self.scrambler = Scrambler(mask=l_cfg.get('scrambler_mask', 0x48), seed=l_cfg.get('scrambler_seed', 0x7F))
         self.nrzi = NRZIEncoder()
         

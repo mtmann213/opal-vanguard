@@ -24,7 +24,7 @@ class depacketizer(gr.basic_block):
         self.use_nrzi = l_cfg.get('use_nrzi', True)
         self.use_comsec = False
         self.comsec_key = None
-        self.interleaver = MatrixInterleaver(rows=l_cfg.get('interleaver_rows', 16))
+        self.interleaver = MatrixInterleaver(rows=l_cfg.get('interleaver_rows', 15))
         self.scrambler = Scrambler(mask=l_cfg.get('scrambler_mask', 0x48), seed=l_cfg.get('scrambler_seed', 0x7F))
         self.nrzi = NRZIEncoder()
         self.fec_mode = self.cfg.get('mission', {}).get('id', "")
