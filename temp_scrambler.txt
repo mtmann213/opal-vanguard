@@ -1,0 +1,20 @@
+class Scrambler:
+    def __init__(self, mask=0x48, seed=0x7F):
+        self.mask = mask
+        self.seed = seed
+        self.state = seed
+    def reset(self):
+        self.state = self.seed
+    def process(self, data):
+        out = []
+        for byte in data:
+            new_byte = 0
+            for i in range(8):
+                feedback = 0
+                for bit_pos in range(7):
+                    if (self.mask >> bit_pos) & 1: feedback ^= (self.state >> bit_pos) & 1
+                bit = (byte >> (7-i)) & 1
+                new_byte = (new_byte << 1) | (bit ^ (self.state & 1))
+                self.state = ((self.state << 1) & 0x7F) | (feedback & 1)
+            out.append(new_byte)
+        return bytes(out)

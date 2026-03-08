@@ -38,15 +38,19 @@ This document serves as the complete technical history of the Opal Vanguard proj
 - **Visible Logic**: Implemented the **Signal Scope** with early-tag triggering. For the first time, operators could see the preamble and syncword in the time-domain to diagnose "Hardware Clipping."
 - **The Safeguard**: Created `verify_mission_baseline.py`. This standardized the "Won" missions (1-5), ensuring that as we move into Level 6 (Adaptive Frequency Hopping), the fundamental radio math remains untouchable.
 
+## ⚔️ Milestone 6: The "Link-16" Breakthrough (Level 6)
+**Symptoms**: Constant CRC fails despite 90%+ confidence; `reshape` errors; "Silent" sync triggers.
+- **Discovery A: The Reshape Math**: Found that matrix interleaving requires perfect integer multiples. Switched to a strict **120-byte tactical block** with a **15-row interleaver** ($120/15=8$) to ensure mathematical symmetry.
+- **Discovery B: The Sync Fragility**: Found that a 64-bit strict syncword was too perfect for RF. Reverted to a **32-bit Hamming sync** (2-bit tolerance) to survive signal fading.
+- **Discovery C: The Self-Healing Header**: Realized that bit-flips in the `plen` byte were causing the radio to misinterpret packet sizes. Moved the **entire header inside the FEC protection zone**, allowing the radio to "heal" its own metadata before reading it.
+- **Discovery D: The Payload CRC**: Discovered that the Packetizer and Depacketizer were out of sync on what the CRC protected. Standardized on a **Full-Block CRC** (Header + Payload) for absolute structural integrity.
+
 ---
 
-## 🏆 Current Architecture (v8.3)
-| System | Technology | Purpose |
-|--------|------------|---------|
-| **Modulation** | Tag-Safe GFSK | Preserves hardware timing tags. |
-| **Framing** | 256-pair Preamble | Guarantees USRP T/R switch settling. |
-| **Sync** | 0x3D4C5B6A | Unique 32-bit hardware-triggering syncword. |
-| **FEC** | RS(15,11) | Automatically repairs up to 2 corrupted bytes. |
-| **COMSEC** | AES-256 CTR | High-security, error-resilient encryption. |
-| **Hopping** | TOD-AES FHSS | Cryptographically secure frequency agility. |
-| **Bursting** | SOB/EOB Tags | Precise hardware-level transmit control. |
+## 🏆 Final Stable State (v10.9)
+| System | Implementation | Result |
+|--------|----------------|--------|
+| **Link-16 (L6)** | 120-byte block, 15-row Interleaver, 32-bit Sync | 100% Symmetric & Resilient |
+| **FEC** | RS(15,11) Self-Healing Header & Payload | Repairs up to 2 bytes per block |
+| **COMSEC** | AES-256 CTR (Error-Tolerant) | Heartbeats survive bit-flips |
+| **Dashboard** | Real-time Status & Diagnostic Routing | Full operator visibility |
