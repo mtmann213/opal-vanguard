@@ -6,7 +6,7 @@ mission:
 
 physical:
   ghost_mode: true
-  samp_rate: 5000000
+  samp_rate: 2000000
   center_freq: 915000000
   modulation: OFDM      # Multi-carrier Orthogonal Frequency Division Multiplexing
   samples_per_symbol: 10
@@ -44,7 +44,7 @@ hopping:
 
 hardware:
   args: type=b200
-  samp_rate: 5000000
+  samp_rate: 2000000
   tx_gain: 70
   rx_gain: 70
   tx_antenna: TX/RX
