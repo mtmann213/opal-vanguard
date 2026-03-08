@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Opal Vanguard - Mission-Controlled Packetizer (OFDM Master Build v10.14)
+# Opal Vanguard - Mission-Controlled Packetizer (OFDM Native Build v10.19)
 
 import numpy as np
 from gnuradio import gr
@@ -29,10 +29,7 @@ class packetizer(gr.basic_block):
         d_cfg = self.cfg.get('dsss', {})
         self.use_ccsk = (d_cfg.get('enabled', False) and d_cfg.get('type') == "CCSK")
         self.ccsk = CCSKProcessor()
-        
-        # Strictly honor YAML config for interleaver rows
-        rows = l_cfg.get('interleaver_rows', 8)
-        self.interleaver = MatrixInterleaver(rows=rows)
+        self.interleaver = MatrixInterleaver(rows=l_cfg.get('interleaver_rows', 15))
         self.scrambler = Scrambler(mask=l_cfg.get('scrambler_mask', 0x48), seed=l_cfg.get('scrambler_seed', 0x7F))
         self.nrzi = NRZIEncoder()
         
@@ -47,13 +44,11 @@ class packetizer(gr.basic_block):
             seq = pmt.to_long(pmt.dict_ref(pmt.car(msg), pmt.intern("seq"), pmt.from_long(0)))
             m_type = pmt.to_long(pmt.dict_ref(pmt.car(msg), pmt.intern("type"), pmt.from_long(0)))
 
-        # 1. COMSEC
         if self.use_comsec and self.comsec_key and m_type == 0:
             nonce = os.urandom(16)
             cipher = Cipher(algorithms.AES(self.comsec_key), modes.CTR(nonce), backend=default_backend())
             payload = nonce + cipher.encryptor().update(payload) + cipher.encryptor().finalize()
 
-        # 2. INNER CRC
         crc = 0xFFFF
         true_plen = len(payload)
         header_base = struct.pack('BBBB', self.src_id, m_type, seq, true_plen)
@@ -65,7 +60,6 @@ class packetizer(gr.basic_block):
             crc &= 0xFFFF
         raw_block = header_base + payload + struct.pack('>H', crc)
 
-        # 3. FEC Encoding
         data_to_transmit = raw_block
         if self.use_fec:
             from rs_helper import RS1511
@@ -79,44 +73,33 @@ class packetizer(gr.basic_block):
                 for k in range(0, 30, 2): fec_payload += bytes([( (all_e[k] << 4) | all_e[k+1] )])
             data_to_transmit = fec_payload
 
-        # 4. Padding & Interleaving (Dynamic OFDM Size)
-        target_bytes = 1024 if "LEVEL_7" in self.fec_mode else 120
+        target_bytes = 120
         packet = data_to_transmit.ljust(target_bytes, b'\x00')[:target_bytes]
         
         if self.use_interleaving: packet = self.interleaver.interleave(packet)
         if self.use_whitening: self.scrambler.reset(); packet = self.scrambler.process(packet)
 
-        # 5. Bit Conversion
-        is_tactical = ("LINK-16" in self.fec_mode or "LEVEL_6" in self.fec_mode or "LEVEL_7" in self.fec_mode)
-        bits = []
-        for b in packet: [bits.append((b >> (7-i)) & 1) for i in range(8)]
-        if self.use_nrzi and not is_tactical: self.nrzi.tx_state = 0; bits = self.nrzi.encode(bits)
-
-        # 6. CCSK
-        final_bits = []
-        if self.use_ccsk:
-            for i in range(0, len(bits), 5):
-                chunk = bits[i:i+5]; sym = 0
-                for b in chunk: sym = (sym << 1) | b
-                final_bits.extend(self.ccsk.encode_symbol(sym))
-        else: final_bits = bits
-
-        # 7. Framing
-        preamble = [1,0]*256
-        syncword = [int(b) for b in format(0x3D4C5B6A, '032b')]
-        out_bits = preamble + syncword + final_bits
-        
         is_ofdm = self.cfg['physical'].get('modulation', 'GFSK') == 'OFDM'
         if is_ofdm:
-            packed_bytes = []
-            for i in range(0, len(out_bits), 8):
-                byte = 0
-                for j in range(8):
-                    if i+j < len(out_bits): byte = (byte << 1) | out_bits[i+j]
-                    else: byte = byte << 1
-                packed_bytes.append(byte)
-            self.message_port_pub(pmt.intern("out"), pmt.cons(pmt.make_dict(), pmt.init_u8vector(len(packed_bytes), packed_bytes)))
+            # OFDM Native: Send pure data bytes, no bitstream framing
+            self.message_port_pub(pmt.intern("out"), pmt.cons(pmt.make_dict(), pmt.init_u8vector(len(packet), list(packet))))
         else:
+            bits = []
+            for b in packet: [bits.append((b >> (7-i)) & 1) for i in range(8)]
+            is_tactical = ("LINK-16" in self.fec_mode or "LEVEL_6" in self.fec_mode)
+            if self.use_nrzi and not is_tactical: self.nrzi.tx_state = 0; bits = self.nrzi.encode(bits)
+            
+            final_bits = bits
+            if self.use_ccsk:
+                final_bits = []
+                for i in range(0, len(bits), 5):
+                    chunk = bits[i:i+5]; sym = 0
+                    for b in chunk: sym = (sym << 1) | b
+                    final_bits.extend(self.ccsk.encode_symbol(sym))
+
+            preamble = [1,0]*256
+            syncword = [int(b) for b in format(0x3D4C5B6A, '032b')]
+            out_bits = preamble + syncword + final_bits
             self.message_port_pub(pmt.intern("out"), pmt.cons(pmt.make_dict(), pmt.init_u8vector(len(out_bits), out_bits)))
 
     def work(self, i, o): return 0
