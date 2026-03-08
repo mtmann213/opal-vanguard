@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Opal Vanguard - Mission-Controlled Packetizer (Self-Healing Header Build v10.7)
+# Opal Vanguard - Mission-Controlled Packetizer (Tactical Symmetry Build v10.6)
 
 import numpy as np
 from gnuradio import gr
@@ -60,30 +60,32 @@ class packetizer(gr.basic_block):
                 else: crc <<= 1
             crc &= 0xFFFF
         
-        # 3. Assemble Unified Block (Header + Payload + CRC)
-        # Total size: 4 + len(payload) + 2
-        raw_block = struct.pack('BBBB', self.src_id, m_type, seq, true_plen) + payload + struct.pack('>H', crc)
+        # 3. Assemble Raw Block (Header + Payload + CRC)
+        # Total data before FEC: 4 + len(payload) + 2
+        raw_data = struct.pack('BBBB', self.src_id, m_type, seq, true_plen) + payload + struct.pack('>H', crc)
+        
+        # Pad raw_data to a multiple of 11 bytes for RS(15,11) alignment
+        # Total capacity of 8 blocks is 88 bytes. 
+        # For Link-16 heartbeats (30 bytes + 4 header + 2 CRC = 36), this is plenty.
+        target_raw_size = 88
+        padded_raw = raw_data.ljust(target_raw_size, b'\x00')[:target_raw_size]
 
-        # 4. FEC Encoding (RS 15,11 over GF(16))
-        # Self-Heals Header AND Payload
-        data_to_transmit = raw_block
+        # 4. FEC Encoding (RS 15,11)
+        # Encodes the entire 88-byte block into 120 bytes
+        packet = padded_raw
         if self.use_fec:
             from rs_helper import RS1511
             rs = RS1511()
             fec_payload = b''
-            for i in range(0, len(raw_block), 11):
-                chunk = raw_block[i:i+11].ljust(11, b'\x00')
+            for i in range(0, len(padded_raw), 11):
+                chunk = padded_raw[i:i+11]
                 nibs = []
                 for b in chunk: nibs.extend([(b >> 4) & 0x0F, b & 0x0F])
-                # RS(15,11) encode two blocks into 15 bytes
                 all_e = rs.encode(nibs[:11]) + rs.encode(nibs[11:])
-                for k in range(0, 30, 2): fec_payload += bytes([( (all_e[k] << 4) | all_e[k+1] )])
-            data_to_transmit = fec_payload
+                for k in range(0, 30, 2): fec_payload += bytes([(all_e[k] << 4) | all_e[k+1]])
+            packet = fec_payload
 
-        # 5. Padding & Interleaving (Target 120 bytes = 8 RS blocks)
-        target_bytes = 120
-        packet = data_to_transmit.ljust(target_bytes, b'\x00')[:target_bytes]
-        
+        # 5. Interleaving & Whitening (Target exactly 120 bytes)
         if self.use_interleaving: packet = self.interleaver.interleave(packet)
         if self.use_whitening: self.scrambler.reset(); packet = self.scrambler.process(packet)
 
@@ -103,7 +105,7 @@ class packetizer(gr.basic_block):
         else: final_bits = bits
 
         # 8. Framing
-        preamble = [1,0]*512
+        preamble = [1,0]*256
         syncword = [int(b) for b in format(0x3D4C5B6A, '032b')]
         out_bits = preamble + syncword + final_bits
         self.message_port_pub(pmt.intern("out"), pmt.cons(pmt.make_dict(), pmt.init_u8vector(len(out_bits), out_bits)))
