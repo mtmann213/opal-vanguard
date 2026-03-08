@@ -231,7 +231,53 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
         if mod_type == "GFSK": self.connect(self.p2s_a, self.char_to_float, self.map_bits, self.scale_bits, self.gaussian_filter, self.tagger, self.mod_a, self.mult_len, self.usrp_sink)
         else: self.connect(self.p2s_a, self.mod_a, self.mult_len, self.usrp_sink)
         self.connect(self.usrp_source, self.rx_filter, self.demod_b, self.depkt_b); self.connect(self.usrp_source, self.iq_probe)
-        self.msg_connect((self.depkt_b, "out"), (self.session, "msg_in")); self.msg_connect((self.depkt_b, "diagnostics"), (self.session, "crc_fail")); self.msg_connect((self.session, "blacklist_out"), (self.hop_ctrl, "blacklist"))
+        self.msg_connect((self.depkt_b, "out"), (self.session, "msg_in"))
+        self.msg_connect((self.depkt_b, "diagnostics"), (self.diag_h, "msg"))
+        self.msg_connect((self.session, "status_out"), (self.status_h, "msg"))
+        self.msg_connect((self.session, "data_out"), (self.ui_h, "msg"))
+        self.msg_connect((self.session, "pkt_out"), (self.pkt_a, "in"))
+        self.msg_connect((self.pkt_a, "out"), (self.p2s_a, "pdus"))
+
+        class UIHandler(gr.basic_block):
+            def __init__(self, parent):
+                gr.basic_block.__init__(self, "UIHandler", None, None); self.p = parent
+                self.message_port_register_in(pmt.intern("msg")); self.set_msg_handler(pmt.intern("msg"), self.handle)
+            def handle(self, msg):
+                try:
+                    payload = bytes(pmt.u8vector_elements(pmt.cdr(msg)))
+                    self.p.data_signal.emit(payload.decode('utf-8', errors='replace'))
+                except: pass
+            def work(self, i, o): return 0
+        self.ui_h = UIHandler(self); self.msg_connect((self.session, "data_out"), (self.ui_h, "msg"))
+        self.data_signal.connect(lambda msg: self.text_out.append(f"<b>[DATA RX]:</b> {msg}"))
+        self.diag_signal.connect(self.on_diag)
+
+        class StatusHandler(gr.basic_block):
+            def __init__(self, parent):
+                gr.basic_block.__init__(self, "StatusHandler", None, None); self.p = parent
+                self.message_port_register_in(pmt.intern("msg")); self.set_msg_handler(pmt.intern("msg"), self.handle)
+            def handle(self, msg):
+                try:
+                    s = pmt.to_python(pmt.dict_ref(msg, pmt.intern("state"), pmt.from_long(0)))
+                    color = "green" if s == "CONNECTED" else "orange" if s == "CONNECTING" else "gray"
+                    self.p.status_signal.emit(s, color)
+                except: pass
+            def work(self, i, o): return 0
+        self.status_h = StatusHandler(self); self.msg_connect((self.session, "status_out"), (self.status_h, "msg"))
+
+        class DiagHandler(gr.basic_block):
+            def __init__(self, parent):
+                gr.basic_block.__init__(self, "DiagHandler", None, None); self.p = parent
+                self.message_port_register_in(pmt.intern("msg")); self.set_msg_handler(pmt.intern("msg"), self.handle)
+            def handle(self, msg):
+                try:
+                    d = {"confidence": pmt.to_double(pmt.dict_ref(msg, pmt.intern("confidence"), pmt.from_double(0))),
+                         "crc_ok": pmt.to_bool(pmt.dict_ref(msg, pmt.intern("crc_ok"), pmt.from_bool(False))),
+                         "fec_repairs": pmt.to_long(pmt.dict_ref(msg, pmt.intern("fec_repairs"), pmt.from_long(0)))}
+                    self.p.diag_signal.emit(d)
+                except: pass
+            def work(self, i, o): return 0
+        self.diag_h = DiagHandler(self); self.msg_connect((self.depkt_b, "diagnostics"), (self.diag_h, "msg"))
 
         class UHDHandler(gr.basic_block):
             def __init__(self, parent):

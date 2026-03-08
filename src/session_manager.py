@@ -50,6 +50,15 @@ class session_manager(gr.basic_block):
         self.message_port_register_out(pmt.intern("data_out"))
         self.message_port_register_out(pmt.intern("blacklist_out"))
         self.message_port_register_out(pmt.intern("amc_fallback"))
+        self.message_port_register_out(pmt.intern("status_out"))
+
+    def publish_status(self):
+        meta = pmt.make_dict()
+        meta = pmt.dict_add(meta, pmt.intern("state"), pmt.from_long(0) if self.state == "IDLE" else pmt.from_long(1) if self.state == "CONNECTING" else pmt.from_long(2))
+        # Use string for easier UI mapping
+        msg = pmt.make_dict()
+        msg = pmt.dict_add(msg, pmt.intern("state"), pmt.intern(self.state))
+        self.message_port_pub(pmt.intern("status_out"), msg)
 
     def handle_rx(self, msg):
         meta = pmt.car(msg)
@@ -70,11 +79,13 @@ class session_manager(gr.basic_block):
             for _ in range(3):
                 self.send_packet(b"ACK", msg_type=2)
             self.state = "CONNECTED"
+            self.publish_status()
             self.consecutive_fails = 0
         elif m_type == 2: # ACK
             if self.state == "CONNECTING" or self.state == "IDLE":
                 print("\033[96m[MAC] Handshake ACK Received. Session Connected.\033[0m")
                 self.state = "CONNECTED"
+                self.publish_status()
                 self.consecutive_fails = 0
                 while self.tx_buffer:
                     self.send_data_packet(self.tx_buffer.pop(0))
@@ -118,6 +129,7 @@ class session_manager(gr.basic_block):
             self.tx_buffer.append(msg)
             if self.state == "IDLE" or self.state == "CONNECTING":
                 self.state = "CONNECTING"
+                self.publish_status()
                 # Pad SYN to 16 bytes for COMSEC reliability
                 syn_payload = struct.pack('>H', self.current_seed).ljust(16, b'\x00')
                 self.send_packet(syn_payload, msg_type=1)
