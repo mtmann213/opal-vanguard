@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Opal Vanguard - Mission-Controlled Depacketizer (Workstation Build v10.12)
+# Opal Vanguard - Mission-Controlled Depacketizer (OFDM Master Build v10.14)
 
 import numpy as np
 from gnuradio import gr
@@ -24,10 +24,14 @@ class depacketizer(gr.basic_block):
         self.use_nrzi = l_cfg.get('use_nrzi', True)
         self.use_comsec = False
         self.comsec_key = None
-        self.interleaver = MatrixInterleaver(rows=l_cfg.get('interleaver_rows', 15))
+        self.fec_mode = self.cfg.get('mission', {}).get('id', "")
+        
+        # Level 7 requires much deeper interleaving
+        rows = 64 if "LEVEL_7" in self.fec_mode else 15
+        self.interleaver = MatrixInterleaver(rows=rows)
         self.scrambler = Scrambler(mask=l_cfg.get('scrambler_mask', 0x48), seed=l_cfg.get('scrambler_seed', 0x7F))
         self.nrzi = NRZIEncoder()
-        self.fec_mode = self.cfg.get('mission', {}).get('id', "")
+        
         d_cfg = self.cfg.get('dsss', {})
         self.use_ccsk = (d_cfg.get('enabled', False) and d_cfg.get('type') == "CCSK")
         self.ccsk = CCSKProcessor()
@@ -37,13 +41,10 @@ class depacketizer(gr.basic_block):
         self.syncword_32 = 0x3D4C5B6A
 
     def verify_crc(self, payload, true_plen, sid, m_type, seq):
-        """Verify inner CRC based on payload and reconstructed header."""
         if len(payload) < (true_plen + 2): return False
         extracted_data = payload[:true_plen]
         extracted_crc = struct.unpack('>H', payload[true_plen:true_plen+2])[0]
-
         crc = 0xFFFF
-        # Reconstruct exactly as packetizer did: sid, type, seq, plen
         header_base = struct.pack('BBBB', sid, m_type, seq, true_plen)
         for byte in (header_base + extracted_data):
             crc ^= (byte << 8)
@@ -53,11 +54,10 @@ class depacketizer(gr.basic_block):
             crc &= 0xFFFF
         return crc == extracted_crc
 
-
     def general_work(self, input_items, output_items):
         in0, out = input_items[0], output_items[0]
         n = min(len(in0), len(out)); out[:n] = in0[:n]
-        is_tactical = ("LINK-16" in self.fec_mode or "LEVEL_6" in self.fec_mode or "LEVEL_7" in self.fec_mode or "OFDM" in self.fec_mode)
+        is_tactical = ("LINK-16" in self.fec_mode or "LEVEL_6" in self.fec_mode or "LEVEL_7" in self.fec_mode)
         for i in range(n):
             bit = int(in0[i]) & 1
             self.bit_buf = ((self.bit_buf << 1) | bit) & 0xFFFFFFFF
@@ -83,7 +83,7 @@ class depacketizer(gr.basic_block):
                         self.ccsk_buf = []
                 else: self.recovered_bits.append(rx_bit)
                 
-                target_bytes = 120
+                target_bytes = 1024 if "LEVEL_7" in self.fec_mode else 120
                 target_bits = target_bytes * 8
                 if len(self.recovered_bits) >= target_bits:
                     avg_conf = self.ccsk_conf_sum / self.ccsk_sym_count if self.ccsk_sym_count > 0 else 1.0
@@ -99,11 +99,10 @@ class depacketizer(gr.basic_block):
                             bytes_data.append(acc)
                         data_block = bytes(bytes_data)
                         
-                        # 1. De-whiten & De-interleave
                         if self.use_whitening: self.scrambler.reset(); data_block = self.scrambler.process(data_block)
                         if self.use_interleaving: data_block = self.interleaver.deinterleave(data_block)
                         
-                        # 2. HEALING STAGE
+                        # FEC Healing
                         processed_block = data_block
                         if self.use_fec:
                             from rs_helper import RS1511
@@ -117,13 +116,7 @@ class depacketizer(gr.basic_block):
                                 for k in range(0, 22, 2): healed += bytes([( (d_nibs[k] << 4) | d_nibs[k+1] )])
                             processed_block = healed
                         
-                        # 3. Extract Header
                         sid, m_type, seq, true_plen = struct.unpack('BBBB', processed_block[:4])
-                        
-                        # 4. CRC Check
-                        # In v10.7+, the header itself is PROTECTED by the CRC. 
-                        # Header starts at index 0 of processed_block, data follows.
-                        # Total block is [sid, type, seq, plen, payload, crc_h, crc_l]
                         payload_zone = processed_block[4:4+true_plen+2]
                         crc_pass = self.verify_crc(payload_zone, true_plen, sid, m_type, seq)
                         
