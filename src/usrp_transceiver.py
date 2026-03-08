@@ -227,10 +227,13 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
 
         # Connect
         src_port = "out" if self.payload_type in ['chat', 'file'] else "strobe"
-        self.msg_connect((self.pdu_src, src_port), (self.session, "data_in")); self.msg_connect((self.session, "pkt_out"), (self.pkt_a, "in")); self.msg_connect((self.pkt_a, "out"), (self.p2s_a, "pdus"))
+        self.msg_connect((self.pdu_src, src_port), (self.session, "data_in"))
+        
         if mod_type == "GFSK": self.connect(self.p2s_a, self.char_to_float, self.map_bits, self.scale_bits, self.gaussian_filter, self.tagger, self.mod_a, self.mult_len, self.usrp_sink)
         else: self.connect(self.p2s_a, self.mod_a, self.mult_len, self.usrp_sink)
+        
         self.connect(self.usrp_source, self.rx_filter, self.demod_b, self.depkt_b); self.connect(self.usrp_source, self.iq_probe)
+        
         self.msg_connect((self.depkt_b, "out"), (self.session, "msg_in"))
         self.msg_connect((self.session, "pkt_out"), (self.pkt_a, "in"))
         self.msg_connect((self.pkt_a, "out"), (self.p2s_a, "pdus"))
