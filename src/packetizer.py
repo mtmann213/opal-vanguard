@@ -30,8 +30,8 @@ class packetizer(gr.basic_block):
         self.use_ccsk = (d_cfg.get('enabled', False) and d_cfg.get('type') == "CCSK")
         self.ccsk = CCSKProcessor()
         
-        # Level 7 requires much deeper interleaving
-        rows = 64 if "LEVEL_7" in self.fec_mode else 15
+        # Strictly honor YAML config for interleaver rows
+        rows = l_cfg.get('interleaver_rows', 8)
         self.interleaver = MatrixInterleaver(rows=rows)
         self.scrambler = Scrambler(mask=l_cfg.get('scrambler_mask', 0x48), seed=l_cfg.get('scrambler_seed', 0x7F))
         self.nrzi = NRZIEncoder()
