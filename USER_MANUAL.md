@@ -5,7 +5,7 @@ This document serves as the comprehensive user manual, participant handbook, and
 ---
 
 ## 📖 1. Mission Overview & Philosophy
-Opal Vanguard is a **Tactical Data Link (TDL)** system designed for resilient, secure, and stealthy communications in contested RF environments. It is a software-defined "Digital Duel" platform that scales from simple GFSK links to complex, wideband **Differential-Frequency OFDM**.
+Opal Vanguard is a **Tactical Data Link (TDL)** system designed for resilient, secure, and stealthy communications in contested RF environments. It is a software-defined "Digital Duel" platform that scales from simple GFSK links to the complex (WIP) **Differential-Frequency OFDM**.
 
 ### 🛡️ The Philosophy
 - **Modular Integrity**: Every layer of the OSI model (Physical to Application) is decoupled and mission-controlled via YAML configurations.
@@ -169,7 +169,7 @@ This project features a ramping "Digital Duel" EW competition.
 | **L4** | Stealth | DSSS Spreading + Ghost Mode | **Wideband Interference** (Sweep mode) |
 | **L5** | Blackout | AES + TOD Hopping | **Manipulation** (Attack the sync logic) |
 | **L6** | Link-16 | CCSK 32-chip + RS(31,15) | **Total Denial** (Massive wideband noise) |
-| **L7** | OFDM Master | 64-Carrier Wideband | **Surgical Strike** (Target sub-bands) |
+| **L7** | OFDM Master | [WIP - EXPERIMENTAL] | **Surgical Strike** (In Development) |
 
 ---
 

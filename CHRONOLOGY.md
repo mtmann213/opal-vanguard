@@ -45,12 +45,12 @@ This document serves as the complete technical history of the Opal Vanguard proj
 - **Discovery C: The Self-Healing Header**: Realized that bit-flips in the `plen` byte were causing the radio to misinterpret packet sizes. Moved the **entire header inside the FEC protection zone**, allowing the radio to "heal" its own metadata before reading it.
 - **Discovery D: The Payload CRC**: Discovered that the Packetizer and Depacketizer were out of sync on what the CRC protected. Standardized on a **Full-Block CRC** (Header + Payload) for absolute structural integrity.
 
-## 🚀 Phase 6: The OFDM Master Milestone (Level 7)
+## 🚀 Phase 6: The OFDM Master Milestone (Level 7 - WIP)
 **Focus**: High-Speed Multi-Carrier Tactical Data.
 - **The Concept**: Transition from single-carrier GFSK to **64-carrier OFDM**.
 - **Challenge**: 2.0 Msps sample rates pushed the limits of Python-based GNU Radio blocks. The traditional bit-stream processing was too slow.
 - **The Solution**: Implemented **Direct Byte Routing**. The Packetizer was refactored to pack bits into bytes *before* publishing them, allowing the OFDM modulator to work on larger chunks of data simultaneously.
-- **Result**: Successfully established a wideband link capable of sending 1024-byte tactical packets.
+- **Result**: (Work in Progress) Framework established; wideband link undergoing synchronization tuning.
 
 ## 🛡️ Phase 7: Production-Grade Hardening (v12.3 Master Build)
 **Focus**: System Stability, Technical Debt, and Comprehensive Documentation.
@@ -58,6 +58,7 @@ This document serves as the complete technical history of the Opal Vanguard proj
 - **The UI Integrity Refactor**: Solved GUI crashes and "Blank Dashboard" issues by implementing a thread-safe `MessageProxy` system. Standardized PyQt telemetry signals to use `object` types for GIL-safe radio-to-UI communication.
 - **The High-Efficiency Sync**: Replaced legacy string-based bit searches with high-speed bitwise XOR and `.bit_count()` operations, reducing CPU overhead by 40% during "Blind Sync" searching.
 - **Documentation Consolidation**: Unified 12+ disparate technical guides into a single, high-fidelity **Master Mission Manual (v12.0)**, serving as the definitive reference for both operators and software engineers.
+- **Stable Baseline Lock**: Formalized Levels 1-6 as the production-ready tactical baseline while designating Level 7 as a research-only WIP.
 
 ---
 

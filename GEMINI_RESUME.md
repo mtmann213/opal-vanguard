@@ -9,10 +9,12 @@ The project has achieved a high-fidelity, production-grade baseline. After a maj
 - **Performance**: Optimized the Link Layer with high-speed bitwise sync searching and syndrome-based RS decoding.
 - **Unified Documentation**: Consolidated 12 disparate guides into a single, high-detail **Master Mission Manual (v12.0)** and restored the technical **CHRONOLOGY.md**.
 - **Config Hardening**: Applied a Master Template to all 7 mission YAMLs, ensuring every radio option is visible, commented, and range-documented.
+- **Stable Baseline**: Certified Levels 1-6 as operational; Level 7 moved to WIP.
 
 ### 🔬 Technical Core State
 - **Hardware**: USRP B205mini/B210 fully supported via UHD.
-- **Modulations**: GFSK (L1-6), BPSK (L6), DF-OFDM (L7).
+- **Modulations**: GFSK (L1-6), BPSK (L6).
+- **WIP**: DF-OFDM (L7) framework is present but requires synchronization refinement.
 - **Security**: AES-256 CTR encryption verified for tactical heartbeats.
 - **Resilience**: RS(15,11) and RS(31,15) FEC with synchronized interleaving.
 

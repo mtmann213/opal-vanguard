@@ -1,5 +1,7 @@
 # Opal Vanguard Mission Configuration: LEVEL 7 (OFDM Master)
-# Objective: High-speed multi-carrier broadband tactical data.
+# [!!! WARNING: WORK IN PROGRESS - NOT OPERATIONAL !!!]
+# Status: Framework established; wideband link undergoing synchronization tuning.
+# Goal: High-speed multi-carrier broadband tactical data.
 
 mission:
   id: "LEVEL_7_OFDM_MASTER"
