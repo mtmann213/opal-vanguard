@@ -1,47 +1,55 @@
-# Level 3: Resilient - MAC Layer Logic
-# Goal: Achieve 100% data delivery using ARQ retries and Matrix Interleaving.
+# Opal Vanguard Mission Configuration: LEVEL 3 (Resilient)
+# Objective: Enable FEC + Matrix Interleaving to survive concentrated burst jammers.
 
 mission:
-  id: LEVEL_3_RESILIENT
+  id: "LEVEL_3_RESILIENT"
 
 physical:
-  ghost_mode: false
-  samp_rate: 2000000
-  center_freq: 915000000
-  modulation: GFSK
-  freq_dev: 25000
-  samples_per_symbol: 10
-
-mac_layer:
-  amc_enabled: false
-  arq_enabled: true     # Automatic Repeat Request enabled - Radio will ACK/NACK packets
-  max_retries: 3        # If packet fails CRC, it is requested again up to 3 times
+  modulation: "GFSK" # [GFSK, DBPSK, DQPSK, OFDM]
+  samp_rate: 2000000 # [200000 to 56000000]
+  center_freq: 915000000 # [50000000 to 6000000000]
+  samples_per_symbol: 10 # [2 to 100]
+  freq_dev: 25000 # [5000 to 500000]
+  ghost_mode: false # [true, false]
 
 link_layer:
-  use_comsec: false
-  comsec_key: 5365637265744f70616c4b6579313233
-  crc_type: CRC16
-  use_fec: true
-  use_interleaving: true # Interleaving spreads data to protect against burst interference
-  interleaver_rows: 8    # Matrix depth
-  use_whitening: true
-  use_nrzi: true
-  use_manchester: false
+  frame_size: 120 # [16 to 1024]
+  use_fec: true # [true, false]
+  fec_type: "RS1511" # [RS1511, RS3115]
+  use_interleaving: true # [true, false] - INTERLEAVING ENABLED
+  interleaver_rows: 15
+  use_whitening: true # [true, false]
+  use_nrzi: true # [true, false]
+  use_comsec: false # [true, false]
+  comsec_key: "00000000000000000000000000000000"
+  crc_type: "CRC16" # [CRC16, CRC32]
+
+mac_layer:
+  amc_enabled: false # [true, false]
+  arq_enabled: true # [true, false]
+  max_retries: 3 # [0 to 10]
+  afh_enabled: false # [true, false]
 
 dsss:
-  enabled: false
-  spreading_factor: 1
+  enabled: false # [true, false]
+  type: "Barker" # [Barker, CCSK]
+  spreading_factor: 11
 
 hopping:
-  enabled: false
+  enabled: false # [true, false]
+  type: "AES"
+  sync_mode: "TOD"
+  dwell_time_ms: 1000
+  aes_key: "00000000000000000000000000000000"
+  num_channels: 50
+  channel_spacing: 150000
 
 hardware:
-  args: type=b200
-  samp_rate: 2000000
+  args: "type=b200"
   tx_gain: 70
   rx_gain: 70
-  tx_antenna: TX/RX
-  rx_antenna: TX/RX
+  tx_antenna: "TX/RX"
+  rx_antenna: "TX/RX"
 
 application_layer:
-  payload_type: heartbeat
+  payload_type: "heartbeat" # [heartbeat, chat]

@@ -1,46 +1,55 @@
-# Level 1: Soft Link - Baseline Connectivity
-# Goal: Establish a basic unencrypted P2P link with minimal complexity.
+# Opal Vanguard Mission Configuration: LEVEL 1 (Soft Link)
+# Objective: Establish a basic, unhardened GFSK link. Extreme vulnerability to jamming.
 
 mission:
-  id: LEVEL_1_SOFT_LINK # Mission identifier for internal logic
+  id: "LEVEL_1_SOFT_LINK" # Unique mission identifier string
 
 physical:
-  ghost_mode: false     # Disable transmit amplifier toggling (always on during burst)
-  samp_rate: 2000000    # 2 Msps sample rate - Standard stability baseline
-  center_freq: 915000000 # Base frequency in Hz (915 MHz ISM Band)
-  modulation: GFSK      # Gaussian Frequency Shift Keying
-  freq_dev: 25000       # 25 kHz Frequency Deviation - Narrowband for SNR
-  samples_per_symbol: 10 # 10 Samples Per Symbol - High resolution timing
-
-mac_layer:
-  amc_enabled: false    # Adaptive Modulation and Coding disabled
-  arq_enabled: false    # Automatic Repeat Request (Retries) disabled
-  max_retries: 3        # Number of MAC-layer retransmission attempts
+  modulation: "GFSK" # [GFSK, DBPSK, DQPSK, OFDM] - Base modulation scheme
+  samp_rate: 2000000 # [200000 to 56000000] - SDR sample rate in Hz
+  center_freq: 915000000 # [50000000 to 6000000000] - Center frequency in Hz
+  samples_per_symbol: 10 # [2 to 100] - Samples per information symbol
+  freq_dev: 25000 # [5000 to 500000] - Frequency deviation for GFSK in Hz
+  ghost_mode: false # [true, false] - Disable TX amplifier between bursts (LPI/LPD)
 
 link_layer:
-  use_comsec: false     # AES encryption disabled
-  comsec_key: 5365637265744f70616c4b6579313233 # Static AES-256 Key
-  crc_type: CRC16       # Error detection type
-  use_fec: false        # Reed-Solomon Forward Error Correction disabled
-  use_interleaving: false # Matrix Interleaver disabled
-  use_whitening: true   # Scrambler enabled to prevent DC offset
-  use_nrzi: true        # Non-Return-to-Zero Inverted for phase resilience
-  use_manchester: false # Manchester encoding disabled
+  frame_size: 120 # [16 to 1024] - Total packet size in bytes
+  use_fec: false # [true, false] - Enable Reed-Solomon Forward Error Correction
+  fec_type: "RS1511" # [RS1511, RS3115] - Reed-Solomon scheme
+  use_interleaving: false # [true, false] - Matrix Interleaver to survive burst jamming
+  interleaver_rows: 15 # [Quantitative] - Must divide frame_size evenly
+  use_whitening: true # [true, false] - LFSR scrambling to balance DC offset
+  use_nrzi: true # [true, false] - Non-Return-to-Zero Inverted (immune to phase flips)
+  use_comsec: false # [true, false] - AES-CTR link-layer encryption
+  comsec_key: "00000000000000000000000000000000" # [32-byte Hex] - Link layer key
+  crc_type: "CRC16" # [CRC16, CRC32] - Integrity scheme
+
+mac_layer:
+  amc_enabled: false # [true, false] - Adaptive Modulation and Coding
+  arq_enabled: true # [true, false] - Automatic Repeat Request (ACK/Retransmit)
+  max_retries: 3 # [0 to 10] - Number of ARQ retry attempts
+  afh_enabled: false # [true, false] - Adaptive Frequency Hopping
 
 dsss:
-  enabled: false        # Direct Sequence Spread Spectrum disabled
-  spreading_factor: 1   # No spreading
+  enabled: false # [true, false] - Direct Sequence Spread Spectrum
+  type: "Barker" # [Barker, CCSK] - Spreading code type
+  spreading_factor: 11 # [Quantitative] - Chips per bit
 
 hopping:
-  enabled: false        # Frequency Hopping disabled
+  enabled: false # [true, false] - Frequency Hopping Spread Spectrum
+  type: "AES" # [AES] - Pseudo-random sequence generator
+  sync_mode: "TOD" # [TOD] - Synchronization mode (Time-of-Day)
+  dwell_time_ms: 1000 # [50 to 5000] - Milliseconds per frequency channel
+  aes_key: "00000000000000000000000000000000" # [32-byte Hex] - Hopping sequence key
+  num_channels: 50 # [2 to 200] - Total frequencies in hop pool
+  channel_spacing: 150000 # [Quantitative] - Frequency gap between channels in Hz
 
 hardware:
-  args: type=b200       # UHD device arguments
-  samp_rate: 2000000    # Hardware clock rate
-  tx_gain: 70           # Transmit power (dB)
-  rx_gain: 70           # Receive sensitivity (dB)
-  tx_antenna: TX/RX     # Physical SMA port for transmit
-  rx_antenna: TX/RX     # Physical SMA port for receive
+  args: "type=b200" # [UHD Device Arguments]
+  tx_gain: 70 # [0 to 90] - Transmit power in dB
+  rx_gain: 70 # [0 to 90] - Receive sensitivity in dB
+  tx_antenna: "TX/RX" # [TX/RX, RX2] - Physical port for transmission
+  rx_antenna: "TX/RX" # [TX/RX, RX2] - Physical port for reception
 
 application_layer:
-  payload_type: heartbeat # Default periodic message type
+  payload_type: "heartbeat" # [heartbeat, chat] - Default application behavior

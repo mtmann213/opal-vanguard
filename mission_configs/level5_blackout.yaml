@@ -1,52 +1,55 @@
-# Level 5: Blackout - Frequency Hopping & Encryption
-# Goal: Military-grade resilience using AES encryption and Frequency Hopping (FHSS).
+# Opal Vanguard Mission Configuration: LEVEL 5 (Blackout)
+# Objective: Total Link Security. AES-CTR encryption and TOD Frequency Hopping.
 
 mission:
-  id: LEVEL_5_BLACKOUT
+  id: "LEVEL_5_BLACKOUT"
 
 physical:
-  ghost_mode: true
-  samp_rate: 1000000    # Reduced rate for N150 CPU compatibility
-  center_freq: 915000000
-  modulation: GFSK
-  freq_dev: 25000
-  samples_per_symbol: 10
-
-mac_layer:
-  amc_enabled: false
-  arq_enabled: true
-  max_retries: 3
+  modulation: "GFSK" # [GFSK, DBPSK, DQPSK, OFDM]
+  samp_rate: 2000000 # [200000 to 56000000]
+  center_freq: 915000000 # [50000000 to 6000000000]
+  samples_per_symbol: 10 # [2 to 100]
+  freq_dev: 25000 # [5000 to 500000]
+  ghost_mode: true # [true, false]
 
 link_layer:
-  use_comsec: true      # AES-256 Encryption enabled for heartbeats
-  comsec_key: 5365637265744f70616c4b6579313233
-  crc_type: CRC16
-  use_fec: true
-  use_interleaving: true
-  interleaver_rows: 8
-  use_whitening: true
-  use_nrzi: true
-  use_manchester: false
+  frame_size: 120 # [16 to 1024]
+  use_fec: true # [true, false]
+  fec_type: "RS1511" # [RS1511, RS3115]
+  use_interleaving: true # [true, false]
+  interleaver_rows: 15
+  use_whitening: true # [true, false]
+  use_nrzi: true # [true, false]
+  use_comsec: true # [true, false] - COMSEC ENABLED
+  comsec_key: "5365637265744f70616c4b6579313233" # 32-byte Hex - 'SecretOpalKey123'
+  crc_type: "CRC16" # [CRC16, CRC32]
+
+mac_layer:
+  amc_enabled: false # [true, false]
+  arq_enabled: true # [true, false]
+  max_retries: 3 # [0 to 10]
+  afh_enabled: false # [true, false]
 
 dsss:
-  enabled: false
+  enabled: false # [true, false]
+  type: "Barker" # [Barker, CCSK]
+  spreading_factor: 11
 
 hopping:
-  enabled: true         # FHSS enabled - radio hops frequency every epoch
-  type: AES             # AES-based pseudo-random hopping sequence
-  sync_mode: TOD        # Time-of-Day synchronization (uses laptop clock)
-  dwell_time_ms: 1000   # Stay on one frequency for 1 second
-  lookahead_ms: 50      # Pre-calculate next hop 50ms early
-  num_channels: 20      # Size of the hop-set
-  channel_spacing: 40000 # 40 kHz spacing between channels
+  enabled: true # [true, false] - FHSS ENABLED
+  type: "AES" # [AES]
+  sync_mode: "TOD" # [TOD]
+  dwell_time_ms: 1000 # [50 to 5000]
+  aes_key: "5365637265744f70616c4b6579313233"
+  num_channels: 50
+  channel_spacing: 150000
 
 hardware:
-  args: type=b200
-  samp_rate: 1000000
+  args: "type=b200"
   tx_gain: 70
   rx_gain: 70
-  tx_antenna: TX/RX
-  rx_antenna: TX/RX
+  tx_antenna: "TX/RX"
+  rx_antenna: "TX/RX"
 
 application_layer:
-  payload_type: heartbeat
+  payload_type: "heartbeat" # [heartbeat, chat]

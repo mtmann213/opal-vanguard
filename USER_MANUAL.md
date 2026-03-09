@@ -83,25 +83,66 @@ docker-compose run --rm opal-vanguard bash
 
 ## 🛠️ 5. Mission Configuration Guide (YAML)
 
-The system is entirely **Config-Driven**. A single YAML file defines the Physical, MAC, and Link layer parameters.
+The system is entirely **Config-Driven**. A single YAML file defines the Physical, MAC, and Link layer parameters. Every option is described below:
 
-### Physical Layer (`physical`)
-- **`modulation`**: `GFSK` (Baseline), `DBPSK`, or `OFDM` (Level 7 multi-carrier).
-- **`samp_rate`**: Generally 2,000,000 (2.0 Msps).
-- **`center_freq`**: Base frequency in Hz (e.g., 915000000).
-- **`ghost_mode`**: Disables the TX amplifier between bursts for "Stealth" transmission (LPI/LPD).
+### A. Physical Layer (`physical`)
+| Parameter | Type/Range | Description |
+| :--- | :--- | :--- |
+| `modulation` | `[GFSK, DBPSK, DQPSK, OFDM]` | Base modulation scheme. GFSK is standard; OFDM is for high-speed multi-carrier. |
+| `samp_rate` | `200k to 56M` | SDR sample rate in Hz. Standard is `2000000` (2.0 Msps). |
+| `center_freq`| `50M to 6G` | Base frequency in Hz. Opal Vanguard uses `915000000` (ISM band). |
+| `sps` | `2 to 100` | Samples Per Symbol. Factor of interpolation/decimation. |
+| `freq_dev` | `5k to 500k` | Frequency deviation for GFSK modulation in Hz. |
+| `ghost_mode` | `[true, false]` | Disables the TX amplifier between bursts for stealth (LPI/LPD). |
 
-### Link Layer (`link_layer`)
-- **`use_fec`**: Enables Reed-Solomon Forward Error Correction.
-- **`use_interleaving`**: Matrix Interleaver. Shuffles data to protect against burst jammers.
-- **`use_whitening`**: Scrambles data to prevent DC offset imbalances in hardware.
-- **`use_comsec`**: Enables AES-CTR encryption.
-- **`crc_type`**: `CRC16` (Standard) or `CRC32` (High-speed OFDM).
+### B. Link Layer (`link_layer`)
+| Parameter | Type/Range | Description |
+| :--- | :--- | :--- |
+| `frame_size` | `16 to 1024` | Total packet size in bytes. Level 7 uses `940`+ for broadband. |
+| `use_fec` | `[true, false]` | Enables Reed-Solomon Forward Error Correction. |
+| `fec_type` | `[RS1511, RS3115]` | `RS1511` is standard; `RS3115` is heavy-duty tactical FEC. |
+| `use_interleaving`| `[true, false]`| Matrix Interleaver. Spreads data to survive burst jammers. |
+| `interleaver_rows`| `Quantitative` | Must divide `frame_size` evenly (e.g., 15 for 120-byte frames). |
+| `use_whitening` | `[true, false]` | LFSR scrambling to balance DC offset in hardware. |
+| `use_nrzi` | `[true, false]` | Differential encoding. Immune to 180-degree phase flips. |
+| `use_comsec` | `[true, false]` | AES-256 CTR link-layer encryption. |
+| `comsec_key` | `32-byte Hex` | Master key for data encryption. |
+| `crc_type` | `[CRC16, CRC32]` | `CRC16` for L1-5; `CRC32` for high-speed OFDM (L7). |
 
-### Hopping Layer (`hopping`)
-- **`type`**: `AES` (Pseudo-random sequence generated via AES-256).
-- **`sync_mode`**: `TOD` (**Time-of-Day**). Absolute Unix timestamp-based synchronization.
-- **`dwell_time_ms`**: Time spent on each frequency hop (e.g., 500ms or 1000ms).
+### C. MAC Layer (`mac_layer`)
+| Parameter | Type/Range | Description |
+| :--- | :--- | :--- |
+| `amc_enabled` | `[true, false]` | Adaptive Modulation and Coding (automatic sensitivity tuning). |
+| `arq_enabled` | `[true, false]` | Automatic Repeat Request. Enables SYN/ACK handshaking. |
+| `max_retries` | `0 to 10` | Number of retransmission attempts before link drop. |
+| `afh_enabled` | `[true, false]` | Adaptive Frequency Hopping. Blocks jammed channels from the hop pool. |
+
+### D. Hopping Layer (`hopping`)
+| Parameter | Type/Range | Description |
+| :--- | :--- | :--- |
+| `enabled` | `[true, false]` | Global toggle for Frequency Hopping Spread Spectrum. |
+| `type` | `[AES]` | Cryptographic pseudo-random sequence generator. |
+| `sync_mode` | `[TOD]` | Time-of-Day synchronization (requires system clock sync). |
+| `dwell_time_ms`| `50 to 5000` | Milliseconds spent on each frequency channel. |
+| `aes_key` | `32-byte Hex` | Cryptographic seed for the hop sequence generator. |
+| `num_channels` | `2 to 200` | Size of the frequency pool used for hopping. |
+| `channel_spacing`| `Hz` | Gap between hopping channels (e.g., `150000`). |
+
+### E. DSSS Layer (`dsss`)
+| Parameter | Type/Range | Description |
+| :--- | :--- | :--- |
+| `enabled` | `[true, false]` | Global toggle for Direct Sequence Spread Spectrum. |
+| `type` | `[Barker, CCSK]`| `Barker` (11-chip) or `CCSK` (32-chip tactical mapping). |
+| `spreading_factor`| `Quantitative` | Number of chips used to spread each information bit. |
+
+### F. Hardware (`hardware`)
+| Parameter | Type/Range | Description |
+| :--- | :--- | :--- |
+| `args` | `String` | UHD device arguments (e.g., `type=b200`). |
+| `tx_gain` | `0 to 90` | Transmit power in dB. |
+| `rx_gain` | `0 to 90` | Receive sensitivity in dB. |
+| `tx_antenna` | `String` | Physical SMA port for TX (e.g., `TX/RX`). |
+| `rx_antenna` | `String` | Physical SMA port for RX (e.g., `TX/RX`). |
 
 ---
 

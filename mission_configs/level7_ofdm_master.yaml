@@ -1,54 +1,55 @@
-# Level 7: OFDM Master - The Final Frontier
-# Goal: High-speed multi-carrier data link with full tactical suite.
+# Opal Vanguard Mission Configuration: LEVEL 7 (OFDM Master)
+# Objective: High-speed multi-carrier broadband tactical data.
 
 mission:
-  id: LEVEL_7_OFDM_MASTER
+  id: "LEVEL_7_OFDM_MASTER"
 
 physical:
-  ghost_mode: true
-  samp_rate: 2000000
-  center_freq: 915000000
-  modulation: OFDM      # Multi-carrier Orthogonal Frequency Division Multiplexing
-  samples_per_symbol: 10
-
-mac_layer:
-  amc_enabled: true
-  arq_enabled: true
-  max_retries: 5
-  afh_enabled: true
+  modulation: "OFDM" # [GFSK, DBPSK, DQPSK, OFDM] - MULTI-CARRIER ENABLED
+  samp_rate: 2000000 # [200000 to 56000000]
+  center_freq: 915000000 # [50000000 to 6000000000]
+  samples_per_symbol: 10 # [2 to 100]
+  freq_dev: 25000 # [5000 to 500000]
+  ghost_mode: true # [true, false]
 
 link_layer:
-  use_comsec: true
-  comsec_key: 5365637265744f70616c4b6579313233
-  crc_type: CRC32
-  use_fec: true
-  use_interleaving: true
-  interleaver_rows: 64
-  use_whitening: true
-  use_nrzi: true
-  use_manchester: false
+  frame_size: 940 # [16 to 1024] - LARGE BROADBAND FRAME
+  use_fec: true # [true, false]
+  fec_type: "RS1511" # [RS1511, RS3115]
+  use_interleaving: true # [true, false]
+  interleaver_rows: 64 # [Quantitative] - INCREASED DEPTH
+  use_whitening: true # [true, false]
+  use_nrzi: true # [true, false]
+  use_comsec: true # [true, false]
+  comsec_key: "5365637265744f70616c4b6579313233"
+  crc_type: "CRC32" # [CRC16, CRC32] - UPGRADED INTEGRITY
+
+mac_layer:
+  amc_enabled: true # [true, false]
+  arq_enabled: true # [true, false]
+  max_retries: 5 # [0 to 10]
+  afh_enabled: true # [true, false]
 
 dsss:
-  enabled: true
-  type: CCSK
-  chipping_code: [1, 1, 1, 1, 1, -1, -1, 1, 1, -1, 1, -1, 1, 1, 1, 1, 1, -1, -1, 1, 1, -1, 1, -1, 1, 1, 1, 1, 1, -1, -1, 1]
+  enabled: false # [true, false]
+  type: "CCSK" # [Barker, CCSK]
+  spreading_factor: 32
 
 hopping:
-  enabled: true
-  type: AES
-  sync_mode: TOD
-  dwell_time_ms: 1000
-  lookahead_ms: 50
-  num_channels: 20
+  enabled: true # [true, false]
+  type: "AES" # [AES]
+  sync_mode: "TOD" # [TOD]
+  dwell_time_ms: 1000 # [50 to 5000]
+  aes_key: "5365637265744f70616c4b6579313233"
+  num_channels: 50
   channel_spacing: 150000
 
 hardware:
-  args: type=b200
-  samp_rate: 2000000
+  args: "type=b200"
   tx_gain: 70
   rx_gain: 70
-  tx_antenna: TX/RX
-  rx_antenna: TX/RX
+  tx_antenna: "TX/RX"
+  rx_antenna: "TX/RX"
 
 application_layer:
-  payload_type: heartbeat
+  payload_type: "heartbeat" # [heartbeat, chat]

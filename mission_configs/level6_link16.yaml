@@ -1,55 +1,55 @@
-# Level 6: Link-16 - Advanced Tactical Mode
-# Goal: Standardized military data link emulation using CCSK and AFH.
+# Opal Vanguard Mission Configuration: LEVEL 6 (Link-16)
+# Objective: Authentic Military Symbol Mapping (CCSK) and Fast AFH.
 
 mission:
-  id: LEVEL_6_LINK16
+  id: "LEVEL_6_LINK16"
 
 physical:
-  ghost_mode: true
-  samp_rate: 1000000
-  center_freq: 915000000
-  modulation: GFSK
-  freq_dev: 60000
-  samples_per_symbol: 25
-
-mac_layer:
-  amc_enabled: true      # Adaptive Modulation and Coding - auto-adjusts based on link quality
-  arq_enabled: true
-  max_retries: 5
-  afh_enabled: true      # Adaptive Frequency Hopping - radio blacklists jammed channels
+  modulation: "GFSK" # [GFSK, DBPSK, DQPSK, OFDM]
+  samp_rate: 2000000 # [200000 to 56000000]
+  center_freq: 915000000 # [50000000 to 6000000000]
+  samples_per_symbol: 10 # [2 to 100]
+  freq_dev: 25000 # [5000 to 500000]
+  ghost_mode: true # [true, false]
 
 link_layer:
-  use_comsec: true
-  comsec_key: 5365637265744f70616c4b6579313233
-  crc_type: CRC16
-  use_fec: true
-  use_interleaving: true
+  frame_size: 120 # [16 to 1024]
+  use_fec: true # [true, false]
+  fec_type: "RS3115" # [RS1511, RS3115] - UPGRADED FEC
+  use_interleaving: true # [true, false]
   interleaver_rows: 15
-  use_whitening: true
-  use_nrzi: true
-  use_manchester: false
+  use_whitening: true # [true, false]
+  use_nrzi: true # [true, false]
+  use_comsec: true # [true, false]
+  comsec_key: "5365637265744f70616c4b6579313233"
+  crc_type: "CRC16" # [CRC16, CRC32]
+
+mac_layer:
+  amc_enabled: true # [true, false]
+  arq_enabled: true # [true, false]
+  max_retries: 5 # [0 to 10]
+  afh_enabled: true # [true, false] - ADAPTIVE FH ENABLED
 
 dsss:
-  enabled: true
-  type: CCSK             # Cyclic Code Shift Keying - high-performance tactical spreading
-  chipping_code: [1, 1, 1, 1, 1, -1, -1, 1, 1, -1, 1, -1, 1, 1, 1, 1, 1, -1, -1, 1, 1, -1, 1, -1, 1, 1, 1, 1, 1, -1, -1, 1]
+  enabled: true # [true, false]
+  type: "CCSK" # [Barker, CCSK] - CYCLIC CODE SHIFT KEYING
+  spreading_factor: 32
 
 hopping:
-  enabled: true
-  type: AES
-  sync_mode: TOD
-  dwell_time_ms: 1000
-  lookahead_ms: 50
-  num_channels: 6
+  enabled: true # [true, false]
+  type: "AES" # [AES]
+  sync_mode: "TOD" # [TOD]
+  dwell_time_ms: 500 # [50 to 5000] - FASTER HOPS
+  aes_key: "5365637265744f70616c4b6579313233"
+  num_channels: 20
   channel_spacing: 150000
 
 hardware:
-  args: type=b200
-  samp_rate: 1000000
+  args: "type=b200"
   tx_gain: 70
   rx_gain: 70
-  tx_antenna: TX/RX
-  rx_antenna: TX/RX
+  tx_antenna: "TX/RX"
+  rx_antenna: "TX/RX"
 
 application_layer:
-  payload_type: heartbeat
+  payload_type: "heartbeat" # [heartbeat, chat]
