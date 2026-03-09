@@ -1,0 +1,21 @@
+# Ignore compiled modules
+__pycache__/
+*.py[cod]
+
+# Ignore SDR data dumps and large binaries
+*.bin
+*.cf32
+*.fc32
+*.cfile
+*.dat
+*.log
+binary/
+mission_telemetry.jsonl
+jammer_telemetry.jsonl
+
+# Ignore GUI and GRC history
+.grc_history
+.cache/
+
+# Ignore documentation build outputs
+docs/_build/

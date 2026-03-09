@@ -1,7 +1,16 @@
 {
   "ui": {
     "footer": {
-      "hideContextPercentage": false
-    }
+      "hideContextPercentage": false,
+      "hideModelInfo": false
+    },
+    "showMemoryUsage": true,
+    "showModelInfoInChat": true,
+    "showStatusInTitle": true
+  },
+  "model": {
+    "maxSessionTurns": 150,
+    "compressionThreshold": 0.3,
+    "name": ""
   }
 }

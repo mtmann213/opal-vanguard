@@ -1,0 +1,81 @@
+import numpy as np
+from gnuradio import gr, blocks, digital, filter, channels, analog
+import pmt
+import time
+import yaml
+from packetizer import packetizer
+
+with open('mission_configs/level7_ofdm_master.yaml', 'r') as f:
+    cfg = yaml.safe_load(f)
+
+class MockPacketizer(packetizer):
+    def __init__(self):
+        super().__init__("mission_configs/level7_ofdm_master.yaml")
+        self.output_msg = None
+    def message_port_pub(self, port, msg):
+        self.output_msg = msg
+
+p = MockPacketizer()
+msg_in = pmt.cons(pmt.make_dict(), pmt.init_u8vector(10, [0xAA]*10))
+p.handle_msg(msg_in)
+burst = list(pmt.u8vector_elements(pmt.cdr(p.output_msg)))
+
+class test_tb(gr.top_block):
+    def __init__(self):
+        super().__init__()
+        samp_rate = 500000
+        sps = 10
+        
+        self.src = blocks.vector_source_b(burst, False)
+        
+        # Test diff encoding vs constellation decoding mappings
+        constel = digital.constellation_bpsk().base()
+        self.unpack_tx = blocks.unpack_k_bits_bb(8)
+        self.diff_enc = digital.diff_encoder_bb(2)
+        self.mod_a = digital.chunks_to_symbols_bc(constel.points(), 1)
+        
+        # Interpolation to match 'sps' (Samples Per Symbol)
+        nfilts = 32
+        rrc_taps = filter.firdes.root_raised_cosine(nfilts, nfilts, 1.0, 0.35, 11*sps*nfilts)
+        self.tx_filter = filter.interp_fir_filter_ccc(sps, rrc_taps)
+        
+        # Channel
+        self.chan = channels.channel_model(noise_voltage=0.0)
+        
+        # RX Path: AGC -> Filter -> Timing Sync -> Phase Sync -> Demod -> Diff Decoder
+        self.agc = analog.agc_cc(1e-4, 1.0, 1.0); self.agc.set_max_gain(65536)
+        rx_rrc_taps = filter.firdes.root_raised_cosine(1.0, sps, 1.0, 0.35, 11*sps)
+        self.bpsk_rx_filter = filter.fir_filter_ccf(1, rx_rrc_taps)
+        self.bpsk_sync = digital.symbol_sync_cc(digital.TED_MUELLER_AND_MULLER, sps, 0.045, 1.0, 1.0, 1.5, 1, constel, digital.IR_MMSE_8TAP, 128, [])
+        self.costas = digital.costas_loop_cc(0.06, 2, False)
+        
+        self.demod_b = digital.constellation_decoder_cb(constel)
+        self.diff_dec = digital.diff_decoder_bb(2)
+        
+        self.snk = blocks.vector_sink_b()
+        
+        self.connect(self.src, self.unpack_tx, self.diff_enc, self.mod_a, self.tx_filter, self.chan)
+        self.connect(self.chan, self.agc, self.bpsk_rx_filter, self.bpsk_sync, self.costas, self.demod_b, self.diff_dec, self.snk)
+
+if __name__ == '__main__':
+    tb = test_tb()
+    tb.start()
+    time.sleep(2)
+    tb.stop()
+    tb.wait()
+    
+    rx_data = tb.snk.data()
+    tx_bits = []
+    for b in burst:
+        tx_bits.extend([(b >> (7-i)) & 1 for i in range(8)])
+        
+    delay = 0
+    for i in range(200):
+        if list(rx_data[i:i+64]) == tx_bits[:64]:
+            delay = i
+            break
+            
+    print(f"Sync delay: {delay}")
+    if delay > 0:
+        match = sum(1 for a, b in zip(tx_bits, rx_data[delay:delay+len(tx_bits)]) if a == b)
+        print(f"Match rate with diff encoder: {match/len(tx_bits)*100:.2f}%")

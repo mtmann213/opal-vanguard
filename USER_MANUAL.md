@@ -1,70 +1,172 @@
-# Opal Vanguard - Field Terminal User Manual
+# Opal Vanguard: Master Mission Manual & Technical Guide (v12.0)
 
-## 📖 Introduction
-The Opal Vanguard Field Terminal is a high-performance software-defined radio (SDR) transceiver designed for resilient, secure, and stealthy messaging. This manual covers operation, troubleshooting, and provides a deep-dive glossary of the system's core technologies.
+This document serves as the comprehensive user manual, participant handbook, and technical reference for the Opal Vanguard project. It is designed for operators, Red/Blue team competitors, and software developers evaluating the codebase.
 
 ---
 
-## 🎮 Basic Operation
-### 1. Synchronization
-Ensure both laptops are connected to a shared network (or the Internet) to synchronize their system clocks. This is **critical** for Level 5+ Time-of-Day (TOD) frequency hopping.
+## 📖 1. Mission Overview & Philosophy
+Opal Vanguard is a **Tactical Data Link (TDL)** system designed for resilient, secure, and stealthy communications in contested RF environments. It is a software-defined "Digital Duel" platform that scales from simple GFSK links to complex, wideband **Differential-Frequency OFDM**.
 
-### 2. Launching the Terminal
-Run the transceiver using the mission configuration for your current level:
+### 🛡️ The Philosophy
+- **Modular Integrity**: Every layer of the OSI model (Physical to Application) is decoupled and mission-controlled via YAML configurations.
+- **Resilience by Design**: We assume the link will be jammed. We use **Reed-Solomon FEC**, **Matrix Interleaving**, and **CCSK Spreading** to ensure data survives even when the signal-to-noise ratio is negative.
+- **Zero-Trust Synchronization**: Using **Time-of-Day (TOD)** hopping, radios find each other autonomously without needing a vulnerable "Sync Channel."
+
+---
+
+## 📡 2. System Architecture & Theory of Operation
+
+Opal Vanguard is best understood as a **Packet-Switched Network** running over a volatile, half-duplex physical medium. 
+
+### The Life of a Packet
+1. **Application Domain**: User types a message in the Qt GUI. The UI emits a signal containing a string, which is wrapped into a **PDU (Protocol Data Unit)** and sent to the **Session Manager**.
+2. **Link Layer Domain (`packetizer.py`)**:
+    *   **Encryption**: Data is encrypted using AES-256 CTR.
+    *   **Framing**: A 4-byte header (SrcID, Type, Seq, Length) is attached.
+    *   **Integrity**: A CRC16 is calculated over the header and payload.
+    *   **FEC Encoding**: The block is passed through a **Reed-Solomon** encoder (e.g., RS(15,11) or RS(31,15)).
+    *   **Hardening**: Data is interleaved (spread out) and whitened (scrambled) to prevent long strings of identical bits.
+    *   **Bitstream**: The final bytes are expanded into raw bits, and a **Preamble** (clock recovery) and **Syncword** (unique signature) are prepended.
+3. **Physical Domain (`usrp_transceiver.py`)**:
+    *   **Modulation**: Bits enter the GFSK, BPSK, or OFDM modulator.
+    *   **Tag Scaling**: A critical `packet_len` tag is attached to the stream to tell the USRP hardware exactly when to start and stop the transmitter's power amplifier.
+    *   **RF Emission**: Samples are streamed over USB 3.0 to the SDR and transmitted over the air.
+
+### The "Blind Search" Engine (`depacketizer.py`)
+Because the system is "Zero-Header" (no standard Wi-Fi MAC headers), the receiver is always in a **SEARCH** state. 
+- It uses a sliding **XOR bitmask** to look for the Syncword.
+- In Python 3.10+, we use `.bit_count()` to calculate the **Hamming Distance** (number of bit errors). 
+- If the distance is within tolerance (e.g., `<= 4`), the state machine transitions to **COLLECT** and starts harvesting bits.
+
+---
+
+## 🚀 3. Quick Start & Deployment
+
+### Hardware Prerequisites
+- **USRP B205mini / B210** (USB 3.0 required).
+- **30dB SMA Attenuators** (Mandatory for bench testing to prevent hardware damage).
+- **Sync Clocks**: Host system clocks must be synchronized within 50ms for TOD-Hopping (run `ntpdate` or check system time).
+
+### Launch Sequence
+1.  **Initialize Hardware**: Verify your USRP is connected via USB 3.0.
+    ```bash
+    uhd_find_devices
+    ```
+2.  **Launch ALPHA (Master)**:
+    ```bash
+    sudo -E python3 src/usrp_transceiver.py --role ALPHA --serial <SERIAL_A> --config mission_configs/level1_soft_link.yaml
+    ```
+3.  **Launch BRAVO (Slave)**:
+    ```bash
+    sudo -E python3 src/usrp_transceiver.py --role BRAVO --serial <SERIAL_B> --config mission_configs/level1_soft_link.yaml
+    ```
+
+---
+
+## 🐳 4. Docker & Air-Gapped Deployment
+
+Containerizing the environment ensures you avoid OS-level dependency conflicts. The `Dockerfile` uses Ubuntu 22.04, GNU Radio 3.10, and UHD drivers.
+
+### Building & Running (Online)
 ```bash
-sudo -E python3 src/usrp_transceiver.py --role ALPHA --serial <YOUR_SERIAL> --config mission_configs/level5_blackout.yaml
+docker build -t opal-vanguard .
+xhost +local:docker  # Allow GUI display on the host
+docker-compose run --rm opal-vanguard bash
 ```
 
-### 3. Tuning the Link
-- **Waterfall**: Use the Spectrum Waterfall to monitor signal presence.
-- **RX Gain**: If the waterfall is solid yellow, **lower the RX gain** until the background is dark blue.
-- **Signal Scope**: Use the scope to verify the bit-level recovery. A clean square wave indicates a strong signal lock.
+### Offline Transfer (Air-Gapped)
+1.  **Export**: On the online PC, save the image: `docker save opal-vanguard | gzip > opal_vanguard_offline.tar.gz`
+2.  **Transfer**: Copy the tarball and source code to a USB drive.
+3.  **Import**: On the offline PC, load the image: `docker load < opal_vanguard_offline.tar.gz`
 
 ---
 
-## 📚 Technical Glossary & Concepts
+## 🛠️ 5. Mission Configuration Guide (YAML)
 
-### FHSS (Frequency Hopping Spread Spectrum)
-A method of transmitting radio signals by rapidly switching a carrier among many frequency channels.
-- **Why it matters**: It makes the signal extremely difficult to intercept or jam, as the "target" frequency is constantly moving based on a pseudo-random sequence.
-- **Opal Vanguard Implementation**: We use AES-based pseudo-random sequences synchronized via Time-of-Day (TOD).
+The system is entirely **Config-Driven**. A single YAML file defines the Physical, MAC, and Link layer parameters.
 
-### DSSS (Direct Sequence Spread Spectrum)
-A modulation technique where the transmitted signal takes up more bandwidth than the information signal that is being modulated.
-- **Why it matters**: It "spreads" the signal power into the noise floor, making it nearly invisible to standard scanners (Low Probability of Intercept) and highly resistant to narrow-band jamming.
-- **Chips**: The small sub-bits used to spread each information bit. The number of chips per bit is the **Spreading Factor (SF)**.
+### Physical Layer (`physical`)
+- **`modulation`**: `GFSK` (Baseline), `DBPSK`, or `OFDM` (Level 7 multi-carrier).
+- **`samp_rate`**: Generally 2,000,000 (2.0 Msps).
+- **`center_freq`**: Base frequency in Hz (e.g., 915000000).
+- **`ghost_mode`**: Disables the TX amplifier between bursts for "Stealth" transmission (LPI/LPD).
 
-### COMSEC (Communications Security)
-The discipline of preventing unauthorized interceptors from accessing telecommunications in an intelligible form.
-- **AES-CTR**: We use Advanced Encryption Standard in Counter mode. This is a "stream cipher" that is highly resilient to RF bit errors; a single corrupted bit in the air only ruins one character of the message rather than the whole packet.
+### Link Layer (`link_layer`)
+- **`use_fec`**: Enables Reed-Solomon Forward Error Correction.
+- **`use_interleaving`**: Matrix Interleaver. Shuffles data to protect against burst jammers.
+- **`use_whitening`**: Scrambles data to prevent DC offset imbalances in hardware.
+- **`use_comsec`**: Enables AES-CTR encryption.
+- **`crc_type`**: `CRC16` (Standard) or `CRC32` (High-speed OFDM).
 
-### FEC (Forward Error Correction)
-A technique used for controlling errors in data transmission over unreliable or noisy communication channels.
-- **Reed-Solomon (RS)**: A powerful mathematical algorithm that adds redundant data to each packet. Our RS(15,11) implementation can automatically "repair" up to 2 corrupted bytes in every 15-byte block without needing a retransmission.
-
-### ARQ (Automatic Repeat Request)
-An error-control method for data transmission that uses acknowledgments (ACKs) and timeouts to achieve reliable data transmission.
-- **Logic**: If a receiver hears a packet but the CRC fails (and FEC can't fix it), the transmitter will automatically resend the data up to the `max_retries` limit.
-
-### NRZI (Non-Return-to-Zero Inverted)
-A method of mapping binary signals to physical pulses.
-- **Why it matters**: In RF, the phase of a signal can sometimes be inverted (180 degrees) by the environment. NRZI only cares about *changes* in state, making the link immune to phase-flip corruption.
-
-### Whitening (Scrambling)
-The process of XORing the data stream with a pseudo-random sequence before transmission.
-- **Why it matters**: Radio hardware struggles to transmit long strings of identical bits (e.g., all 0s). Whitening ensures the signal is always "randomized," which keeps the hardware's DC-offset balanced and the link stable.
-
-### Interleaving
-A process of rearranging data in a non-contiguous way.
-- **Why it matters**: RF interference often happens in "bursts" that kill several consecutive bits. Interleaving spreads those bits out across the packet so that, after de-interleaving, the errors appear as isolated single-bit flips that the FEC can easily repair.
+### Hopping Layer (`hopping`)
+- **`type`**: `AES` (Pseudo-random sequence generated via AES-256).
+- **`sync_mode`**: `TOD` (**Time-of-Day**). Absolute Unix timestamp-based synchronization.
+- **`dwell_time_ms`**: Time spent on each frequency hop (e.g., 500ms or 1000ms).
 
 ---
 
-## 🛠 Troubleshooting
+## ⚔️ 6. The Digital Duel: Red vs. Blue Team
+
+This project features a ramping "Digital Duel" EW competition.
+
+### Blue Team (The Operators)
+*   **Objective**: Maintain a reliable link with zero CRC failures.
+*   **Tactics**: Transition through the mission levels to harden your signal. If you see "FEC Repairs" increasing, your link is under attack but surviving. 
+*   **Adaptive Resilience**: If the MAC layer detects 5 consecutive failures, it will automatically execute a **Fallback Reboot** to a lower, more resilient tier.
+
+### Red Team (The Disruptors)
+*   **Objective**: Deny, degrade, or manipulate the Blue Team's communication.
+*   **Tools**: Use `sudo -E python3 src/adversary_jammer.py --serial <SERIAL> --mode NOISE --gain 75`. Modes include `NOISE`, `SWEEP`, `PULSE`, and `FOLLOWER`.
+*   **Tactics**: Don't just jam data; attack the **Syncword** or the **Handshake** (SYN/ACK). A wideband noise floor is harder to hide from, while swept tones can push demodulators out of lock.
+
+### The Ramping Challenge Levels
+| Level | Name | Hardening | Red Team Objective |
+| :--- | :--- | :--- | :--- |
+| **L1** | Soft Link | None (Basic GFSK) | **Denial of Service** (Noise mode) |
+| **L2** | Repairable | RS(15,11) FEC | **Burst Jamming** (Pulse mode) |
+| **L3** | Resilient | FEC + Interleaving | **Saturation** (High gain) |
+| **L4** | Stealth | DSSS Spreading + Ghost Mode | **Wideband Interference** (Sweep mode) |
+| **L5** | Blackout | AES + TOD Hopping | **Manipulation** (Attack the sync logic) |
+| **L6** | Link-16 | CCSK 32-chip + RS(31,15) | **Total Denial** (Massive wideband noise) |
+| **L7** | OFDM Master | 64-Carrier Wideband | **Surgical Strike** (Target sub-bands) |
+
+---
+
+## 🔧 7. Range Setup & Hardware Upgrade Path
+
+### RF Configuration (The "Star" Topology)
+To allow the Red Team to perform "Reactive Jamming" (sniffing and injecting), use a 3-way splitter:
+```text
+[BLUE ALPHA TX] ---- [30dB Attenuator] ---- [SPLITTER PORT 1]
+[RED JAMMER TRX] --- [30dB Attenuator] ---- [SPLITTER PORT 2] (Sniffer/Injector)
+[BLUE BRAVO RX] ---- [30dB Attenuator] ---- [SPLITTER PORT 3]
+```
+
+### Hardware Upgrade Path
+1. **Budget**: 915MHz SAW Bandpass Filters (~$25) to block LTE/WiFi noise.
+2. **Professional**: Leo Bodnar Dual GPSDO (~$180) to provide a 10MHz reference and 1PPS signal for nanosecond-accurate TOD hopping. Yagi-Uda Antennas for spatial filtering.
+3. **Lab Grade**: Ettus OctoClock-G (~$1,500) and USRP B210s for phase-coherent MIMO, beamforming, and Angle of Arrival (AoA) tracking.
+
+---
+
+## 📚 8. Technical Glossary
+- **FHSS (Frequency Hopping Spread Spectrum)**: Rapidly switching carriers based on an AES pseudo-random sequence to evade jamming.
+- **DSSS (Direct Sequence Spread Spectrum)**: Spreading signal power into the noise floor using chips, making it resistant to narrow-band interference (LPI/LPD).
+- **CCSK (Cyclic Code Shift Keying)**: A modern tactical spreading technique used in Link-16.
+- **COMSEC (AES-CTR)**: Counter mode encryption is used because it is "error-tolerant." A single RF bit flip only corrupts one character, not the whole block.
+- **NRZI (Non-Return-to-Zero Inverted)**: Maps binary signals to state *changes*, making the link immune to 180-degree phase inversions caused by multipath.
+
+---
+
+## 🛠️ 9. Troubleshooting
 | Issue | Potential Cause | Solution |
 |-------|----------------|----------|
 | Blank Waterfall | USRP Stall / USB Hub | Restart the script; ensure USRP is on a USB 3.0 port. |
-| Solid Yellow Waterfall | Gain Saturation | Lower the **RX Gain** slider immediately. |
-| [CRC FAIL] | High Noise / Multipath | Increase **TX Gain** or move antennas; check for local 900MHz interference. |
-| Decryption failed | Key Mismatch / High BER | Ensure `comsec_key` matches on both ends; lower gain to reduce saturation. |
-| No SYN/ACK | Clock Drift | Run `ntpdate` or check system time sync on both laptops. |
+| Solid Yellow Waterfall | Gain Saturation | Lower the **RX Gain** slider immediately to avoid ADC clipping. |
+| [CRC FAIL] Logs | High Noise / Multipath | Increase **TX Gain** or enable Interleaving (Level 3+). |
+| Decryption failed | Key Mismatch / High BER | Ensure `comsec_key` matches in YAML; lower gain to reduce saturation. |
+| Status stays IDLE | Clock Drift | Run `ntpdate` or check system time sync on both laptops. |
+| Topology Crash | Tag Scaling Mismatch | Ensure the `packet_len` tag logic matches the SPS of your modulator. |
+
+---
+*Opal Vanguard System Documentation | Prepared for Software Engineering Evaluation & Tactical Operation*

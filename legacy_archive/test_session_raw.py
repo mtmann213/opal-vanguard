@@ -1,8 +1,14 @@
 import pmt
 import struct
-from src.session_manager import session_manager
-from src.packetizer import packetizer
-from src.depacketizer import depacketizer
+import os
+import sys
+
+# Add current dir to path
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+from session_manager import session_manager
+from packetizer import packetizer
+from depacketizer import depacketizer
 from gnuradio import gr, blocks, pdu
 import time
 
@@ -19,16 +25,21 @@ class tb(gr.top_block):
         self.p2s_a = pdu.pdu_to_tagged_stream(gr.types.byte_t, "packet_len")
         self.p2s_b = pdu.pdu_to_tagged_stream(gr.types.byte_t, "packet_len")
         
+        self.null_a = blocks.null_sink(gr.sizeof_char)
+        self.null_b = blocks.null_sink(gr.sizeof_char)
+        
         # A -> B
         self.msg_connect((self.session_a, "pkt_out"), (self.pkt_a, "in"))
         self.msg_connect((self.pkt_a, "out"), (self.p2s_a, "pdus"))
         self.connect(self.p2s_a, self.depkt_b)
+        self.connect(self.depkt_b, self.null_b)
         self.msg_connect((self.depkt_b, "out"), (self.session_b, "msg_in"))
         
         # B -> A
         self.msg_connect((self.session_b, "pkt_out"), (self.pkt_b, "in"))
         self.msg_connect((self.pkt_b, "out"), (self.p2s_b, "pdus"))
         self.connect(self.p2s_b, self.depkt_a)
+        self.connect(self.depkt_a, self.null_a)
         self.msg_connect((self.depkt_a, "out"), (self.session_a, "msg_in"))
 
         self.debug = blocks.message_debug()

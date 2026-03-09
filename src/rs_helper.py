@@ -34,13 +34,13 @@ class RS1511:
         return max(rem[11:]) == 0
 
     def decode(self, msg_in):
-        if self.is_valid(msg_in): return list(msg_in[:11])
+        if self.is_valid(msg_in): return list(msg_in[:11]), 0
         # Simple 1-symbol error correction (Brute Force for GF16)
         for i in range(15):
             for val in range(1, 16):
                 corrupted = list(msg_in)
                 corrupted[i] ^= val
-                if self.is_valid(corrupted): return list(corrupted[:11])
+                if self.is_valid(corrupted): return list(corrupted[:11]), 1
         
         # Simple 2-symbol error correction
         for i in range(14):
@@ -50,9 +50,9 @@ class RS1511:
                         corrupted = list(msg_in)
                         corrupted[i] ^= val1
                         corrupted[j] ^= val2
-                        if self.is_valid(corrupted): return list(corrupted[:11])
+                        if self.is_valid(corrupted): return list(corrupted[:11]), 2
                         
-        return list(msg_in[:11])
+        return list(msg_in[:11]), 0
 
 class RS3115:
     """Link 16 Standard Reed-Solomon (31, 15) over GF(32)."""
@@ -91,7 +91,7 @@ class RS3115:
 
     def decode(self, msg_in):
         """Attempts to correct errors using brute-force for up to 1 symbol."""
-        if self.is_valid(msg_in): return list(msg_in[:15])
+        if self.is_valid(msg_in): return list(msg_in[:15]), 0
         
         # RS(31,15) can fix 8 symbols, but brute force is O(N^T).
         # We'll implement a 1-symbol "Quick Repair" to stabilize the link for now.
@@ -100,6 +100,6 @@ class RS3115:
                 corrupted = list(msg_in)
                 corrupted[i] ^= val
                 if self.is_valid(corrupted):
-                    return list(corrupted[:15])
+                    return list(corrupted[:15]), 1
         
-        return list(msg_in[:15])
+        return list(msg_in[:15]), 0

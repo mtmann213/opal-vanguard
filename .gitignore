@@ -15,3 +15,4 @@ binary
 # Temporary and build files
 build/
 .grc_history
+legacy_archive/last_night
