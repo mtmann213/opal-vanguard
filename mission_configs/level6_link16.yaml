@@ -39,7 +39,7 @@ hopping:
   enabled: true # [true, false]
   type: "AES" # [AES]
   sync_mode: "TOD" # [TOD]
-  dwell_time_ms: 500 # [50 to 5000] - FASTER HOPS
+  dwell_time_ms: 10 # [50 to 5000] - FASTER HOPS
   aes_key: "5365637265744f70616c4b6579313233"
   num_channels: 20
   channel_spacing: 150000

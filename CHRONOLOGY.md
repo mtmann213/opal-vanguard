@@ -60,12 +60,20 @@ This document serves as the complete technical history of the Opal Vanguard proj
 - **Documentation Consolidation**: Unified 12+ disparate technical guides into a single, high-fidelity **Master Mission Manual (v12.0)**, serving as the definitive reference for both operators and software engineers.
 - **Stable Baseline Lock**: Formalized Levels 1-6 as the production-ready tactical baseline while designating Level 7 as a research-only WIP.
 
+## 📡 Phase 8: Multi-Waveform Expansion (v12.4)
+**Focus**: Spectral Efficiency and Tactical Flexibility.
+- **Sandbox Proofing**: Created `verify_gmsk_proven.py` to validate mathematical mapping of GMSK into the existing GFSK framework.
+- **Waveform Integration**: Integrated native support for **MSK**, **GMSK**, and **DQPSK** into the core transceiver logic.
+- **Level 8 Realized**: Formalized **Level 8 (Advanced Waveforms)** as a new mission tier, utilizing GMSK for optimized spectral density and tactical resilience.
+- **Regression Safety**: Verified that the new waveform logic maintains absolute backward compatibility with the GFSK/CCSK baseline (Levels 1-6).
+
 ---
 
-## 🏆 Final Stable State (v12.3)
+## 🏆 Final Stable State (v12.4)
 | System | Implementation | Result |
 | :--- | :--- | :--- |
-| **OFDM (L7)** | 1024-byte block, 64 Carriers, DF-OFDM | 2.0 Msps High-Speed Link |
+| **Waveforms** | GFSK, MSK, GMSK, DQPSK | Complete Multi-Modulation Suite |
+| **OFDM (L7)** | 1024-byte block, 64 Carriers, DF-OFDM | [WIP] Research Framework |
 | **Link-16 (L6)** | 120-byte block, 32-chip CCSK, RS(31,15) | Military-Grade symbol resilience |
 | **FEC Repairs** | Synchronized RS(15,11) Syndrome Decoding | Returns (data, err_count) for telemetry |
 | **COMSEC** | AES-256 CTR (Master Key Injected) | Verified secure heartbeats across all levels |

@@ -120,7 +120,6 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
         self.pkt_a = packetizer(config_path=config_path, src_id=sid)
         self.depkt_b = depacketizer(config_path=config_path, src_id=sid, ignore_self=True)
         
-        # COMSEC Key Injection
         if l_cfg.get('use_comsec', False):
             key = bytes.fromhex(l_cfg.get('comsec_key', '00'*32))
             self.pkt_a.use_comsec = True; self.pkt_a.comsec_key = key
@@ -143,10 +142,24 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
         self.mult_len = blocks.tagged_stream_multiply_length(gr.sizeof_char, "packet_len", sps)
         
         mod_type = p_cfg.get('modulation', 'GFSK')
-        if mod_type == "GFSK":
-            sens = (2.0 * np.pi * p_cfg.get('freq_dev', 25000)) / self.samp_rate
-            self.mod_a = digital.gfsk_mod(sps, sens, 0.35, False, False, False)
-            self.demod_b = digital.gfsk_demod(sps, sens, 0.4, 0.5, 0.01, 0.0)
+        if mod_type in ["GFSK", "MSK", "GMSK"]:
+            # MSK/GMSK are specific mathematical cases of CPFSK (which GFSK implements)
+            # For h=0.5 (MSK standard), freq_dev = bit_rate / 4
+            bit_rate = self.samp_rate / sps
+            default_dev = bit_rate / 4.0 if mod_type in ["MSK", "GMSK"] else p_cfg.get('freq_dev', 25000)
+            sens = (2.0 * np.pi * default_dev) / self.samp_rate
+            bt = 1.0 if mod_type == "MSK" else p_cfg.get('gmsk_bt', 0.35)
+            
+            self.mod_a = digital.gfsk_mod(sps, sens, bt, False, False, False)
+            self.demod_b = digital.gfsk_demod(sps, sens, 0.1, 0.5, 0.005, 0.0)
+            print(f"[DSP] {mod_type} Framework Initialized (Sens: {sens:.4f})")
+            
+        elif mod_type == "DQPSK":
+            # Differential QPSK for higher throughput
+            self.mod_a = digital.psk_mod(4, differential=True, samples_per_symbol=sps, excess_bw=0.35, verbose=False, log=False)
+            self.demod_b = digital.psk_demod(4, differential=True, samples_per_symbol=sps, excess_bw=0.35, freq_bw=6.28/100.0, phase_bw=6.28/100.0, timing_bw=6.28/100.0, verbose=False, log=False)
+            print(f"[DSP] DQPSK Framework Initialized.")
+
         elif mod_type == "OFDM":
             self.mod_a = digital.ofdm_tx(fft_len=64, cp_len=16, packet_length_tag_key="packet_len")
             self.demod_b = digital.ofdm_rx(fft_len=64, cp_len=16, packet_length_tag_key="packet_len")

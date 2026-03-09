@@ -1,0 +1,56 @@
+# Opal Vanguard Mission Configuration: LEVEL 8 (Advanced Waveforms)
+# Objective: Utilize high-efficiency GMSK/DQPSK modulations.
+
+mission:
+  id: "LEVEL_8_ADVANCED"
+
+physical:
+  modulation: "GMSK" # Options: [GFSK, MSK, GMSK, DQPSK, OFDM]
+  samp_rate: 2000000
+  center_freq: 915000000
+  samples_per_symbol: 10
+  freq_dev: 50000 # Standard for MSK/GMSK at 200kbps (samp_rate/sps/4)
+  gmsk_bt: 0.35 # Bandwidth-Time product for GMSK
+  ghost_mode: true
+
+link_layer:
+  frame_size: 120
+  use_fec: true
+  fec_type: "RS1511"
+  use_interleaving: true
+  interleaver_rows: 15
+  use_whitening: true
+  use_nrzi: true
+  use_comsec: true
+  comsec_key: "5365637265744f70616c4b6579313233"
+  crc_type: "CRC16"
+
+mac_layer:
+  amc_enabled: true
+  arq_enabled: true
+  max_retries: 5
+  afh_enabled: true
+
+dsss:
+  enabled: false
+  type: "CCSK"
+  spreading_factor: 32
+
+hopping:
+  enabled: true
+  type: "AES"
+  sync_mode: "TOD"
+  dwell_time_ms: 1000
+  aes_key: "5365637265744f70616c4b6579313233"
+  num_channels: 50
+  channel_spacing: 150000
+
+hardware:
+  args: "type=b200"
+  tx_gain: 70
+  rx_gain: 70
+  tx_antenna: "TX/RX"
+  rx_antenna: "TX/RX"
+
+application_layer:
+  payload_type: "heartbeat"

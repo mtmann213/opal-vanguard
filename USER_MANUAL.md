@@ -88,7 +88,7 @@ The system is entirely **Config-Driven**. A single YAML file defines the Physica
 ### A. Physical Layer (`physical`)
 | Parameter | Type/Range | Description |
 | :--- | :--- | :--- |
-| `modulation` | `[GFSK, DBPSK, DQPSK, OFDM]` | Base modulation scheme. GFSK is standard; OFDM is for high-speed multi-carrier. |
+| `modulation` | `[GFSK, MSK, GMSK, DQPSK, OFDM]` | Base modulation scheme. GFSK is standard; MSK/GMSK for high spectral efficiency; DQPSK for 2x throughput. |
 | `samp_rate` | `200k to 56M` | SDR sample rate in Hz. Standard is `2000000` (2.0 Msps). |
 | `center_freq`| `50M to 6G` | Base frequency in Hz. Opal Vanguard uses `915000000` (ISM band). |
 | `sps` | `2 to 100` | Samples Per Symbol. Factor of interpolation/decimation. |
@@ -170,6 +170,7 @@ This project features a ramping "Digital Duel" EW competition.
 | **L5** | Blackout | AES + TOD Hopping | **Manipulation** (Attack the sync logic) |
 | **L6** | Link-16 | CCSK 32-chip + RS(31,15) | **Total Denial** (Massive wideband noise) |
 | **L7** | OFDM Master | [WIP - EXPERIMENTAL] | **Surgical Strike** (In Development) |
+| **L8** | Advanced | MSK / GMSK / DQPSK | **Efficiency** (Maximum spectral density) |
 
 ---
 
