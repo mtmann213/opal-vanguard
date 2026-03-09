@@ -18,10 +18,11 @@ The project has achieved a high-fidelity, production-grade baseline. After a maj
 - **Security**: AES-256 CTR encryption verified for tactical heartbeats.
 - **Resilience**: RS(15,11) and RS(31,15) FEC with synchronized interleaving.
 
-### 🚀 Future Roadmap
+### 🚀 Future Roadmap (Phase 8)
+- **Multi-Waveform Expansion**: Integrate MSK, GMSK, and DQPSK modulations.
+- **Regression Protocol**: All new modulations must pass a software sandbox test and an L1/L6 baseline regression check before hardware deployment.
+- **Documentation Sync**: Concurrent updates to the Master Manual and Chronology are mandatory for each new waveform.
 - **Level 7 Final Polish**: Fine-tune the "Blind Scan" scanner for sub-100ms lock times on wideband links.
-- **Adaptive Resilience**: Expand the AFH (Adaptive Frequency Hopping) logic to automatically blacklist channels with >10% BER.
-- **Coherence**: Explore 1PPS/Ref-In triggering for phase-coherent MIMO operations.
 
 ---
 *Resume point created: Sunday, March 8, 2026. System is in its most stable and documented state.*
