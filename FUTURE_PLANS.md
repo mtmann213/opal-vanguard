@@ -90,5 +90,12 @@ This document outlines the detailed engineering plans for the next four phases o
 *   **Concept**: Move the Syncword correlator and AES-Hop generator into Verilog (RFNoC) for the USRP.
 *   **Value**: Enables "True" Link-16 hopping speeds (12,000+ hops/sec) by eliminating USB latency.
 
+### 📡 E. Advanced Waveform Suite
+*   **CSS (Chirp Spread Spectrum)**: Implement LoRa-style swept-frequency chirps for ultra-resilient communication below the noise floor.
+*   **OQPSK (Offset QPSK)**: Optimize DQPSK for USRP hardware by offsetting I/Q channels, ensuring a constant envelope and cleaner bursts.
+*   **8PSK / D8PSK**: A "Throughput Tier" modulation encoding 3 bits/symbol for high-SNR broadband environments.
+*   **CPM (Continuous Phase Modulation)**: The "Military Master" waveform. A generalization of GMSK using Viterbi decoding for maximum spectral efficiency.
+*   **Tactical QAM (16/64-QAM)**: Reserved for **Phase 16 (Broadband)**. Suitable for high-bandwidth terrestrial backhaul (Microwave/Link-22) but requires strict amplifier linearity.
+
 ---
 *Roadmap generated for Opal Vanguard v15.0. These frontiers represent the path to a Tier-1 Tactical Data Link.*
