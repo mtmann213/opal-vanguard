@@ -125,7 +125,7 @@ class CSSProcessor:
     """
     Chirp Spread Spectrum (CSS) Processor.
     Uses Linear Frequency Sweeps (Chirps) to represent bits.
-    Robust against noise and multipath.
+    Robust against noise and multipath. Optimized via Vectorization.
     """
     def __init__(self, sps=128, samp_rate=2000000):
         self.sps = sps
@@ -134,38 +134,38 @@ class CSSProcessor:
         self.bw = samp_rate / 10 # Default bandwidth is 10% of sample rate
         
         # Pre-calculate reference chirps
-        # f(t) = f_start + (f_end - f_start) * t / T
         k = self.bw / (sps / samp_rate)
         phase_up = 2 * np.pi * (-self.bw/2 * self.t + 0.5 * k * self.t**2)
         phase_down = 2 * np.pi * (self.bw/2 * self.t - 0.5 * k * self.t**2)
         
         self.up_chirp = np.exp(1j * phase_up).astype(np.complex64)
         self.down_chirp = np.exp(1j * phase_down).astype(np.complex64)
+        
+        # Pre-calculate Mod/Demod matrices
+        self.mod_matrix = np.vstack([self.up_chirp, self.down_chirp])
+        self.demod_matrix_conj = np.vstack([np.conj(self.up_chirp), np.conj(self.down_chirp)]).T
 
     def modulate(self, bits):
-        """Converts bits to a continuous complex baseband chirp signal."""
-        out = np.zeros(len(bits) * self.sps, dtype=np.complex64)
-        for i, bit in enumerate(bits):
-            out[i*self.sps:(i+1)*self.sps] = self.up_chirp if bit == 0 else self.down_chirp
-        return out
+        """Converts bits to continuous complex baseband chirps (Vectorized)."""
+        bits_arr = np.array(bits, dtype=np.int32)
+        # Ultra-fast row indexing
+        return self.mod_matrix.take(bits_arr, axis=0).flatten()
 
     def demodulate(self, samples):
-        """Recovers bits using conjugate correlation peaks."""
+        """Recovers bits using vectorized conjugate correlation (Matrix Dot Product)."""
         n_syms = len(samples) // self.sps
-        bits = []
-        confidences = []
-        for i in range(n_syms):
-            chunk = samples[i*self.sps:(i+1)*self.sps]
-            if len(chunk) < self.sps: break
-            # Correlate against both references
-            corr_up = np.abs(np.sum(chunk * np.conj(self.up_chirp)))
-            corr_down = np.abs(np.sum(chunk * np.conj(self.down_chirp)))
-            
-            bit = 0 if corr_up > corr_down else 1
-            conf = max(corr_up, corr_down) / self.sps
-            bits.append(bit)
-            confidences.append(conf)
-        return bits, confidences
+        if n_syms == 0: return [], []
+        
+        # Reshape samples into symbols
+        sym_matrix = samples[:n_syms*self.sps].reshape(n_syms, self.sps)
+        
+        # Matrix multiply: (N_syms, SPS) @ (SPS, 2) -> (N_syms, 2 correlations)
+        correlations = np.abs(np.dot(sym_matrix, self.demod_matrix_conj))
+        
+        bits = np.argmax(correlations, axis=1).astype(np.uint8)
+        confidences = np.max(correlations, axis=1) / self.sps
+        
+        return bits.tolist(), confidences.tolist()
 
 class Scrambler:
     def __init__(self, mask=0x48, seed=0x7F):

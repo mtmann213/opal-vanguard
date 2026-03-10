@@ -23,6 +23,7 @@ from packetizer import packetizer
 from depacketizer import depacketizer
 from hop_generator_tod import tod_hop_generator
 from session_manager import session_manager
+from dsp_helper import CSSProcessor
 
 class LoggerProxy:
     def __init__(self, original, log_file):
@@ -195,19 +196,17 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
             self.unpack = blocks.packed_to_unpacked_bb(1, gr.GR_MSB_FIRST)
         elif mod_type == "CSS":
             self.css_p = CSSProcessor(sps=p_cfg.get('samples_per_symbol', 128), samp_rate=self.samp_rate)
-            class CSSMod(gr.sync_block):
-                def __init__(self, p): gr.sync_block.__init__(self, "CSSMod", [gr.sizeof_char], [gr.sizeof_gr_complex]); self.p = p
+            # Optimized Rate-Changing Python Blocks
+            class CSSMod(gr.interp_block):
+                def __init__(self, p): gr.interp_block.__init__(self, "CSSMod", in_sig=[np.uint8], out_sig=[np.complex64], interpolation=p.sps); self.p = p
                 def work(self, i, o):
-                    n = min(len(i[0]), len(o[0]) // self.p.sps)
-                    if n == 0: return 0
-                    o[0][:n*self.p.sps] = self.p.modulate(i[0][:n])
-                    return n * self.p.sps
-            class CSSDemod(gr.sync_block):
-                def __init__(self, p): gr.sync_block.__init__(self, "CSSDemod", [gr.sizeof_gr_complex], [gr.sizeof_char]); self.p = p
+                    res = self.p.modulate(i[0])
+                    o[0][:len(res)] = res
+                    return len(res)
+            class CSSDemod(gr.decim_block):
+                def __init__(self, p): gr.decim_block.__init__(self, "CSSDemod", in_sig=[np.complex64], out_sig=[np.uint8], decimation=p.sps); self.p = p
                 def work(self, i, o):
-                    n = min(len(i[0]) // self.p.sps, len(o[0]))
-                    if n == 0: return 0
-                    b, _ = self.p.demodulate(i[0][:n*self.p.sps])
+                    b, _ = self.p.demodulate(i[0])
                     o[0][:len(b)] = b
                     return len(b)
             self.mod_a, self.demod_b = CSSMod(self.css_p), CSSDemod(self.css_p)
@@ -244,6 +243,10 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
         if mod_type == "OFDM":
             self.connect(self.p2s_a, self.mod_a, self.usrp_sink)
             self.connect(self.usrp_source, self.rx_filter, self.demod_b, self.unpack, self.depkt_b)
+        elif mod_type == "CSS":
+            # CSS handles its own tag scaling via interp_block
+            self.connect(self.p2s_a, self.mod_a, self.usrp_sink)
+            self.connect(self.usrp_source, self.rx_filter, self.demod_b, self.depkt_b)
         else:
             self.connect(self.p2s_a, self.mult_len, self.mod_a, self.usrp_sink)
             self.connect(self.usrp_source, self.rx_filter, self.demod_b, self.depkt_b)

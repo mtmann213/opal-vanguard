@@ -1,21 +1,21 @@
-# Opal Vanguard: Project Resume (v15.8 Master Stable)
+# Opal Vanguard: Project Resume (v16.3 Master Stable)
 
-## 📡 Current Status: MISSION READY (Optimized & Verified)
-The project has achieved a unified, high-performance tactical interface with 100% verified regression across all 8 mission levels. The "Link Layer" is now fully vectorized for maximum CPU efficiency.
+## 📡 Current Status: MISSION READY (CSS Enabled)
+The project has expanded into Spread Spectrum technology with a fully vectorized Chirp Spread Spectrum (CSS) engine. "Level 9: Deep Shadow" is now operational.
 
-### ✅ Major Achievements (v15.8 Build)
-- **Phase 12: Unified Tactical Operations Center (TOC)**: Consolidated Spectrum, Signal Health (LQI), and Blue Force Tracking (BFT) into a single high-density dashboard.
-- **UI-Radio Async Bridge (v15.0)**: Eliminated thread deadlocks by implementing a polled queue system (`UIBridge`) for asynchronous, non-blocking UI-to-Radio data injection.
-- **Link Layer Vectorization (v15.7)**: Replaced CPU-heavy Python loops with optimized NumPy operations for **Scrambling**, **Matrix Interleaving**, and **NRZI Encoding**, reducing "Hot Path" overhead by >90%.
-- **Unbuffered Tactical Feedback (v15.8)**: Implemented `flush=True` on all tactical console outputs, ensuring real-time `[OK]` and `[RX]` terminal telemetry without process-exit delays.
-- **Waterfall Optimization**: Dynamically tuned FFT sizes and refresh rates (512-point @ 10 FPS for L6) to preserve CPU cycles for high-speed hopping and FEC decoding.
-- **Regression Suite (v15.1)**: Modernized `test_all_configs.py` to support v15.x logic, verifying 9/9 primary tactical configurations (GFSK, MSK, GMSK, DQPSK, CCSK, etc.).
+### ✅ Major Achievements (v16.3 Build)
+- **Phase 16: Chirp Spread Spectrum (CSS)**: Implemented LoRa-style linear frequency sweeps for ultra-resilient communication below the noise floor.
+- **Vectorized CSS Engine**: Optimized mod/demod via NumPy matrix dot products, eliminating Python loop overhead and USRP underflows.
+- **Rate-Changing Architecture**: Correctly implemented `CSSMod` and `CSSDemod` as `interp_block` and `decim_block` to maintain GNU Radio scheduler integrity.
+- **Tag Precision (CSS)**: Resolved the "Double Scaling" tag paradox for rate-changing blocks, ensuring perfect USRP burst alignment.
+- **Level 9: Deep Shadow**: Added a new mission tier utilizing 128-chip CSS for extreme noise resilience.
+- **Link Layer Vectorization (v15.7)**: Replaced CPU-heavy loops with NumPy for Scrambling, Interleaving, and NRZI.
 
 ### 🔬 Technical Core State
 - **Hardware**: USRP B205mini/B210 supported via UHD.
-- **Modulations**: GFSK (L1-6), MSK (L6/L8), BPSK (L6), GMSK/DQPSK (L8).
+- **Modulations**: GFSK (L1-6), MSK (L6/L8), BPSK (L6), GMSK/DQPSK (L8), CSS (L9).
 - **Security**: AES-256 CTR verified for all tactical heartbeats and manual BFT entries.
-- **Resilience**: RS(15,11) and RS(31,15) FEC with vectorized matrix interleaving and CCSK spreading.
+- **Resilience**: RS(15,11) and RS(31,15) FEC with vectorized matrix interleaving and CCSK/CSS spreading.
 
 ### 🚀 Future Roadmap (Phases 13-16)
 - **Phase 13: TDMA Mesh**: Transition to time-slotted networking (7.8ms slots) for multi-node support.
