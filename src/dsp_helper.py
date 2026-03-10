@@ -93,14 +93,19 @@ class CCSKProcessor:
         self.base_sequence = np.array([
             0, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 0, 1, 0, 0, 1,
             0, 0, 0, 0, 1, 0, 1, 0, 1, 1, 1, 0, 1, 1, 0, 0
-        ])
+        ], dtype=np.uint8)
+        # Pre-calculate all 32 possible shifts for ultra-fast indexing
+        self.shifts = np.array([np.roll(self.base_sequence, -i) for i in range(32)], dtype=np.uint8)
         # Convert to bipolar (+1, -1) for correlation
-        self.base_bipolar = np.where(self.base_sequence == 1, 1, -1)
+        self.base_bipolar = np.where(self.base_sequence == 1, 1, -1).astype(np.int8)
 
     def encode_symbol(self, symbol):
         """Maps a 5-bit symbol (0-31) to a cyclic shift of the base sequence."""
-        shift = symbol % 32
-        return np.roll(self.base_sequence, -shift).tolist()
+        return self.shifts[symbol % 32].tolist()
+
+    def vectorized_encode(self, symbols):
+        """Encodes a block of 5-bit symbols using pre-calculated matrix indexing."""
+        return self.shifts[symbols % 32].flatten().tolist()
 
     def decode_chips(self, chips):
         """Finds the shift with the highest magnitude correlation to recover the 5-bit symbol."""

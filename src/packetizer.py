@@ -24,7 +24,9 @@ class packetizer(gr.basic_block):
         # Load Configuration
         with open(config_path, 'r') as f: self.cfg = yaml.safe_load(f)
         l_cfg = self.cfg.get('link_layer', {})
+        p_cfg = self.cfg.get('physical', {})
         self.frame_size = l_cfg.get('frame_size', 120)
+        self.preamble_len = p_cfg.get('preamble_len', 512)
         self.use_fec = l_cfg.get('use_fec', True)
         self.use_interleaving = l_cfg.get('use_interleaving', True)
         self.use_whitening = l_cfg.get('use_whitening', True)
@@ -108,8 +110,8 @@ class packetizer(gr.basic_block):
             self.message_port_pub(pmt.intern("out"), pmt.cons(pmt.make_dict(), pmt.init_u8vector(len(packet), list(packet))))
         else:
             # Bit-stream modes (GFSK/BPSK) require explicit preamble/sync
-            bits = []
-            for b in packet: [bits.append((b >> (7-i)) & 1) for i in range(8)]
+            # 1. High-Efficiency Byte-to-Bit Conversion (Vectorized)
+            bits = np.unpackbits(np.frombuffer(packet, dtype=np.uint8)).tolist()
             
             # Robust Tactical Detection (handles L6, L7, and LINK-16 variations)
             f_id = str(self.fec_mode).upper()
@@ -119,16 +121,21 @@ class packetizer(gr.basic_block):
             
             final_bits = bits
             if self.use_ccsk:
-                final_bits = []
-                for i in range(0, len(bits), 5):
-                    chunk = bits[i:i+5]; sym = 0
-                    for b in chunk: sym = (sym << 1) | b
-                    final_bits.extend(self.ccsk.encode_symbol(sym))
+                # 3. Vectorized CCSK Spreading (5-bit chunks)
+                bits_arr = np.array(bits, dtype=np.uint8)
+                # Ensure length is multiple of 5
+                if len(bits_arr) % 5: bits_arr = np.append(bits_arr, np.zeros(5 - (len(bits_arr) % 5), dtype=np.uint8))
+                
+                # Reshape and convert to symbols (0-31)
+                syms = np.packbits(bits_arr.reshape(-1, 5), axis=1, bitorder='big') >> 3
+                final_bits = self.ccsk.vectorized_encode(syms.flatten())
 
-            preamble = [1,0]*256 # 512 bits of clock recovery
+            preamble = ([1,0]*(self.preamble_len // 2))[:self.preamble_len] # Flexible recovery pattern
             sync_val = 0x3D4C5B6AACE12345 if is_tactical else 0x3D4C5B6A
             sync_len = 64 if is_tactical else 32
-            syncword = [int(b) for b in format(sync_val, f'0{sync_len}b')]
+            
+            # 2. Vectorized Syncword Generation (Bit-shifting)
+            syncword = [(sync_val >> i) & 1 for i in range(sync_len-1, -1, -1)]
             
             out_bits = preamble + syncword + final_bits
             self.message_port_pub(pmt.intern("out"), pmt.cons(pmt.make_dict(), pmt.init_u8vector(len(out_bits), out_bits)))

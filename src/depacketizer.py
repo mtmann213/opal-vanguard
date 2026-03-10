@@ -160,7 +160,10 @@ class depacketizer(gr.basic_block):
         n = len(in0)
         
         is_ofdm = self.cfg['physical'].get('modulation', 'GFSK') == 'OFDM'
-        is_tactical = ("LINK-16" in self.fec_mode or "LEVEL_6" in self.fec_mode or "LEVEL_7" in self.fec_mode)
+        # Robust Tactical Detection (handles L6, L7, and LEVEL_8 variations)
+        f_id = str(self.fec_mode).upper()
+        is_tactical = ("LINK16" in f_id or "LINK-16" in f_id or "LEVEL_6" in f_id or "LEVEL_7" in f_id or "LEVEL_8" in f_id)
+        
         sync_val = self.sync_val_64 if is_tactical else self.sync_val_32
         threshold = 4 if is_tactical else 2
 

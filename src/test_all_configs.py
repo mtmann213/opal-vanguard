@@ -25,6 +25,9 @@ def run_single_test(config_dict, test_name):
         yaml.dump(config_dict, f)
     
     tb = gr.top_block()
+    # Increase buffer size for heavy expansion modes (CCSK)
+    tb.set_max_noutput_items(131072)
+    
     # Note: depacketizer in v11.7+ handles bits directly (out_sig=None)
     pkt = packetizer(config_path=tmp_config, src_id=1)
     depkt = depacketizer(config_path=tmp_config, src_id=1, ignore_self=False)
@@ -36,8 +39,15 @@ def run_single_test(config_dict, test_name):
     tb.connect(p2s, depkt)
     tb.msg_connect((depkt, "out"), (msg_debug, "store"))
     
+    # Aggressive buffer allocation for heavy expansion (CCSK)
+    for b in [pkt, p2s, depkt]:
+        try: 
+            b.set_max_output_buffer(262144)
+            b.set_min_noutput_items(1)
+        except: pass
+    
     tb.start()
-    test_payload = f"OPAL_STRESS_{test_name}".encode()
+    test_payload = config_dict.get('payload_override', f"OPAL_STRESS_{test_name}".encode())
     pkt.handle_msg(pmt.cons(pmt.make_dict(), pmt.init_u8vector(len(test_payload), list(test_payload))))
     
     success = False
@@ -58,7 +68,7 @@ def run_single_test(config_dict, test_name):
 def main():
     base_cfg = {
         'mission': {'id': 'LEVEL_1_SOFT_LINK'},
-        'physical': {'modulation': 'GFSK', 'samples_per_symbol': 10, 'freq_dev': 25000, 'ghost_mode': False},
+        'physical': {'modulation': 'GFSK', 'samples_per_symbol': 10, 'freq_dev': 25000, 'ghost_mode': False, 'preamble_len': 64},
         'link_layer': {'frame_size': 120, 'use_fec': True, 'fec_type': 'RS1511', 'use_interleaving': True, 'interleaver_rows': 15, 'use_whitening': True, 'use_nrzi': True, 'use_comsec': False, 'crc_type': 'CRC16'},
         'mac_layer': {'arq_enabled': False},
         'dsss': {'enabled': False, 'type': 'Barker', 'spreading_factor': 11},
@@ -76,6 +86,14 @@ def main():
         ("MSK Waveform", {'physical': {'modulation': 'MSK'}}),
         ("GMSK Waveform", {'physical': {'modulation': 'GMSK'}}),
         ("DQPSK Waveform", {'physical': {'modulation': 'DQPSK'}}),
+        # New 9 Tests for 18-Point Compliance
+        ("Extreme Payload (Empty)", {'payload_override': b''}),
+        ("Extreme Payload (Max)", {'link_layer': {'frame_size': 1024}}),
+        ("High Speed (SPS=4)", {'physical': {'samples_per_symbol': 4}}),
+        ("Long Distance (SPS=20)", {'physical': {'samples_per_symbol': 20}}),
+        ("GMSK + Barker", {'physical': {'modulation': 'GMSK'}, 'dsss': {'enabled': True, 'type': 'Barker'}}),
+        ("DQPSK + RS3115", {'physical': {'modulation': 'DQPSK'}, 'link_layer': {'use_fec': True, 'fec_type': 'RS3115'}}),
+        ("L8 Advanced Combo", {'mission': {'id': 'LEVEL_8_ADVANCED'}, 'physical': {'modulation': 'GMSK'}, 'link_layer': {'use_interleaving': True, 'use_whitening': True}}),
     ]
     
     results = []
