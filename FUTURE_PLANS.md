@@ -70,4 +70,25 @@ This document outlines the detailed engineering plans for the next four phases o
     *   The receiver uses these tones to "twist" the incoming signal back into alignment, compensating for RF fading in real-time.
 
 ---
+
+## 📋 Tactical Backlog & Research Bin
+*This section serves as a living backlog for high-value features and research topics identified during development but reserved for future consideration.*
+
+### 🎙️ A. Low-Bitrate Tactical Voice
+*   **Concept**: Integrate **Codec2** (3200 bps) to support digital voice over the hopping link.
+*   **Value**: Provides secure, jam-resistant voice comms within the existing GFSK/MSK framework.
+
+### 📡 B. Passive Signal Intelligence (SIGINT)
+*   **Concept**: Use the "Spectrum Scrubber" from Phase 14 to not just evade jammers, but to log and identify enemy transmitter types based on their spectral fingerprint.
+*   **Value**: Transforms the radio into a situational awareness sensor.
+
+### 📱 C. Web-Based Remote Dashboard
+*   **Concept**: Add a lightweight Flask/WebSocket bridge to allow the TOC to be viewed on a tablet or mobile device over a local network.
+*   **Value**: Unlocks "Handheld" situational awareness for operators in the field.
+
+### ⚡ D. FPGA-Offload Acceleration
+*   **Concept**: Move the Syncword correlator and AES-Hop generator into Verilog (RFNoC) for the USRP.
+*   **Value**: Enables "True" Link-16 hopping speeds (12,000+ hops/sec) by eliminating USB latency.
+
+---
 *Roadmap generated for Opal Vanguard v15.0. These frontiers represent the path to a Tier-1 Tactical Data Link.*
