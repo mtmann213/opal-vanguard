@@ -121,6 +121,52 @@ class CCSKProcessor:
         confidence = correlations[best_shift] / 32.0
         return int(best_shift), float(confidence)
 
+class CSSProcessor:
+    """
+    Chirp Spread Spectrum (CSS) Processor.
+    Uses Linear Frequency Sweeps (Chirps) to represent bits.
+    Robust against noise and multipath.
+    """
+    def __init__(self, sps=128, samp_rate=2000000):
+        self.sps = sps
+        self.samp_rate = samp_rate
+        self.t = np.arange(sps) / samp_rate
+        self.bw = samp_rate / 10 # Default bandwidth is 10% of sample rate
+        
+        # Pre-calculate reference chirps
+        # f(t) = f_start + (f_end - f_start) * t / T
+        k = self.bw / (sps / samp_rate)
+        phase_up = 2 * np.pi * (-self.bw/2 * self.t + 0.5 * k * self.t**2)
+        phase_down = 2 * np.pi * (self.bw/2 * self.t - 0.5 * k * self.t**2)
+        
+        self.up_chirp = np.exp(1j * phase_up).astype(np.complex64)
+        self.down_chirp = np.exp(1j * phase_down).astype(np.complex64)
+
+    def modulate(self, bits):
+        """Converts bits to a continuous complex baseband chirp signal."""
+        out = np.zeros(len(bits) * self.sps, dtype=np.complex64)
+        for i, bit in enumerate(bits):
+            out[i*self.sps:(i+1)*self.sps] = self.up_chirp if bit == 0 else self.down_chirp
+        return out
+
+    def demodulate(self, samples):
+        """Recovers bits using conjugate correlation peaks."""
+        n_syms = len(samples) // self.sps
+        bits = []
+        confidences = []
+        for i in range(n_syms):
+            chunk = samples[i*self.sps:(i+1)*self.sps]
+            if len(chunk) < self.sps: break
+            # Correlate against both references
+            corr_up = np.abs(np.sum(chunk * np.conj(self.up_chirp)))
+            corr_down = np.abs(np.sum(chunk * np.conj(self.down_chirp)))
+            
+            bit = 0 if corr_up > corr_down else 1
+            conf = max(corr_up, corr_down) / self.sps
+            bits.append(bit)
+            confidences.append(conf)
+        return bits, confidences
+
 class Scrambler:
     def __init__(self, mask=0x48, seed=0x7F):
         self.mask = mask; self.seed = seed; self.state = seed

@@ -1,0 +1,51 @@
+# Opal Vanguard Mission Configuration: LEVEL 9 (Deep Shadow)
+# Objective: Ultra-Resilient Low-Probability-of-Intercept (LPI) link.
+# Modulation: CSS (Chirp Spread Spectrum) - LoRa style robust waveforms.
+
+mission:
+  id: "LEVEL_9_DEEP_SHADOW"
+
+physical:
+  modulation: "CSS"
+  samp_rate: 2000000
+  center_freq: 915000000
+  samples_per_symbol: 128 # High SF for extreme noise resilience
+  ghost_mode: true
+
+link_layer:
+  frame_size: 60 # Smaller frames for faster CSS recovery
+  use_fec: true
+  fec_type: "RS1511"
+  use_interleaving: true
+  interleaver_rows: 15
+  use_whitening: true
+  use_nrzi: false # CSS is robust enough without NRZI
+  use_comsec: true
+  comsec_key: "5365637265744f70616c4b6579313233"
+  crc_type: "CRC16"
+
+mac_layer:
+  arq_enabled: true
+  max_retries: 5
+
+dsss:
+  enabled: false # CSS is its own spreading mechanism
+
+hopping:
+  enabled: true
+  type: "AES"
+  sync_mode: "TOD"
+  dwell_time_ms: 500
+  aes_key: "5365637265744f70616c4b6579313233"
+  num_channels: 50
+  channel_spacing: 150000
+
+hardware:
+  args: "type=b200"
+  tx_gain: 70
+  rx_gain: 70
+  tx_antenna: "TX/RX"
+  rx_antenna: "TX/RX"
+
+application_layer:
+  payload_type: "heartbeat"

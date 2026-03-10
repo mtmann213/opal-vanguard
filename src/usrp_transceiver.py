@@ -193,6 +193,24 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
             self.mod_a = digital.ofdm_tx(fft_len=64, cp_len=16, packet_length_tag_key="packet_len")
             self.demod_b = digital.ofdm_rx(fft_len=64, cp_len=16, packet_length_tag_key="packet_len")
             self.unpack = blocks.packed_to_unpacked_bb(1, gr.GR_MSB_FIRST)
+        elif mod_type == "CSS":
+            self.css_p = CSSProcessor(sps=p_cfg.get('samples_per_symbol', 128), samp_rate=self.samp_rate)
+            class CSSMod(gr.sync_block):
+                def __init__(self, p): gr.sync_block.__init__(self, "CSSMod", [gr.sizeof_char], [gr.sizeof_gr_complex]); self.p = p
+                def work(self, i, o):
+                    n = min(len(i[0]), len(o[0]) // self.p.sps)
+                    if n == 0: return 0
+                    o[0][:n*self.p.sps] = self.p.modulate(i[0][:n])
+                    return n * self.p.sps
+            class CSSDemod(gr.sync_block):
+                def __init__(self, p): gr.sync_block.__init__(self, "CSSDemod", [gr.sizeof_gr_complex], [gr.sizeof_char]); self.p = p
+                def work(self, i, o):
+                    n = min(len(i[0]) // self.p.sps, len(o[0]))
+                    if n == 0: return 0
+                    b, _ = self.p.demodulate(i[0][:n*self.p.sps])
+                    o[0][:len(b)] = b
+                    return len(b)
+            self.mod_a, self.demod_b = CSSMod(self.css_p), CSSDemod(self.css_p)
 
         self.rx_filter = filter.fir_filter_ccf(1, filter.firdes.low_pass(1.0, self.samp_rate, 100e3, 50e3))
         self.hop_ctrl = tod_hop_generator(key=bytes.fromhex(h_cfg.get('aes_key', '00'*32)), num_channels=h_cfg.get('num_channels', 50), center_freq=self.center_freq, channel_spacing=h_cfg.get('channel_spacing', 150000), dwell_ms=h_cfg.get('dwell_time_ms', 500))
