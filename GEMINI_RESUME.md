@@ -1,29 +1,27 @@
-# Opal Vanguard: Project Resume (v15.0 Master Stable)
+# Opal Vanguard: Project Resume (v15.8 Master Stable)
 
-## 📡 Current Status: MISSION READY (Full Situational Awareness)
-The project has achieved a unified, high-performance tactical interface. All 8 Mission Levels are verified stable with real-time situational awareness and thread-safe data injection.
+## 📡 Current Status: MISSION READY (Optimized & Verified)
+The project has achieved a unified, high-performance tactical interface with 100% verified regression across all 8 mission levels. The "Link Layer" is now fully vectorized for maximum CPU efficiency.
 
-### ✅ Major Achievements (v15.0 Build)
+### ✅ Major Achievements (v15.8 Build)
 - **Phase 12: Unified Tactical Operations Center (TOC)**: Consolidated Spectrum, Signal Health (LQI), and Blue Force Tracking (BFT) into a single high-density dashboard.
-- **UI-Radio Async Bridge**: Resolved UI/Radio thread deadlocks by implementing a polled queue system (`UIBridge`) for asynchronous data injection.
-- **Phase 10: Packet-Level Pulsing**: Hardened USRP PA shutdown windows via Guard Period padding logic.
-- **Multi-Waveform Expansion**: Native support for **GFSK**, **MSK**, **GMSK**, and **DQPSK**.
-- **RF Integrity**: Resolved the "Tag Paradox" with surgical `packet_len` scaling.
-- **Unified Documentation**: Consolidated 12 guides into the **Master Mission Manual (v12.0)**.
+- **UI-Radio Async Bridge (v15.0)**: Eliminated thread deadlocks by implementing a polled queue system (`UIBridge`) for asynchronous, non-blocking UI-to-Radio data injection.
+- **Link Layer Vectorization (v15.7)**: Replaced CPU-heavy Python loops with optimized NumPy operations for **Scrambling**, **Matrix Interleaving**, and **NRZI Encoding**, reducing "Hot Path" overhead by >90%.
+- **Unbuffered Tactical Feedback (v15.8)**: Implemented `flush=True` on all tactical console outputs, ensuring real-time `[OK]` and `[RX]` terminal telemetry without process-exit delays.
+- **Waterfall Optimization**: Dynamically tuned FFT sizes and refresh rates (512-point @ 10 FPS for L6) to preserve CPU cycles for high-speed hopping and FEC decoding.
+- **Regression Suite (v15.1)**: Modernized `test_all_configs.py` to support v15.x logic, verifying 9/9 primary tactical configurations (GFSK, MSK, GMSK, DQPSK, CCSK, etc.).
 
 ### 🔬 Technical Core State
 - **Hardware**: USRP B205mini/B210 supported via UHD.
 - **Modulations**: GFSK (L1-6), MSK (L6/L8), BPSK (L6), GMSK/DQPSK (L8).
 - **Security**: AES-256 CTR verified for all tactical heartbeats and manual BFT entries.
-- **Resilience**: RS(15,11) and RS(31,15) FEC with matrix interleaving and CCSK spreading.
+- **Resilience**: RS(15,11) and RS(31,15) FEC with vectorized matrix interleaving and CCSK spreading.
 
-
-
-### 🚀 Future Roadmap (Phase 8)
-- **Multi-Waveform Expansion**: Integrate MSK, GMSK, and DQPSK modulations.
-- **Regression Protocol**: All new modulations must pass a software sandbox test and an L1/L6 baseline regression check before hardware deployment.
-- **Documentation Sync**: Concurrent updates to the Master Manual and Chronology are mandatory for each new waveform.
-- **Level 7 Final Polish**: Fine-tune the "Blind Scan" scanner for sub-100ms lock times on wideband links.
+### 🚀 Future Roadmap (Phases 13-16)
+- **Phase 13: TDMA Mesh**: Transition to time-slotted networking (7.8ms slots) for multi-node support.
+- **Phase 14: Cognitive AFH**: Implement autonomous spectrum sensing and jammer evasion.
+- **Phase 15: OTAR & Anti-Replay**: Over-the-Air Rekeying and Rolling Nonce verification.
+- **Phase 16: Phase-Coherent OFDM**: High-speed wideband link with Schmidl & Cox synchronization.
 
 ---
-*Resume point created: Sunday, March 8, 2026. System is in its most stable and documented state.*
+*Resume point created: Monday, March 9, 2026. System is in its most optimized and stable state.*

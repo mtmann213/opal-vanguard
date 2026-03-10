@@ -235,9 +235,11 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
         self.msg_connect((self.session, "status_out"), (self.status_proxy, "msg"))
         self.msg_connect((self.session, "data_out"), (self.data_proxy, "msg"))
 
-        # GUI Optimization: 1024-point FFT at 15 FPS
-        self.snk_waterfall = qtgui.waterfall_sink_c(1024, fft.window.WIN_BLACKMAN_HARRIS, self.center_freq, self.samp_rate, "Tactical Display", 1)
-        self.snk_waterfall.set_update_time(0.06) 
+        # GUI Optimization: 512-point FFT at 10 FPS for L6
+        fft_size = 512 if "LEVEL_6" in self.cfg['mission']['id'] else 1024
+        fps_delay = 0.1 if "LEVEL_6" in self.cfg['mission']['id'] else 0.06
+        self.snk_waterfall = qtgui.waterfall_sink_c(fft_size, fft.window.WIN_BLACKMAN_HARRIS, self.center_freq, self.samp_rate, "Tactical Display", 1)
+        self.snk_waterfall.set_update_time(fps_delay) 
         self.viz_panel.addWidget(sip.wrapinstance(self.snk_waterfall.qwidget(), Qt.QWidget))
         self.connect(self.usrp_source, self.snk_waterfall)
 
@@ -276,12 +278,14 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
             s = pmt.to_python(pmt.dict_ref(msg, pmt.intern("state"), pmt.from_long(0)))
             self.status_label.setText(f"Status: {s}")
             self.status_label.setStyleSheet(f"color: {'green' if s == 'CONNECTED' else 'orange'}; font-weight: bold;")
+            print(f"[STATUS] {s}", flush=True)
         except: pass
 
     @pyqtSlot(object)
     def on_data_msg(self, msg):
         try:
             raw = bytes(pmt.u8vector_elements(pmt.cdr(msg))).decode('utf-8', errors='replace')
+            print(f"[RX] {raw}", flush=True)
             if raw.startswith("BFT|"):
                 # Format: BFT|ID|ROLE|LAT,LON
                 parts = raw.split("|")

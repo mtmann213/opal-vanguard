@@ -8,19 +8,25 @@ class MatrixInterleaver:
     def __init__(self, rows=8):
         self.rows = rows
     def interleave(self, data, *args):
-        data_len = len(data)
+        # Convert to numpy directly from buffer
+        arr = np.frombuffer(data, dtype=np.uint8)
+        data_len = len(arr)
         cols = (data_len + self.rows - 1) // self.rows
-        padded_data = list(data) + [0] * (cols * self.rows - data_len)
-        matrix = np.array(padded_data).reshape((self.rows, cols))
+        # Pad with zeros if necessary
+        if data_len < (cols * self.rows):
+            arr = np.append(arr, np.zeros((cols * self.rows) - data_len, dtype=np.uint8))
+        matrix = arr.reshape((self.rows, cols))
+        # Transpose and flatten (Column-major to Row-major swap)
         interleaved = matrix.T.flatten()
-        return bytes(interleaved.tolist())
+        return interleaved.tobytes()
     def deinterleave(self, data, *args):
-        data_len = len(data)
+        arr = np.frombuffer(data, dtype=np.uint8)
+        data_len = len(arr)
         original_len = args[0] if args else data_len
         cols = (data_len + self.rows - 1) // self.rows
-        matrix = np.array(list(data)).reshape((cols, self.rows))
+        matrix = arr.reshape((cols, self.rows))
         deinterleaved = matrix.T.flatten()
-        return bytes(deinterleaved[:original_len].tolist())
+        return deinterleaved[:original_len].tobytes()
 
 class DSSSProcessor:
     def __init__(self, sf=31, chipping_code=None):
@@ -44,25 +50,25 @@ class DSSSProcessor:
 
 class NRZIEncoder:
     def __init__(self):
-        self.tx_state = 0
-        self.rx_state = 0
+        self.tx_state = 0; self.rx_state = 0
     def reset(self):
-        self.tx_state = 0
-        self.rx_state = 0
+        self.tx_state = 0; self.rx_state = 0
     def encode(self, bits):
-        encoded = []; state = self.tx_state
-        for bit in bits:
-            if bit == 1: state = 1 - state
-            encoded.append(state)
-        self.tx_state = state
-        return encoded
+        # Use NumPy to calculate transitions (1 means flip state)
+        bits_arr = np.array(bits, dtype=np.uint8)
+        # Cumulative XOR effectively implements the NRZI state machine
+        # We must include the initial state in the calculation
+        # np.bitwise_xor.accumulate is the vectorized equivalent of our loop
+        res = np.bitwise_xor.accumulate(np.insert(bits_arr, 0, self.tx_state))
+        self.tx_state = int(res[-1])
+        return res[1:].tolist()
     def decode(self, bits):
-        decoded = []; prev_state = self.rx_state
-        for state in bits:
-            decoded.append(1 if state != prev_state else 0)
-            prev_state = state
-        self.rx_state = prev_state
-        return decoded
+        bits_arr = np.array(bits, dtype=np.uint8)
+        # XOR with previous bit to find transitions
+        prev = np.roll(bits_arr, 1); prev[0] = self.rx_state
+        decoded = np.bitwise_xor(bits_arr, prev)
+        self.rx_state = int(bits_arr[-1])
+        return decoded.tolist()
 
 class ManchesterEncoder:
     def reset(self):
@@ -113,21 +119,24 @@ class CCSKProcessor:
 
 class Scrambler:
     def __init__(self, mask=0x48, seed=0x7F):
-        self.mask = mask
-        self.seed = seed
-        self.state = seed
+        self.mask = mask; self.seed = seed; self.state = seed
+        # Pre-calculate a mask for the maximum possible frame size (1024 bytes)
+        self.cached_mask = self._generate_mask(1024) 
     def reset(self):
         self.state = self.seed
+    def _generate_mask(self, n_bytes):
+        mask_bits = []
+        state = self.seed
+        for _ in range(n_bytes * 8):
+            feedback = 0
+            for bit_pos in range(7):
+                if (self.mask >> bit_pos) & 1: feedback ^= (state >> bit_pos) & 1
+            mask_bits.append(state & 1)
+            state = ((state << 1) & 0x7F) | (feedback & 1)
+        # Pack bits into uint8 bytes for easy XORing
+        return np.packbits(np.array(mask_bits, dtype=np.uint8))
     def process(self, data):
-        out = []
-        for byte in data:
-            new_byte = 0
-            for i in range(8):
-                feedback = 0
-                for bit_pos in range(7):
-                    if (self.mask >> bit_pos) & 1: feedback ^= (self.state >> bit_pos) & 1
-                bit = (byte >> (7-i)) & 1
-                new_byte = (new_byte << 1) | (bit ^ (self.state & 1))
-                self.state = ((self.state << 1) & 0x7F) | (feedback & 1)
-            out.append(new_byte)
-        return bytes(out)
+        # Extremely fast vectorized XOR
+        arr = np.frombuffer(data, dtype=np.uint8)
+        scrambled = arr ^ self.cached_mask[:len(arr)]
+        return scrambled.tobytes()

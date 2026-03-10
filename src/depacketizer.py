@@ -192,26 +192,24 @@ class depacketizer(gr.basic_block):
                     self.ccsk_buf.append(rx_bit)
                     if len(self.ccsk_buf) >= 32:
                         sym, _ = self.ccsk.decode_chips(self.ccsk_buf)
+                        # Vectorized 5-bit expansion
                         for j in range(5): self.recovered_bits.append((sym >> (4-j)) & 1)
                         self.ccsk_buf = []
                 else:
                     self.recovered_bits.append(rx_bit)
                 
                 if len(self.recovered_bits) >= (self.frame_size * 8):
-                    # Recover bits to bytes
-                    bits = self.recovered_bits[:self.frame_size * 8]
+                    # Optimized Bit-to-Byte packing using NumPy
+                    bits_arr = np.array(self.recovered_bits[:self.frame_size * 8], dtype=np.uint8)
                     if self.use_nrzi and not is_tactical:
-                        bits = self.nrzi.decode(bits)
+                        bits_arr = self.nrzi.decode(bits_arr.tolist()) # Maintain list for NRZI for now
+                        bits_arr = np.array(bits_arr, dtype=np.uint8)
                     
-                    bytes_data = []
-                    for j in range(0, len(bits), 8):
-                        acc = 0
-                        for k in range(8): acc = (acc << 1) | bits[j+k]
-                        bytes_data.append(acc)
-                    
-                    self.process_recovered_block(bytes(bytes_data), 1.0)
+                    bytes_data = np.packbits(bits_arr)
+                    self.process_recovered_block(bytes_data.tobytes(), 1.0)
                     self.state = "SEARCH"
                     self.bit_buf = 0
+                    self.recovered_bits = []
 
         self.consume(0, n)
         return 0

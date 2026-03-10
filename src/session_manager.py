@@ -94,7 +94,7 @@ class session_manager(gr.basic_block):
         """Entry point for application-layer data."""
         payload = bytes(pmt.u8vector_elements(pmt.cdr(msg)))
         if len(payload) > 0 and b"PING" not in payload:
-            print(f"[MAC] Queuing Manual Tactical Data: {payload.decode('utf-8', errors='replace')}")
+            print(f"[MAC] Queuing Manual Tactical Data: {payload.decode('utf-8', errors='replace')}", flush=True)
             # Insert a tiny micro-delay to avoid colliding with an ongoing heartbeat pulse
             time.sleep(0.01) 
             
@@ -110,7 +110,7 @@ class session_manager(gr.basic_block):
         """Tracks link quality and handles NACKs."""
         self.consecutive_fails += 1
         if self.consecutive_fails > 50: # Increased threshold for high-speed hopping
-            print("\033[91m[MAC] Link Reliability Lost. Re-Synchronizing...\033[0m")
+            print("\033[91m[MAC] Link Reliability Lost. Re-Synchronizing...\033[0m", flush=True)
             self.state = "CONNECTING"
             self.publish_status()
 
@@ -121,7 +121,7 @@ class session_manager(gr.basic_block):
         meta = pmt.dict_add(meta, pmt.intern("seq"), pmt.from_long(self.local_seq))
         self.local_seq = (self.local_seq + 1) & 0xFF
         if b"PING" not in payload:
-            print(f"\033[94m[MAC] Dispatching DATA Frame ({len(payload)} bytes)...\033[0m")
+            print(f"\033[94m[MAC] Dispatching DATA Frame ({len(payload)} bytes)...\033[0m", flush=True)
         self.message_port_pub(pmt.intern("pkt_out"), pmt.cons(meta, pmt.cdr(msg)))
 
     def send_packet(self, payload_bytes, msg_type):
