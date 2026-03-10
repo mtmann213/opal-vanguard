@@ -1,48 +1,52 @@
 # Opal Vanguard Mission Configuration: LEVEL 6 (Link-16)
-# Objective: Authentic Military Symbol Mapping (CCSK) and Fast AFH.
+# Objective: Authentic Military Waveform (MSK) + CCSK Spreading.
+# Note: Dwell time reverted to 500ms for initial modulation stability.
 
 mission:
   id: "LEVEL_6_LINK16"
 
 physical:
-  modulation: "GFSK" # [GFSK, DBPSK, DQPSK, OFDM]
-  samp_rate: 2000000 # [200000 to 56000000]
-  center_freq: 915000000 # [50000000 to 6000000000]
-  samples_per_symbol: 10 # [2 to 100]
-  freq_dev: 25000 # [5000 to 500000]
-  ghost_mode: true # [true, false]
+  modulation: "MSK" # UPGRADED: Authentic Link-16 Modulation
+  samp_rate: 2000000
+  center_freq: 915000000
+  samples_per_symbol: 10
+  freq_dev: 50000 # Standard for MSK at 200kbps (bit_rate/4)
+  ghost_mode: true
+  pulse_duration_us: 7.2 # Authentic Link-16 Pulse (Logic Placeholder)
 
 link_layer:
-  frame_size: 120 # [16 to 1024]
-  use_fec: true # [true, false]
-  fec_type: "RS3115" # [RS1511, RS3115] - UPGRADED FEC
-  use_interleaving: true # [true, false]
+  frame_size: 120
+  use_fec: true
+  fec_type: "RS3115" # Authentic Link-16 FEC
+  use_interleaving: true
   interleaver_rows: 15
-  use_whitening: true # [true, false]
-  use_nrzi: true # [true, false]
-  use_comsec: true # [true, false]
+  use_whitening: true
+  use_nrzi: true
+  use_comsec: true
   comsec_key: "5365637265744f70616c4b6579313233"
-  crc_type: "CRC16" # [CRC16, CRC32]
+  crc_type: "CRC16"
 
 mac_layer:
-  amc_enabled: true # [true, false]
-  arq_enabled: true # [true, false]
-  max_retries: 5 # [0 to 10]
-  afh_enabled: true # [true, false] - ADAPTIVE FH ENABLED
+  amc_enabled: true
+  arq_enabled: true
+  max_retries: 5
+  afh_enabled: true
+  slot_duration_ms: 7.8125 # Authentic Link-16 TDMA Slot (Logic Placeholder)
 
 dsss:
-  enabled: true # [true, false]
-  type: "CCSK" # [Barker, CCSK] - CYCLIC CODE SHIFT KEYING
+  enabled: true
+  type: "CCSK" # Authentic Link-16 Spreading
   spreading_factor: 32
 
 hopping:
-  enabled: true # [true, false]
-  type: "AES" # [AES]
-  sync_mode: "TOD" # [TOD]
-  dwell_time_ms: 10 # [50 to 5000] - FASTER HOPS
+  enabled: true
+  type: "AES"
+  sync_mode: "TOD"
+  dwell_time_ms: 100 # UPGRADED: 10 Hops/sec
   aes_key: "5365637265744f70616c4b6579313233"
-  num_channels: 20
+  num_channels: 10 # Reduced for higher hit-probability in inspectrum
   channel_spacing: 150000
+  jitter_enabled: false # Future Hardening: Time-Jittered transmission
 
 hardware:
   args: "type=b200"
@@ -52,4 +56,4 @@ hardware:
   rx_antenna: "TX/RX"
 
 application_layer:
-  payload_type: "heartbeat" # [heartbeat, chat]
+  payload_type: "heartbeat"

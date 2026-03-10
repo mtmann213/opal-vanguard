@@ -5,7 +5,7 @@ mission:
   id: "LEVEL_8_ADVANCED"
 
 physical:
-  modulation: "GMSK" # Options: [GFSK, MSK, GMSK, DQPSK, OFDM]
+  modulation: "MSK" # Options: [GFSK, MSK, GMSK, DQPSK, OFDM]
   samp_rate: 2000000
   center_freq: 915000000
   samples_per_symbol: 10

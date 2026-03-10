@@ -68,9 +68,9 @@ class tod_hop_generator(gr.basic_block):
         if final_idx != raw_idx:
             print(f"\033[96m[AFH Hop] {time.strftime('%H:%M:%S')} | EVADED {raw_idx} -> Moved to {final_idx}\033[0m")
         else:
-            if epoch % 5 == 0:
-                print(f"[TOD Hop] {time.strftime('%H:%M:%S')} | Epoch: {epoch} | Chan: {final_idx} | Freq: {freq/1e6:.3f} MHz")
-        
+            # High-Speed Optimization: Silence console logging for Phase 9+
+            pass 
+
         # Emit dict with freq and precise command time
         out_dict = pmt.make_dict()
         out_dict = pmt.dict_add(out_dict, pmt.intern("freq"), pmt.from_double(freq))

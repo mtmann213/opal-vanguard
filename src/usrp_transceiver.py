@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Opal Vanguard - Unified USRP Transceiver (Master Build v12.3)
+# Opal Vanguard - Unified USRP Transceiver (Tactical Build v12.7)
 
 import os
 import sys
@@ -28,18 +28,19 @@ class LoggerProxy:
     def __init__(self, original, log_file):
         self.original = original; self.log_file = log_file
     def write(self, data):
+        if len(data) < 2: return # Filter out micro-writes
         self.original.write(data); self.log_file.write(data)
     def flush(self):
         self.original.flush(); self.log_file.flush()
 
 class MessageProxy(gr.basic_block):
-    """Bridges GNU Radio messages to a Python signal."""
     def __init__(self, signal_emitter, port_name="msg"):
         gr.basic_block.__init__(self, "MessageProxy", None, None)
         self.message_port_register_in(pmt.intern(port_name))
         self.signal = signal_emitter
         self.set_msg_handler(pmt.intern(port_name), self.handle)
     def handle(self, msg):
+        # Fire-and-forget signal to the UI thread
         self.signal.emit(msg)
     def work(self, i, o): return 0
 
@@ -111,7 +112,9 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
             for dev in [self.usrp_sink, self.usrp_source]:
                 dev.set_samp_rate(self.samp_rate); dev.set_center_freq(self.center_freq, 0)
             self.usrp_sink.set_gain(hw_cfg['tx_gain'], 0); self.usrp_source.set_gain(hw_cfg['rx_gain'], 0)
-            print(f"[HW] USRP {serial} Synchronized.")
+            # Synchronize internal hardware clocks
+            self.usrp_sink.set_time_now(uhd.time_spec(time.time()))
+            print(f"[HW] USRP {serial} Clock Synced.")
         except Exception as e: print(f"FATAL HW ERROR: {e}"); sys.exit(1)
 
     def setup_dsp(self, config_path, h_cfg, p_cfg, l_cfg):
@@ -124,14 +127,14 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
             key = bytes.fromhex(l_cfg.get('comsec_key', '00'*32))
             self.pkt_a.use_comsec = True; self.pkt_a.comsec_key = key
             self.depkt_b.use_comsec = True; self.depkt_b.comsec_key = key
-            print("[SECURITY] AES-CTR Keys Loaded.")
 
         self.p2s_a = pdu.pdu_to_tagged_stream(gr.types.byte_t, "packet_len")
         self.mac_strobe = blocks.message_strobe(pmt.PMT_T, 1000)
 
         if self.payload_type == 'heartbeat':
             hb_msg = pmt.cons(pmt.make_dict(), pmt.init_u8vector(len(f"PING FROM {self.role}"), list(f"PING FROM {self.role}".encode())))
-            self.pdu_src = blocks.message_strobe(hb_msg, 1000 if self.role == "ALPHA" else 1200)
+            hb_interval = 100 if "LEVEL_6" in self.cfg['mission']['id'] else 1000
+            self.pdu_src = blocks.message_strobe(hb_msg, hb_interval)
         else:
             self.pdu_src = blocks.message_debug()
             self.chat_layout = Qt.QHBoxLayout(); self.chat_input = Qt.QLineEdit(); self.chat_btn = Qt.QPushButton("Send")
@@ -143,33 +146,22 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
         
         mod_type = p_cfg.get('modulation', 'GFSK')
         if mod_type in ["GFSK", "MSK", "GMSK"]:
-            # MSK/GMSK are specific mathematical cases of CPFSK (which GFSK implements)
-            # For h=0.5 (MSK standard), freq_dev = bit_rate / 4
             bit_rate = self.samp_rate / sps
             default_dev = bit_rate / 4.0 if mod_type in ["MSK", "GMSK"] else p_cfg.get('freq_dev', 25000)
             sens = (2.0 * np.pi * default_dev) / self.samp_rate
             bt = 1.0 if mod_type == "MSK" else p_cfg.get('gmsk_bt', 0.35)
-            
             self.mod_a = digital.gfsk_mod(sps, sens, bt, False, False, False)
             self.demod_b = digital.gfsk_demod(sps, sens, 0.1, 0.5, 0.005, 0.0)
-            print(f"[DSP] {mod_type} Framework Initialized (Sens: {sens:.4f})")
-            
         elif mod_type == "DQPSK":
-            # Differential QPSK for higher throughput
-            self.mod_a = digital.psk_mod(4, differential=True, samples_per_symbol=sps, excess_bw=0.35, verbose=False, log=False)
-            self.demod_b = digital.psk_demod(4, differential=True, samples_per_symbol=sps, excess_bw=0.35, freq_bw=6.28/100.0, phase_bw=6.28/100.0, timing_bw=6.28/100.0, verbose=False, log=False)
-            print(f"[DSP] DQPSK Framework Initialized.")
-
+            self.mod_a = digital.psk_mod(4, differential=True, samples_per_symbol=sps, excess_bw=0.35)
+            self.demod_b = digital.psk_demod(4, differential=True, samples_per_symbol=sps, excess_bw=0.35)
         elif mod_type == "OFDM":
             self.mod_a = digital.ofdm_tx(fft_len=64, cp_len=16, packet_length_tag_key="packet_len")
             self.demod_b = digital.ofdm_rx(fft_len=64, cp_len=16, packet_length_tag_key="packet_len")
             self.unpack = blocks.packed_to_unpacked_bb(1, gr.GR_MSB_FIRST)
 
         self.rx_filter = filter.fir_filter_ccf(1, filter.firdes.low_pass(1.0, self.samp_rate, 100e3, 50e3))
-        
-        # Hopping Control with Config-Linked Dwell Time
-        dwell = h_cfg.get('dwell_time_ms', 200)
-        self.hop_ctrl = tod_hop_generator(key=bytes.fromhex(h_cfg.get('aes_key', '00'*32)), num_channels=h_cfg.get('num_channels', 50), center_freq=self.center_freq, channel_spacing=h_cfg.get('channel_spacing', 150000), dwell_ms=dwell)
+        self.hop_ctrl = tod_hop_generator(key=bytes.fromhex(h_cfg.get('aes_key', '00'*32)), num_channels=h_cfg.get('num_channels', 50), center_freq=self.center_freq, channel_spacing=h_cfg.get('channel_spacing', 150000), dwell_ms=h_cfg.get('dwell_time_ms', 500))
 
     def connect_logic(self, mod_type, h_cfg):
         self.diag_proxy = MessageProxy(self.diag_ui_sig)
@@ -194,23 +186,37 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
         self.msg_connect((self.session, "status_out"), (self.status_proxy, "msg"))
         self.msg_connect((self.session, "data_out"), (self.data_proxy, "msg"))
 
-        # Hopping Handler
+        # GUI Optimization: 1024-point FFT at 15 FPS
+        self.snk_waterfall = qtgui.waterfall_sink_c(1024, fft.window.WIN_BLACKMAN_HARRIS, self.center_freq, self.samp_rate, "Tactical Display", 1)
+        self.snk_waterfall.set_update_time(0.06) 
+        self.viz_panel.addWidget(sip.wrapinstance(self.snk_waterfall.qwidget(), Qt.QWidget))
+        self.connect(self.usrp_source, self.snk_waterfall)
+
+        # Timed Tuning Handler
         class UHDHandler(gr.basic_block):
             def __init__(self, usrp_src, usrp_snk):
                 gr.basic_block.__init__(self, "UHDHandler", None, None); self.src, self.snk = usrp_src, usrp_snk
                 self.message_port_register_in(pmt.intern("msg")); self.set_msg_handler(pmt.intern("msg"), self.handle)
+                self.last_f = 0
             def handle(self, msg):
                 try:
-                    f = pmt.to_double(pmt.dict_ref(msg, pmt.intern("freq"), pmt.from_double(0))) if pmt.is_dict(msg) else pmt.to_double(msg)
-                    if f > 0: self.src.set_center_freq(f, 0); self.snk.set_center_freq(f, 0)
+                    f = pmt.to_double(pmt.dict_ref(msg, pmt.intern("freq"), pmt.from_double(0)))
+                    t = pmt.to_double(pmt.dict_ref(msg, pmt.intern("time"), pmt.from_double(0)))
+                    if f > 0 and f != self.last_f:
+                        # Safety: Only use timed command if we are at least 5ms ahead of the target
+                        if t > (time.time() + 0.005):
+                            cmd_time = uhd.time_spec(t)
+                            self.src.set_command_time(cmd_time, 0); self.snk.set_command_time(cmd_time, 0)
+                            self.src.set_center_freq(f, 0); self.snk.set_center_freq(f, 0)
+                            self.src.clear_command_time(0); self.snk.clear_command_time(0)
+                        else:
+                            # Python is lagging; perform urgent untimed tune
+                            self.src.set_center_freq(f, 0); self.snk.set_center_freq(f, 0)
+                        self.last_f = f
                 except: pass
             def work(self, i, o): return 0
         self.uhd_h = UHDHandler(self.usrp_source, self.usrp_sink)
         self.msg_connect((self.hop_ctrl, "freq"), (self.uhd_h, "msg"))
-
-        self.snk_waterfall = qtgui.waterfall_sink_c(2048, fft.window.WIN_BLACKMAN_HARRIS, self.center_freq, self.samp_rate, "Spectrum", 1)
-        self.viz_panel.addWidget(sip.wrapinstance(self.snk_waterfall.qwidget(), Qt.QWidget))
-        self.connect(self.usrp_source, self.snk_waterfall)
 
         self.timer = QTimer(); self.timer.timeout.connect(lambda: self.hop_ctrl.handle_trigger(pmt.PMT_T))
         if h_cfg.get('enabled', True): self.timer.start(h_cfg['dwell_time_ms'])
