@@ -1,23 +1,23 @@
-# Opal Vanguard: Project Resume (v12.3 Master Stable)
-# Opal Vanguard: Project Resume (v12.4 Master Stable)
+# Opal Vanguard: Project Resume (v12.8 Master Stable)
 
-## 📡 Current Status: MISSION READY (Multi-Waveform)
-The project has achieved a high-fidelity, production-grade baseline with an expanded modulation suite. All 8 Mission Levels (from basic GFSK to Advanced GMSK/DQPSK) have been verified stable.
+## 📡 Current Status: MISSION READY (Burst-Hardened)
+The project has achieved a high-fidelity, production-grade baseline with an expanded modulation suite and tactical physical-layer hardening. All 8 Mission Levels have been verified stable.
 
-### ✅ Major Achievements (v12.4 Build)
-- **Multi-Waveform Expansion**: Integrated native support for **MSK**, **GMSK**, and **DQPSK** into the core transceiver.
-- **RF Integrity**: Resolved the "Tag Paradox" causing USRP power truncation. Full burst transmission verified with accurate PA alignment.
-- **UI Resilience**: Thread-safe `MessageProxy` system ensures GIL-safe radio-to-UI telemetry. 
-- **Performance**: Optimized Link Layer with bitwise sync searching and syndrome-based RS decoding.
-- **Unified Documentation**: Consolidated 12 guides into the **Master Mission Manual (v12.0)** and technical **CHRONOLOGY.md**.
-- **Config Hardening**: Unified template applied across all 8 mission YAMLs with exhaustive comments and range documentation.
+### ✅ Major Achievements (v12.8 Build)
+- **Phase 10: Packet-Level Pulsing**: Implemented **Guard Period Padding** in the packetizer to ensure clean USRP hardware-PA shutdown between bursts.
+- **Phase 9: Link-16 Hardening**: Integrated **MSK** at **100ms** (10 hops/sec) using **Hardware-Timed UHD Commands**.
+- **Multi-Waveform Expansion**: Native support for **GFSK**, **MSK**, **GMSK**, and **DQPSK**.
+- **RF Integrity**: Resolved the "Tag Paradox" with surgical `packet_len` scaling.
+- **UI Resilience**: Thread-safe `MessageProxy` ensures GIL-safe radio-to-UI telemetry at high-speed hopping.
+- **Unified Documentation**: Consolidated 12 guides into the **Master Mission Manual (v12.0)**.
 
 ### 🔬 Technical Core State
 - **Hardware**: USRP B205mini/B210 supported via UHD.
-- **Modulations**: GFSK (L1-6), BPSK (L6), MSK/GMSK/DQPSK (L8).
+- **Modulations**: GFSK (L1-6), MSK (L6/L8), BPSK (L6), GMSK/DQPSK (L8).
 - **WIP**: DF-OFDM (L7) research framework remains in development.
 - **Security**: AES-256 CTR verified for all tactical heartbeats.
-- **Resilience**: RS(15,11) and RS(31,15) FEC with matrix interleaving.
+- **Resilience**: RS(15,11) and RS(31,15) FEC with matrix interleaving and CCSK spreading.
+
 
 
 ### 🚀 Future Roadmap (Phase 8)

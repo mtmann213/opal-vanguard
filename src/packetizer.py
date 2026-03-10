@@ -127,7 +127,10 @@ class packetizer(gr.basic_block):
             sync_len = 64 if is_tactical else 32
             syncword = [int(b) for b in format(sync_val, f'0{sync_len}b')]
             
-            out_bits = preamble + syncword + final_bits
+            # Guard Period Padding: Add 32 bits of silence for clean hardware PA shutdown
+            guard = [0]*32 if self.cfg['physical'].get('ghost_mode', True) else []
+            
+            out_bits = preamble + syncword + final_bits + guard
             self.message_port_pub(pmt.intern("out"), pmt.cons(pmt.make_dict(), pmt.init_u8vector(len(out_bits), out_bits)))
 
     def work(self, i, o): return 0
