@@ -21,6 +21,8 @@ link_layer:
   use_whitening: true # [true, false]
   use_nrzi: true # [true, false]
   use_comsec: false # [true, false]
+  use_transec: false
+  use_anti_replay: false
   comsec_key: "00000000000000000000000000000000"
   crc_type: "CRC16" # [CRC16, CRC32]
 

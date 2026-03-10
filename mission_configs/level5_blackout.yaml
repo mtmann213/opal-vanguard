@@ -21,6 +21,8 @@ link_layer:
   use_whitening: true # [true, false]
   use_nrzi: true # [true, false]
   use_comsec: true # [true, false] - COMSEC ENABLED
+  use_transec: false
+  use_anti_replay: false
   comsec_key: "5365637265744f70616c4b6579313233" # 32-byte Hex - 'SecretOpalKey123'
   crc_type: "CRC16" # [CRC16, CRC32]
 

@@ -21,6 +21,8 @@ link_layer:
   use_whitening: true # [true, false] - LFSR scrambling to balance DC offset
   use_nrzi: true # [true, false] - Non-Return-to-Zero Inverted (immune to phase flips)
   use_comsec: false # [true, false] - AES-CTR link-layer encryption
+  use_transec: false
+  use_anti_replay: false
   comsec_key: "00000000000000000000000000000000" # [32-byte Hex] - Link layer key
   crc_type: "CRC16" # [CRC16, CRC32] - Integrity scheme
 

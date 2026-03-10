@@ -23,6 +23,8 @@ link_layer:
   use_whitening: true
   use_nrzi: true
   use_comsec: true
+  use_transec: false
+  use_anti_replay: false
   comsec_key: "5365637265744f70616c4b6579313233"
   crc_type: "CRC16"
 
