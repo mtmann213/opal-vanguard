@@ -88,6 +88,7 @@ def main():
         ("GMSK Waveform", {'physical': {'modulation': 'GMSK'}}),
         ("DQPSK Waveform", {'physical': {'modulation': 'DQPSK'}}),
         ("CSS Waveform", {'physical': {'modulation': 'CSS', 'samples_per_symbol': 128}}),
+        ("Hardened Mode (TRANSEC)", {'link_layer': {'use_comsec': True, 'use_transec': True, 'use_anti_replay': True}}),
         # New 9 Tests for 18-Point Compliance
         ("Extreme Payload (Empty)", {'payload_override': b''}),
         ("Extreme Payload (Max)", {'link_layer': {'frame_size': 900}}),

@@ -35,7 +35,10 @@ class packetizer(gr.basic_block):
         
         # Security State
         self.use_comsec = l_cfg.get('use_comsec', False)
+        self.use_transec = l_cfg.get('use_transec', False) # New: Header Encryption
+        self.use_anti_replay = l_cfg.get('use_anti_replay', False) # New: Monotonic Counter
         self.comsec_key = bytes.fromhex(l_cfg.get('comsec_key', '00'*32)) if self.use_comsec else None
+        self.replay_counter = 0 # 32-bit monotonic index
         
         # Initialize DSP Helpers once for efficiency
         self.interleaver = MatrixInterleaver(rows=l_cfg.get('interleaver_rows', 15))
@@ -65,24 +68,40 @@ class packetizer(gr.basic_block):
         return crc
 
     def handle_msg(self, msg):
-        """Processes a single message into a framed packet."""
+        """Processes a message into a framed packet with optional TRANSEC hardening."""
         payload = bytes(pmt.u8vector_elements(pmt.cdr(msg)))
         m_type, seq = 0, 0
         if pmt.is_dict(pmt.car(msg)):
             seq = pmt.to_long(pmt.dict_ref(pmt.car(msg), pmt.intern("seq"), pmt.from_long(0)))
             m_type = pmt.to_long(pmt.dict_ref(pmt.car(msg), pmt.intern("type"), pmt.from_long(0)))
 
-        # 1. COMSEC Encryption (AES-CTR)
-        if self.use_comsec and self.comsec_key and m_type == 0:
+        # Phase 15 Hardening Path
+        if self.use_transec:
+            # 1. Anti-Replay Monotonic Index
+            self.replay_counter = (self.replay_counter + 1) & 0xFFFFFFFF
+            idx = self.replay_counter if self.use_anti_replay else seq
+            
+            # 2. Hardened Header [SID, TYPE, INDEX (4), PLEN]
+            # Use strict alignment (<) to prevent internal padding
+            header = struct.pack('<BBI B', self.src_id, m_type, idx, len(payload))
+            crc = self.calculate_crc16(header + payload)
+            block = header + payload + struct.pack('>H', crc)
+            
+            # 3. Full Packet Encryption (TRANSEC)
             nonce = os.urandom(16)
             cipher = Cipher(algorithms.AES(self.comsec_key), modes.CTR(nonce), backend=default_backend())
-            payload = nonce + cipher.encryptor().update(payload) + cipher.encryptor().finalize()
+            raw_block = nonce + cipher.encryptor().update(block) + cipher.encryptor().finalize()
+        
+        else:
+            # Legacy Path (v12.x Baseline)
+            if self.use_comsec and self.comsec_key and m_type == 0:
+                nonce = os.urandom(16)
+                cipher = Cipher(algorithms.AES(self.comsec_key), modes.CTR(nonce), backend=default_backend())
+                payload = nonce + cipher.encryptor().update(payload) + cipher.encryptor().finalize()
 
-        # 2. Header and CRC Injection
-        true_plen = len(payload)
-        header = struct.pack('BBBB', self.src_id, m_type, seq, true_plen)
-        crc = self.calculate_crc16(header + payload)
-        raw_block = header + payload + struct.pack('>H', crc)
+            header = struct.pack('BBBB', self.src_id, m_type, seq, len(payload))
+            crc = self.calculate_crc16(header + payload)
+            raw_block = header + payload + struct.pack('>H', crc)
 
         # 3. RS-FEC Encoding (Self-Healing)
         data_block = raw_block

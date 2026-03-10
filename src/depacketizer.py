@@ -34,7 +34,10 @@ class depacketizer(gr.basic_block):
         
         # Security State
         self.use_comsec = l_cfg.get('use_comsec', False)
+        self.use_transec = l_cfg.get('use_transec', False) # New: Header Encryption
+        self.use_anti_replay = l_cfg.get('use_anti_replay', False) # New: Monotonic Indexing
         self.comsec_key = bytes.fromhex(l_cfg.get('comsec_key', '00'*32)) if self.use_comsec else None
+        self.last_indices = {} # Tracks highest index per SID for Anti-Replay
         
         # Persistent DSP Helpers
         self.interleaver = MatrixInterleaver(rows=l_cfg.get('interleaver_rows', 15))
@@ -79,6 +82,20 @@ class depacketizer(gr.basic_block):
             crc &= 0xFFFF
         return crc == extracted_crc
 
+    def verify_crc_hardened(self, block_data, extracted_crc_bytes, sid, m_type, idx):
+        """Validates the CRC16 for Hardened Mode headers (32-bit index)."""
+        if len(extracted_crc_bytes) < 2: return False
+        target_crc = struct.unpack('>H', extracted_crc_bytes)[0]
+        
+        crc = 0xFFFF
+        for byte in block_data:
+            crc ^= (byte << 8)
+            for _ in range(8):
+                if crc & 0x8000: crc = (crc << 1) ^ 0x1021
+                else: crc <<= 1
+            crc &= 0xFFFF
+        return crc == target_crc
+
     def handle_pdu(self, msg):
         """Direct entry point for pre-synchronized PDU payloads (e.g. OFDM)."""
         data_block = bytes(pmt.u8vector_elements(pmt.cdr(msg)))
@@ -101,18 +118,6 @@ class depacketizer(gr.basic_block):
                     if len(chunk) < 15: break
                     nibs = []
                     for b in chunk: nibs.extend([(b >> 4) & 0x0F, b & 0x0F])
-                    # Decode and track errors
-                    d_nibs_1, errs1 = self.rs.decode(nibs[:15])
-                    d_nibs_2, errs2 = self.rs.decode(nibs[15:])
-                    repairs_made += (errs1 + errs2)
-                    for k in range(0, 11): healed += bytes([( (d_nibs_1[k] << 4) | d_nibs_2[k] )]) if k < 11 else b''
-                # Redo healing logic for symmetry with packetizer v11.6
-                healed = b''
-                for j in range(0, len(data_block), 15):
-                    chunk = data_block[j:j+15]
-                    if len(chunk) < 15: break
-                    nibs = []
-                    for b in chunk: nibs.extend([(b >> 4) & 0x0F, b & 0x0F])
                     # Decode pairs
                     dn1, e1 = self.rs.decode(nibs[:15])
                     dn2, e2 = self.rs.decode(nibs[15:])
@@ -121,39 +126,61 @@ class depacketizer(gr.basic_block):
                     for k in range(0, 22, 2): healed += bytes([( (combined[k] << 4) | combined[k+1] )])
                 processed_block = healed
 
-            # 3. Header Extraction
-            sid, m_type, seq, true_plen = struct.unpack('BBBB', processed_block[:4])
-            payload_zone = processed_block[4:4+true_plen+2]
+            # 3. Security & Integrity Layer
+            if self.use_transec:
+                if len(processed_block) < 16: return
+                nonce = processed_block[:16]; cipher_data = processed_block[16:]
+                cipher = Cipher(algorithms.AES(self.comsec_key), modes.CTR(nonce), backend=default_backend())
+                block = cipher.decryptor().update(cipher_data) + cipher.decryptor().finalize()
+                
+                if len(block) < 7: return
+                # Use strict alignment (<) to match packetizer
+                sid, m_type, idx, plen = struct.unpack('<BBI B', block[:7])
+                if self.ignore_self and sid == self.src_id: return
+                
+                # Verify Anti-Replay
+                if self.use_anti_replay:
+                    if sid in self.last_indices and idx <= self.last_indices[sid]:
+                        print(f"\033[91m[REPLAY ATTACK]\033[0m Node {sid} blocked. Old Index: {idx}", flush=True)
+                        return
+                    self.last_indices[sid] = idx
+                
+                # Verify Integrity
+                if not self.verify_crc_hardened(block[:7+plen], block[7+plen:7+plen+2], sid, m_type, idx): return
+                payload = block[7:7+plen]; seq = idx & 0xFF
             
-            # 4. Integrity Check
-            crc_pass = self.verify_crc(payload_zone, true_plen, sid, m_type, seq)
+            else:
+                # Legacy Recovery Path
+                if len(processed_block) < 4: return
+                sid, m_type, seq, plen = struct.unpack('BBBB', processed_block[:4])
+                if self.ignore_self and sid == self.src_id: return
+                
+                payload_zone = processed_block[4:4+plen+2]
+                if not self.verify_crc(payload_zone, plen, sid, m_type, seq): return
+                payload = payload_zone[:plen]
+                
+                if self.use_comsec and self.comsec_key and m_type == 0:
+                    if len(payload) < 16: return
+                    nonce, ct = payload[:16], payload[16:]
+                    cipher = Cipher(algorithms.AES(self.comsec_key), modes.CTR(nonce), backend=default_backend())
+                    payload = cipher.decryptor().update(ct) + cipher.decryptor().finalize()
+
+            # 4. Final Output
+            payload = payload.split(b'\x00')[0] # Remove padding
+            t_name = {0:"DATA", 1:"SYN", 2:"ACK", 3:"NACK"}.get(m_type, "UNK")
+            print(f"\033[92m[OK]\033[0m ID: {seq:03} | TYPE: {t_name} | RX: {payload}", flush=True)
             
-            if crc_pass:
-                if not (self.ignore_self and sid == self.src_id):
-                    payload = payload_zone[:true_plen]
-                    # COMSEC Decryption
-                    if self.use_comsec and self.comsec_key and m_type == 0:
-                        nonce, ct = payload[:16], payload[16:]
-                        cipher = Cipher(algorithms.AES(self.comsec_key), modes.CTR(nonce), backend=default_backend())
-                        payload = cipher.decryptor().update(ct) + cipher.decryptor().finalize()
-                    
-                    payload = payload.split(b'\x00')[0] # Remove padding
-                    t_name = {0:"DATA", 1:"SYN", 2:"ACK", 3:"NACK"}.get(m_type, "UNK")
-                    print(f"\033[92m[OK]\033[0m ID: {seq:03} | TYPE: {t_name} | RX: {payload}")
-                    
-                    # Publish to UI/Session
-                    meta = pmt.make_dict(); meta = pmt.dict_add(meta, pmt.intern("type"), pmt.from_long(m_type))
-                    self.message_port_pub(pmt.intern("out"), pmt.cons(meta, pmt.init_u8vector(len(payload), list(payload))))
+            meta = pmt.make_dict(); meta = pmt.dict_add(meta, pmt.intern("type"), pmt.from_long(m_type))
+            self.message_port_pub(pmt.intern("out"), pmt.cons(meta, pmt.init_u8vector(len(payload), list(payload))))
             
-            # 5. Telemetry
             diag = pmt.make_dict()
-            diag = pmt.dict_add(diag, pmt.intern("crc_ok"), pmt.from_bool(crc_pass))
-            diag = pmt.dict_add(diag, pmt.intern("confidence"), pmt.from_double(confidence * 100.0))
+            diag = pmt.dict_add(diag, pmt.intern("confidence"), pmt.from_double(confidence * 100))
             diag = pmt.dict_add(diag, pmt.intern("fec_repairs"), pmt.from_long(repairs_made))
+            diag = pmt.dict_add(diag, pmt.intern("crc_ok"), pmt.from_bool(True))
             self.message_port_pub(pmt.intern("diagnostics"), diag)
-            
-        except Exception as e:
-            print(f"RECOVERY ERROR: {e}")
+
+        except Exception as e: 
+            print(f"[RECOVERY ERROR] {e}", flush=True)
 
     def general_work(self, input_items, output_items):
         in0 = input_items[0]
