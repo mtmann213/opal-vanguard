@@ -31,26 +31,32 @@ class RS1511:
             if feedback != 0:
                 for j in range(1, 5):
                     rem[i+j] ^= self.gf_mul(self.gen[j], feedback)
-        return max(rem[11:]) == 0
+        return not any(rem[11:])
 
-    def decode(self, msg_in):
+    def decode(self, msg_in, max_errors=1):
         if self.is_valid(msg_in): return list(msg_in[:11]), 0
-        # Simple 1-symbol error correction (Brute Force for GF16)
-        for i in range(15):
-            for val in range(1, 16):
-                corrupted = list(msg_in)
-                corrupted[i] ^= val
-                if self.is_valid(corrupted): return list(corrupted[:11]), 1
         
-        # Simple 2-symbol error correction
-        for i in range(14):
-            for j in range(i+1, 15):
-                for val1 in range(1, 16):
-                    for val2 in range(1, 16):
-                        corrupted = list(msg_in)
-                        corrupted[i] ^= val1
-                        corrupted[j] ^= val2
-                        if self.is_valid(corrupted): return list(corrupted[:11]), 2
+        # Optimized 1-symbol error correction (Brute Force for GF16)
+        if max_errors >= 1:
+            corrupted = list(msg_in)
+            for i in range(15):
+                orig = corrupted[i]
+                for val in range(1, 16):
+                    corrupted[i] = orig ^ val
+                    if self.is_valid(corrupted): return list(corrupted[:11]), 1
+                corrupted[i] = orig # Restore
+        
+        # 2-symbol correction is too slow for real-time SDR in pure Python
+        # We disable it by default to prevent GUI freezing.
+        if max_errors >= 2:
+            for i in range(14):
+                for j in range(i+1, 15):
+                    for val1 in range(1, 16):
+                        for val2 in range(1, 16):
+                            corrupted = list(msg_in)
+                            corrupted[i] ^= val1
+                            corrupted[j] ^= val2
+                            if self.is_valid(corrupted): return list(corrupted[:11]), 2
                         
         return list(msg_in[:11]), 0
 
@@ -87,19 +93,19 @@ class RS3115:
             if feedback != 0:
                 for j in range(1, 17):
                     rem[i+j] ^= self.gf_mul(self.gen[j], feedback)
-        return max(rem[15:]) == 0
+        return not any(rem[15:])
 
     def decode(self, msg_in):
         """Attempts to correct errors using brute-force for up to 1 symbol."""
         if self.is_valid(msg_in): return list(msg_in[:15]), 0
         
-        # RS(31,15) can fix 8 symbols, but brute force is O(N^T).
-        # We'll implement a 1-symbol "Quick Repair" to stabilize the link for now.
+        corrupted = list(msg_in)
         for i in range(31):
+            orig = corrupted[i]
             for val in range(1, 32):
-                corrupted = list(msg_in)
-                corrupted[i] ^= val
+                corrupted[i] = orig ^ val
                 if self.is_valid(corrupted):
                     return list(corrupted[:15]), 1
+            corrupted[i] = orig # Restore
         
         return list(msg_in[:15]), 0

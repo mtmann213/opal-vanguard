@@ -96,7 +96,9 @@ class CCSKProcessor:
         ], dtype=np.uint8)
         # Pre-calculate all 32 possible shifts for ultra-fast indexing
         self.shifts = np.array([np.roll(self.base_sequence, -i) for i in range(32)], dtype=np.uint8)
-        # Convert to bipolar (+1, -1) for correlation
+        # Pre-calculate correlation matrix (Bipolar shifts)
+        self.base_bipolar_matrix = np.array([np.roll(np.where(self.base_sequence == 1, 1, -1), -i) for i in range(32)], dtype=np.int8)
+        # Convert base bipolar for single symbols
         self.base_bipolar = np.where(self.base_sequence == 1, 1, -1).astype(np.int8)
 
     def encode_symbol(self, symbol):
@@ -108,25 +110,22 @@ class CCSKProcessor:
         return self.shifts[symbols % 32].flatten().tolist()
 
     def decode_chips(self, chips):
-        """Finds the shift with the highest magnitude correlation to recover the 5-bit symbol."""
+        """Finds the shift with the highest magnitude correlation using matrix dot product."""
         if len(chips) < 32: return 0, 0.0
-        chip_bipolar = np.where(np.array(chips[:32]) == 1, 1, -1)
+        chip_bipolar = np.where(np.array(chips[:32]) == 1, 1, -1).astype(np.int8)
         
-        correlations = []
-        for shift in range(32):
-            ref = np.roll(self.base_bipolar, -shift)
-            # Use absolute sum to handle phase inversions natively
-            correlations.append(abs(np.sum(chip_bipolar * ref)))
+        # Single matrix multiplication replaces 32 loops
+        correlations = np.abs(np.dot(self.base_bipolar_matrix, chip_bipolar))
         
         best_shift = np.argmax(correlations)
         confidence = correlations[best_shift] / 32.0
-        return best_shift, confidence
+        return int(best_shift), float(confidence)
 
 class Scrambler:
     def __init__(self, mask=0x48, seed=0x7F):
         self.mask = mask; self.seed = seed; self.state = seed
-        # Pre-calculate a mask for the maximum possible frame size (1024 bytes)
-        self.cached_mask = self._generate_mask(1024) 
+        # Pre-calculate a mask for the maximum possible expanded frame size (2048 bytes)
+        self.cached_mask = self._generate_mask(2048) 
     def reset(self):
         self.state = self.seed
     def _generate_mask(self, n_bytes):
