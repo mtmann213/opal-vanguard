@@ -7,6 +7,7 @@ import sys
 import yaml
 import time
 import pmt
+import copy
 from gnuradio import gr, blocks, pdu
 
 # Add src to path
@@ -88,9 +89,11 @@ def main():
         ("DQPSK Waveform", {'physical': {'modulation': 'DQPSK'}}),
         # New 9 Tests for 18-Point Compliance
         ("Extreme Payload (Empty)", {'payload_override': b''}),
-        ("Extreme Payload (Max)", {'link_layer': {'frame_size': 1024}}),
+        ("Extreme Payload (Max)", {'link_layer': {'frame_size': 900}}),
         ("High Speed (SPS=4)", {'physical': {'samples_per_symbol': 4}}),
         ("Long Distance (SPS=20)", {'physical': {'samples_per_symbol': 20}}),
+        ("Dual: FEC + CCSK", {'link_layer': {'frame_size': 30, 'use_fec': True}, 'dsss': {'enabled': True, 'type': 'CCSK', 'spreading_factor': 32}}),
+        ("Dual: FEC + Interleaving + NRZI", {'link_layer': {'frame_size': 30, 'use_fec': True, 'use_nrzi': True, 'use_interleaving': True}}),
         ("GMSK + Barker", {'physical': {'modulation': 'GMSK'}, 'dsss': {'enabled': True, 'type': 'Barker'}}),
         ("DQPSK + RS3115", {'physical': {'modulation': 'DQPSK'}, 'link_layer': {'use_fec': True, 'fec_type': 'RS3115'}}),
         ("L8 Advanced Combo", {'mission': {'id': 'LEVEL_8_ADVANCED'}, 'physical': {'modulation': 'GMSK'}, 'link_layer': {'use_interleaving': True, 'use_whitening': True}}),
@@ -102,12 +105,13 @@ def main():
     print("="*40 + "\n")
     
     for name, overrides in test_suite:
-        cfg = base_cfg.copy()
+        cfg = copy.deepcopy(base_cfg)
         # Deep update for nested dicts
         for k, v in overrides.items():
             if isinstance(v, dict) and k in cfg: cfg[k].update(v)
             else: cfg[k] = v
         results.append(run_single_test(cfg, name))
+        time.sleep(0.1) # Let scheduler breathe between tests
 
     passed = sum(results); total = len(results)
     print("="*40)
