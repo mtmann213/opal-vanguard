@@ -70,35 +70,71 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
 
         self.setup_ui(role, serial, hw_cfg)
         self.setup_hardware(hw_cfg, serial)
+        self.manual_queue = [] # Thread-safe queue for UI-to-Radio data
         self.setup_dsp(config_path, h_cfg, p_cfg, l_cfg)
         self.connect_logic(mod_type=p_cfg.get('modulation', 'GFSK'), h_cfg=h_cfg)
 
     def setup_ui(self, role, serial, hw_cfg):
         self.setWindowTitle(f"Opal Vanguard - {role}")
-        self.layout = Qt.QVBoxLayout(); self.setLayout(self.layout)
+        self.main_layout = Qt.QVBoxLayout(); self.setLayout(self.main_layout)
         self.info_label = Qt.QLabel(f"<b>NODE: {role} | SDR: {serial}</b>")
         self.status_label = Qt.QLabel("Status: IDLE"); self.status_label.setStyleSheet("color: gray; font-weight: bold;")
-        self.layout.addWidget(self.info_label); self.layout.addWidget(self.status_label)
+        self.main_layout.addWidget(self.info_label); self.main_layout.addWidget(self.status_label)
 
-        self.tabs = Qt.QTabWidget(); self.layout.addWidget(self.tabs)
-        self.ctrl_tab = Qt.QWidget(); self.tabs.addTab(self.ctrl_tab, "Tactical Control")
-        self.ctrl_layout = Qt.QVBoxLayout(self.ctrl_tab)
+        # Tactical Operations Center (TOC) - Single Screen Unified Display
+        self.toc_group = Qt.QGroupBox("Tactical Operations Center (TOC)")
+        self.toc_layout = Qt.QGridLayout(self.toc_group)
+        self.main_layout.addWidget(self.toc_group)
         
-        self.health_group = Qt.QGroupBox("Signal Integrity"); self.ctrl_layout.addWidget(self.health_group)
-        self.health_layout = Qt.QVBoxLayout(self.health_group)
-        self.conf_bar = Qt.QProgressBar(); self.conf_bar.setRange(0, 100); self.health_layout.addWidget(Qt.QLabel("LQI (Confidence):")); self.health_layout.addWidget(self.conf_bar)
-        self.crc_led = Qt.QLabel("CRC: ---"); self.fec_count = Qt.QLabel("FEC Repairs: 0")
-        self.health_layout.addWidget(self.crc_led); self.health_layout.addWidget(self.fec_count)
+        # Zone A: Signal Integrity & LQI History (Top Row, Spans both columns)
+        self.health_group = Qt.QGroupBox("Tactical Signal Integrity (LQI)")
+        self.health_layout = Qt.QVBoxLayout(self.health_group) # Vertical stack for full width
+        self.toc_layout.addWidget(self.health_group, 0, 0, 1, 2)
 
+        self.conf_bar = Qt.QProgressBar(); self.conf_bar.setRange(0, 100)
+        self.health_layout.addWidget(Qt.QLabel("LQI (Signal Confidence %):")); self.health_layout.addWidget(self.conf_bar)
+        
+        self.status_row = Qt.QHBoxLayout()
+        self.crc_led = Qt.QLabel("CRC: ---"); self.fec_count = Qt.QLabel("FEC: 0")
+        self.status_row.addWidget(self.crc_led); self.status_row.addWidget(self.fec_count)
+        self.health_layout.addLayout(self.status_row)
+        
+        self.lqi_history_list = Qt.QListWidget()
+        self.lqi_history_list.setMaximumHeight(120) 
+        self.health_layout.addWidget(self.lqi_history_list)
+
+        # Zone B: Spectrum Analysis (Middle Row, Spans both columns)
+        self.viz_panel = Qt.QVBoxLayout()
+        self.toc_layout.addLayout(self.viz_panel, 1, 0, 1, 2)
+
+        # Zone C: Hardware Controls (New Full-Width Horizontal Bar)
+        self.hw_group = Qt.QGroupBox("Hardware Gain Control")
+        self.hw_layout = Qt.QHBoxLayout(self.hw_group) # Horizontal for wide look
+        self.toc_layout.addWidget(self.hw_group, 2, 0, 1, 2)
+        
         self.tx_gain_slider = Qt.QSlider(Qt.Qt.Horizontal); self.tx_gain_slider.setRange(0, 90); self.tx_gain_slider.setValue(hw_cfg.get('tx_gain', 70))
         self.rx_gain_slider = Qt.QSlider(Qt.Qt.Horizontal); self.rx_gain_slider.setRange(0, 90); self.rx_gain_slider.setValue(hw_cfg.get('rx_gain', 70))
-        self.ctrl_layout.addWidget(Qt.QLabel("Transmit Gain (dB)")); self.ctrl_layout.addWidget(self.tx_gain_slider)
-        self.ctrl_layout.addWidget(Qt.QLabel("Receive Gain (dB)")); self.ctrl_layout.addWidget(self.rx_gain_slider)
+        self.hw_layout.addWidget(Qt.QLabel("TX:")); self.hw_layout.addWidget(self.tx_gain_slider)
+        self.hw_layout.addWidget(Qt.QLabel("RX:")); self.hw_layout.addWidget(self.rx_gain_slider)
         self.tx_gain_slider.valueChanged.connect(lambda v: self.usrp_sink.set_gain(v, 0)); self.rx_gain_slider.valueChanged.connect(lambda v: self.usrp_source.set_gain(v, 0))
 
-        self.text_out = Qt.QTextEdit(); self.text_out.setReadOnly(True); self.ctrl_layout.addWidget(self.text_out)
-        self.viz_tab = Qt.QWidget(); self.tabs.addTab(self.viz_tab, "Spectrum Analysis")
-        self.viz_layout = Qt.QVBoxLayout(self.viz_tab); self.viz_panel = Qt.QVBoxLayout(); self.viz_layout.addLayout(self.viz_panel)
+        # Zone D: Tactical Feed & BFT (Bottom Row, Spans both columns)
+        self.feed_group = Qt.QGroupBox("Tactical Feed & BFT Tracking")
+        self.feed_layout = Qt.QVBoxLayout(self.feed_group)
+        self.toc_layout.addWidget(self.feed_group, 3, 0, 1, 2)
+        
+        self.text_out = Qt.QTextEdit(); self.text_out.setReadOnly(True); self.feed_layout.addWidget(self.text_out)
+        self.target_table = Qt.QTableWidget(5, 4)
+        self.target_table.setHorizontalHeaderLabels(["ID", "Role", "Lat/Lon", "Last Seen"])
+        self.target_table.horizontalHeader().setSectionResizeMode(Qt.QHeaderView.Stretch)
+        self.target_table.setMaximumHeight(150)
+        self.feed_layout.addWidget(self.target_table)
+
+        # Chat Input (Always initialized, hidden if not in chat mode)
+        self.chat_layout = Qt.QHBoxLayout(); self.chat_input = Qt.QLineEdit(); self.chat_btn = Qt.QPushButton("Send")
+        self.chat_layout.addWidget(self.chat_input); self.chat_layout.addWidget(self.chat_btn); self.feed_layout.addLayout(self.chat_layout)
+        self.chat_btn.clicked.connect(self.send_chat); self.chat_input.returnPressed.connect(self.send_chat)
+        if self.payload_type != 'chat': self.chat_input.setPlaceholderText("BFT Command Entry (e.g. BFT|ID|ROLE|COORDS)")
 
         self.status_ui_sig.connect(self.on_status_msg)
         self.data_ui_sig.connect(self.on_data_msg)
@@ -133,13 +169,11 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
 
         if self.payload_type == 'heartbeat':
             hb_msg = pmt.cons(pmt.make_dict(), pmt.init_u8vector(len(f"PING FROM {self.role}"), list(f"PING FROM {self.role}".encode())))
+            # Level 6 Stress Test: Match heartbeat to hopping speed
             hb_interval = 100 if "LEVEL_6" in self.cfg['mission']['id'] else 1000
             self.pdu_src = blocks.message_strobe(hb_msg, hb_interval)
         else:
             self.pdu_src = blocks.message_debug()
-            self.chat_layout = Qt.QHBoxLayout(); self.chat_input = Qt.QLineEdit(); self.chat_btn = Qt.QPushButton("Send")
-            self.chat_layout.addWidget(self.chat_input); self.chat_layout.addWidget(self.chat_btn); self.ctrl_layout.addLayout(self.chat_layout)
-            self.chat_btn.clicked.connect(self.send_chat); self.chat_input.returnPressed.connect(self.send_chat)
 
         sps = p_cfg.get('samples_per_symbol', 10)
         self.mult_len = blocks.tagged_stream_multiply_length(gr.sizeof_char, "packet_len", sps)
@@ -167,6 +201,21 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
         self.diag_proxy = MessageProxy(self.diag_ui_sig)
         self.status_proxy = MessageProxy(self.status_ui_sig)
         self.data_proxy = MessageProxy(self.data_ui_sig)
+
+        # UI-to-Radio Thread Bridge (Ensures UI never blocks on radio operations)
+        class UIBridge(gr.basic_block):
+            def __init__(self, queue, target_block):
+                gr.basic_block.__init__(self, "UIBridge", None, None); self.q = queue; self.target = target_block
+                self.message_port_register_in(pmt.intern("poll")); self.set_msg_handler(pmt.intern("poll"), self.handle)
+            def handle(self, msg):
+                if self.q:
+                    try: data = self.q.pop(0); self.target.post(pmt.intern("manual_in"), data)
+                    except: pass
+            def work(self, i, o): return 0
+        
+        self.ui_bridge = UIBridge(self.manual_queue, self.session)
+        self.bridge_strobe = blocks.message_strobe(pmt.PMT_T, 50) # Poll queue every 50ms
+        self.msg_connect((self.bridge_strobe, "strobe"), (self.ui_bridge, "poll"))
 
         self.msg_connect((self.mac_strobe, "strobe"), (self.session, "heartbeat"))
         src_port = "out" if self.payload_type == 'chat' else "strobe"
@@ -233,7 +282,17 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
     def on_data_msg(self, msg):
         try:
             raw = bytes(pmt.u8vector_elements(pmt.cdr(msg))).decode('utf-8', errors='replace')
-            self.text_out.append(f"<b>[RX]:</b> {raw}")
+            if raw.startswith("BFT|"):
+                # Format: BFT|ID|ROLE|LAT,LON
+                parts = raw.split("|")
+                if len(parts) >= 4:
+                    row = int(parts[1]) % 5 # Map to table row
+                    self.target_table.setItem(row, 0, Qt.QTableWidgetItem(parts[1]))
+                    self.target_table.setItem(row, 1, Qt.QTableWidgetItem(parts[2]))
+                    self.target_table.setItem(row, 2, Qt.QTableWidgetItem(parts[3]))
+                    self.target_table.setItem(row, 3, Qt.QTableWidgetItem(time.strftime("%H:%M:%S")))
+            else:
+                self.text_out.append(f"<b>[RX]:</b> {raw}")
         except: pass
 
     @pyqtSlot(object)
@@ -242,17 +301,26 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
             conf = pmt.to_double(pmt.dict_ref(msg, pmt.intern("confidence"), pmt.from_double(0)))
             repairs = pmt.to_long(pmt.dict_ref(msg, pmt.intern("fec_repairs"), pmt.from_long(0)))
             ok = pmt.to_bool(pmt.dict_ref(msg, pmt.intern("crc_ok"), pmt.from_bool(False)))
+            
+            # Update Main UI
             self.conf_bar.setValue(int(conf))
             self.crc_led.setText(f"CRC: {'OK' if ok else 'FAIL'}")
             self.crc_led.setStyleSheet(f"color: {'green' if ok else 'red'}; font-weight: bold;")
             self.fec_count.setText(f"FEC Repairs: {repairs}")
+            
+            # Update Tactical History
+            ts = time.strftime("%H:%M:%S")
+            self.lqi_history_list.insertItem(0, f"[{ts}] LQI: {conf:.1f}% | Repairs: {repairs} | CRC: {'OK' if ok else 'FAIL'}")
+            if self.lqi_history_list.count() > 50: self.lqi_history_list.takeItem(50)
         except: pass
 
     def send_chat(self):
         txt = self.chat_input.text()
         if txt:
             self.text_out.append(f"<b>[SENT]:</b> {txt}")
-            self.session.handle_tx_request(pmt.cons(pmt.make_dict(), pmt.init_u8vector(len(txt), list(txt.encode()))))
+            # PUSH to async queue. Radio thread will poll this and send.
+            msg = pmt.cons(pmt.make_dict(), pmt.init_u8vector(len(txt), list(txt.encode())))
+            self.manual_queue.append(msg)
             self.chat_input.clear()
 
 def main():

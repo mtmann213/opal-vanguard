@@ -1,21 +1,20 @@
-# Opal Vanguard: Project Resume (v12.8 Master Stable)
+# Opal Vanguard: Project Resume (v15.0 Master Stable)
 
-## 📡 Current Status: MISSION READY (Burst-Hardened)
-The project has achieved a high-fidelity, production-grade baseline with an expanded modulation suite and tactical physical-layer hardening. All 8 Mission Levels have been verified stable.
+## 📡 Current Status: MISSION READY (Full Situational Awareness)
+The project has achieved a unified, high-performance tactical interface. All 8 Mission Levels are verified stable with real-time situational awareness and thread-safe data injection.
 
-### ✅ Major Achievements (v12.8 Build)
-- **Phase 10: Packet-Level Pulsing**: Implemented **Guard Period Padding** in the packetizer to ensure clean USRP hardware-PA shutdown between bursts.
-- **Phase 9: Link-16 Hardening**: Integrated **MSK** at **100ms** (10 hops/sec) using **Hardware-Timed UHD Commands**.
+### ✅ Major Achievements (v15.0 Build)
+- **Phase 12: Unified Tactical Operations Center (TOC)**: Consolidated Spectrum, Signal Health (LQI), and Blue Force Tracking (BFT) into a single high-density dashboard.
+- **UI-Radio Async Bridge**: Resolved UI/Radio thread deadlocks by implementing a polled queue system (`UIBridge`) for asynchronous data injection.
+- **Phase 10: Packet-Level Pulsing**: Hardened USRP PA shutdown windows via Guard Period padding logic.
 - **Multi-Waveform Expansion**: Native support for **GFSK**, **MSK**, **GMSK**, and **DQPSK**.
 - **RF Integrity**: Resolved the "Tag Paradox" with surgical `packet_len` scaling.
-- **UI Resilience**: Thread-safe `MessageProxy` ensures GIL-safe radio-to-UI telemetry at high-speed hopping.
 - **Unified Documentation**: Consolidated 12 guides into the **Master Mission Manual (v12.0)**.
 
 ### 🔬 Technical Core State
 - **Hardware**: USRP B205mini/B210 supported via UHD.
 - **Modulations**: GFSK (L1-6), MSK (L6/L8), BPSK (L6), GMSK/DQPSK (L8).
-- **WIP**: DF-OFDM (L7) research framework remains in development.
-- **Security**: AES-256 CTR verified for all tactical heartbeats.
+- **Security**: AES-256 CTR verified for all tactical heartbeats and manual BFT entries.
 - **Resilience**: RS(15,11) and RS(31,15) FEC with matrix interleaving and CCSK spreading.
 
 

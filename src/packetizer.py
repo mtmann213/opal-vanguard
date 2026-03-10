@@ -111,7 +111,10 @@ class packetizer(gr.basic_block):
             bits = []
             for b in packet: [bits.append((b >> (7-i)) & 1) for i in range(8)]
             
-            is_tactical = ("LINK-16" in self.fec_mode or "LEVEL_6" in self.fec_mode or "LEVEL_7" in self.fec_mode)
+            # Robust Tactical Detection (handles L6, L7, and LINK-16 variations)
+            f_id = str(self.fec_mode).upper()
+            is_tactical = ("LINK16" in f_id or "LINK-16" in f_id or "LEVEL_6" in f_id or "LEVEL_7" in f_id or "LEVEL_8" in f_id)
+            
             if self.use_nrzi and not is_tactical: self.nrzi.tx_state = 0; bits = self.nrzi.encode(bits)
             
             final_bits = bits
@@ -127,10 +130,7 @@ class packetizer(gr.basic_block):
             sync_len = 64 if is_tactical else 32
             syncword = [int(b) for b in format(sync_val, f'0{sync_len}b')]
             
-            # Guard Period Padding: Add 32 bits of silence for clean hardware PA shutdown
-            guard = [0]*32 if self.cfg['physical'].get('ghost_mode', True) else []
-            
-            out_bits = preamble + syncword + final_bits + guard
+            out_bits = preamble + syncword + final_bits
             self.message_port_pub(pmt.intern("out"), pmt.cons(pmt.make_dict(), pmt.init_u8vector(len(out_bits), out_bits)))
 
     def work(self, i, o): return 0

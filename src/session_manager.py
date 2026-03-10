@@ -37,6 +37,8 @@ class session_manager(gr.basic_block):
         self.set_msg_handler(pmt.intern("msg_in"), self.handle_rx)
         self.message_port_register_in(pmt.intern("data_in"))
         self.set_msg_handler(pmt.intern("data_in"), self.handle_tx_request)
+        self.message_port_register_in(pmt.intern("manual_in"))
+        self.set_msg_handler(pmt.intern("manual_in"), self.handle_tx_request)
         self.message_port_register_in(pmt.intern("crc_fail"))
         self.set_msg_handler(pmt.intern("crc_fail"), self.handle_crc_fail)
         
@@ -90,6 +92,12 @@ class session_manager(gr.basic_block):
 
     def handle_tx_request(self, msg):
         """Entry point for application-layer data."""
+        payload = bytes(pmt.u8vector_elements(pmt.cdr(msg)))
+        if len(payload) > 0 and b"PING" not in payload:
+            print(f"[MAC] Queuing Manual Tactical Data: {payload.decode('utf-8', errors='replace')}")
+            # Insert a tiny micro-delay to avoid colliding with an ongoing heartbeat pulse
+            time.sleep(0.01) 
+            
         if self.state == "CONNECTED":
             self.send_data_packet(msg)
         else:
@@ -108,9 +116,12 @@ class session_manager(gr.basic_block):
 
     def send_data_packet(self, msg):
         meta = pmt.car(msg)
+        payload = bytes(pmt.u8vector_elements(pmt.cdr(msg)))
         meta = pmt.dict_add(meta, pmt.intern("type"), pmt.from_long(0))
         meta = pmt.dict_add(meta, pmt.intern("seq"), pmt.from_long(self.local_seq))
         self.local_seq = (self.local_seq + 1) & 0xFF
+        if b"PING" not in payload:
+            print(f"\033[94m[MAC] Dispatching DATA Frame ({len(payload)} bytes)...\033[0m")
         self.message_port_pub(pmt.intern("pkt_out"), pmt.cons(meta, pmt.cdr(msg)))
 
     def send_packet(self, payload_bytes, msg_type):
