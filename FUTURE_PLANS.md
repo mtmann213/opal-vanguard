@@ -1,0 +1,73 @@
+# Opal Vanguard: Strategic Roadmap & Future Frontiers
+
+This document outlines the detailed engineering plans for the next four phases of the Opal Vanguard project. These phases focus on scaling from a point-to-point link to a resilient, high-speed tactical network.
+
+---
+
+## 🌐 Phase 13: The TDMA Mesh Network (Scaling)
+**Objective**: Transition from a point-to-point asynchronous link to a multi-node network using Time-Division Multiple Access (TDMA).
+
+### 🛠️ Implementation Strategy:
+1.  **The Slot Engine**: 
+    *   Divide the 1-second Unix Epoch into 128 "Tactical Slots" of **7.8125ms** each (Link-16 Standard).
+    *   Nodes calculate their current slot using: `(Current_Time_MS % 1000) / 7.8125`.
+2.  **Node Mapping**:
+    *   Update `mission_configs` to include a `node_id` and `assigned_slots` list.
+    *   **ALPHA (Master)**: assigned to Slots 0, 4, 8, 12...
+    *   **BRAVO (Slave)**: assigned to Slots 1, 5, 9, 13...
+3.  **The Gated Transmitter**:
+    *   Modify `session_manager.py` to buffer all outgoing PDUs.
+    *   Implement a "Gatekeeper" that only releases a PDU to the radio if `current_slot` is in the `assigned_slots` list.
+4.  **Network Discovery**: 
+    *   Create a "Discovery Slot" where new nodes (e.g., CHARLIE) can broadcast a SYN to request entry into the mesh.
+
+---
+
+## 🧠 Phase 14: Cognitive Radio & Active AFH (EW)
+**Objective**: Implement autonomous spectrum sensing to evade active jammers in real-time.
+
+### 🛠️ Implementation Strategy:
+1.  **The Spectrum Scrubber**:
+    *   Add a secondary background FFT block to `usrp_transceiver.py` that monitors the *entire* 2.0 MHz hopping band.
+    *   Calculate the average noise floor (dB) for every channel in the hop pool.
+2.  **Autonomous Blacklisting**:
+    *   If a channel's energy exceeds the floor by >15dB for 3 consecutive samples, mark it as **JAMMED**.
+    *   The sensing node broadcasts an encrypted `TYPE_CTRL_EVADE` packet containing the jammed channel index.
+3.  **Dynamic Hop Pool Update**:
+    *   Update `hop_generator_tod.py` to accept a message-port input that adds/removes channels from the AES generator pool mid-mission.
+    *   Both radios instantly "leapfrog" the jammed frequency without losing synchronization.
+
+---
+
+## 🔐 Phase 15: COMSEC Hardening (Security)
+**Objective**: Move beyond static keys to achieve absolute cryptographic forward-secrecy.
+
+### 🛠️ Implementation Strategy:
+1.  **Over-the-Air Rekeying (OTAR)**:
+    *   Implement a `REKEY` command (Type 3). 
+    *   ALPHA generates a 256-bit random Session Key, encrypts it with the **Master Key** (from YAML), and sends it to BRAVO.
+    *   Once BRAVO sends a `REKEY_ACK`, both radios switch their `packetizer` and `depacketizer` to the new key.
+2.  **Anti-Replay Protection**:
+    *   Implement a **Rolling Nonce Window**. 
+    *   Every packet must have a Sequence Number greater than the last received packet.
+    *   If an adversary records a "BFT" packet and tries to re-broadcast it later, the receiver will reject it as a "Replay Attempt."
+3.  **Key Zeroization**: 
+    *   Add a "Panic Button" to the TOC GUI that instantly wipes all keys from memory and resets the radio to IDLE.
+
+---
+
+## 🚀 Phase 16: Phase-Coherent OFDM (Broadband)
+**Objective**: Stabilize Level 7 to support 512kbps+ tactical video or audio streams.
+
+### 🛠️ Implementation Strategy:
+1.  **The Syncword Upgrade**: 
+    *   Replace the current bit-based sync with **Schmidl & Cox** preamble detection.
+    *   Use two identical symbols at the start of every OFDM burst to allow the receiver to calculate **Carrier Frequency Offset (CFO)**.
+2.  **Phase Transition Correction**:
+    *   Implement **Differential-Frequency (DF-OFDM)** mapping where information is carried in the phase difference *between* carriers, making it immune to the global phase shifts caused by frequency hopping.
+3.  **Pilot-Aided Equalization**: 
+    *   Insert "Pilot Tones" at fixed carrier positions (e.g., carriers -21, -7, 7, 21). 
+    *   The receiver uses these tones to "twist" the incoming signal back into alignment, compensating for RF fading in real-time.
+
+---
+*Roadmap generated for Opal Vanguard v15.0. These frontiers represent the path to a Tier-1 Tactical Data Link.*
