@@ -134,10 +134,11 @@ class packetizer(gr.basic_block):
         syncword = [(sync_val >> i) & 1 for i in range(sync_len-1, -1, -1)]
         out_bits = preamble + syncword + final_bits
         
-        # v19.20: SANITIZE METADATA. Use a brand new dictionary to kill any stray rx_time tags.
-        # Note: tx_sob/tx_eob are omitted as they are handled automatically by the USRP Sink via packet_len.
+        # v19.21: SANITIZE & SOB. Kill stray rx_time and add Start-of-Burst for hardware PA control.
+        # Note: tx_eob is handled automatically by the USRP Sink using the packet_len tag.
         clean_meta = pmt.make_dict()
         clean_meta = pmt.dict_add(clean_meta, pmt.intern("packet_len"), pmt.from_long(len(out_bits)))
+        clean_meta = pmt.dict_add(clean_meta, pmt.intern("tx_sob"), pmt.PMT_T)
         
         self.message_port_pub(pmt.intern("out"), pmt.cons(clean_meta, pmt.init_u8vector(len(out_bits), out_bits)))
 

@@ -179,6 +179,10 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
             self.pdu_src = blocks.message_debug()
 
         sps = p_cfg.get('samples_per_symbol', 10)
+        # v19.21: Unified Tag Scaling. Multiplier is always 'sps'.
+        # The packetizer already handles CCSK spreading (32x) in the bit domain.
+        self.mult_len = blocks.tagged_stream_multiply_length(gr.sizeof_char, "packet_len", sps)
+        
         mod_type = p_cfg.get('modulation', 'GFSK')
         if mod_type in ["GFSK", "MSK", "GMSK"]:
             bit_rate = self.samp_rate / sps
@@ -248,7 +252,7 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
             self.connect(self.p2s_a, self.mod_a, self.usrp_sink)
             self.connect(self.usrp_source, self.rx_filter, self.demod_b, self.depkt_b)
         else:
-            self.connect(self.p2s_a, self.mod_a, self.usrp_sink)
+            self.connect(self.p2s_a, self.mult_len, self.mod_a, self.usrp_sink)
             self.connect(self.usrp_source, self.rx_filter, self.demod_b, self.depkt_b)
 
         self.msg_connect((self.depkt_b, "out"), (self.session, "msg_in"))
