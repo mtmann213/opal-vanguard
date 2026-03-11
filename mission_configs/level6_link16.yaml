@@ -11,6 +11,7 @@ physical:
   center_freq: 915000000
   samples_per_symbol: 10
   freq_dev: 50000 # Standard for MSK at 200kbps (bit_rate/4)
+  preamble_len: 1024 # STABILIZED: Doubled for hardware settling
   ghost_mode: true
   pulse_duration_us: 7.2 # Authentic Link-16 Pulse (Logic Placeholder)
 

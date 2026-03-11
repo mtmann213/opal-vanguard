@@ -190,7 +190,8 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
             sens = (2.0 * np.pi * default_dev) / self.samp_rate
             bt = 1.0 if mod_type == "MSK" else p_cfg.get('gmsk_bt', 0.35)
             self.mod_a = digital.gfsk_mod(sps, sens, bt, False, False, False)
-            self.demod_b = digital.gfsk_demod(sps, sens, 0.1, 0.5, 0.005, 0.0)
+            # v19.23: Hardened Demodulator. Increased frequency tracking (0.2) and clock limits (0.01).
+            self.demod_b = digital.gfsk_demod(sps, sens, 0.2, 0.5, 0.01, 0.0)
         elif mod_type == "DQPSK":
             self.mod_a = digital.psk_mod(4, differential=True, samples_per_symbol=sps, excess_bw=0.35)
             self.demod_b = digital.psk_demod(4, differential=True, samples_per_symbol=sps, excess_bw=0.35)
