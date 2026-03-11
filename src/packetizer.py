@@ -71,10 +71,13 @@ class packetizer(gr.basic_block):
             m_type = pmt.to_long(pmt.dict_ref(pmt.car(msg), pmt.intern("type"), pmt.from_long(0)))
 
         # Header Construction
+        # Ensure plen does not exceed frame_size
+        actual_plen = min(len(raw_payload), self.frame_size)
+        
         if self.use_transec:
             self.replay_counter = (self.replay_counter + 1) & 0xFFFFFFFF
             idx = self.replay_counter if self.use_anti_replay else seq
-            header = struct.pack('<BBI B', self.src_id, m_type, idx, len(raw_payload))
+            header = struct.pack('<BBI B', self.src_id, m_type, idx, actual_plen)
             crc = self.calculate_crc16(header + payload)
             block = header + payload + struct.pack('>H', crc)
             nonce = os.urandom(16)
@@ -86,11 +89,11 @@ class packetizer(gr.basic_block):
                 nonce = os.urandom(16)
                 cipher = Cipher(algorithms.AES(self.comsec_key), modes.CTR(nonce), backend=default_backend())
                 final_payload = nonce + cipher.encryptor().update(payload) + cipher.encryptor().finalize()
-            header = struct.pack('BBBB', self.src_id, m_type, seq, len(raw_payload))
+            header = struct.pack('BBBB', self.src_id, m_type, seq, actual_plen)
             crc = self.calculate_crc16(header + final_payload)
             raw_block = header + final_payload + struct.pack('>H', crc)
 
-        # FEC
+        # 3. RS-FEC Encoding
         data_block = raw_block
         if self.use_fec:
             fec_payload = b''
@@ -99,8 +102,11 @@ class packetizer(gr.basic_block):
                 chunk = raw_block[i:i+k].ljust(k, b'\x00')
                 nibs = []
                 for b in chunk: nibs.extend([(b >> 4) & 0x0F, b & 0x0F])
-                e1, e2 = self.rs.encode(nibs[:k]), self.rs.encode(nibs[k:])
-                for m in range(n): fec_payload += bytes([( ((e1[m]&0x0F) << 4) | (e2[m]&0x0F) )])
+                # Encode both halves
+                all_e = self.rs.encode(nibs[:k]) + self.rs.encode(nibs[k:])
+                # Sequentially pack nibbles back into bytes
+                for m in range(0, 2*n, 2):
+                    fec_payload += bytes([( ((all_e[m]&0x0F) << 4) | (all_e[m+1]&0x0F) )])
             data_block = fec_payload
 
         # Final Formatting
@@ -110,6 +116,10 @@ class packetizer(gr.basic_block):
         # Modulation
         bits = np.unpackbits(np.frombuffer(packet, dtype=np.uint8), bitorder='big').tolist()
         is_tactical = ("LEVEL_6" in self.fec_mode or "LEVEL_7" in self.fec_mode or "LEVEL_8" in self.fec_mode)
+        
+        if self.use_nrzi and not is_tactical:
+            self.nrzi.tx_state = 0
+            bits = self.nrzi.encode(bits)
         
         final_bits = bits
         if self.use_ccsk:

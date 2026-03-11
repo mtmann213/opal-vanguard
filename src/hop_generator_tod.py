@@ -49,8 +49,10 @@ class tod_hop_generator(gr.basic_block):
 
     def handle_trigger(self, msg):
         """Calculates frequency based on absolute system time with AFH remapping."""
-        now = time.time() + self.lookahead_sec
-        epoch = int(now / self.dwell_sec)
+        now = time.time()
+        # Always target the NEXT epoch boundary to guarantee a future timestamp for UHD
+        epoch = int(now / self.dwell_sec) + 1
+        epoch_start_time = epoch * self.dwell_sec
         
         nonce = struct.pack(">QQ", 0, epoch)
         cipher = Cipher(algorithms.AES(self.key), modes.ECB(), backend=self.backend)
@@ -70,14 +72,10 @@ class tod_hop_generator(gr.basic_block):
                     break
         
         freq = self.center_freq + (final_idx - (self.num_channels // 2)) * self.channel_spacing
-        epoch_start_time = epoch * self.dwell_sec
         
         # Log absolute time and channel for synchronization verification
         if final_idx != raw_idx:
             print(f"\033[96m[AFH Hop] {time.strftime('%H:%M:%S')} | EVADED {raw_idx} -> Moved to {final_idx}\033[0m")
-        else:
-            # High-Speed Optimization: Silence console logging for Phase 9+
-            pass 
 
         # Emit dict with freq and precise command time
         out_dict = pmt.make_dict()

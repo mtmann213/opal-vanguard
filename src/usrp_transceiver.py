@@ -280,14 +280,16 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
                     f = pmt.to_double(pmt.dict_ref(msg, pmt.intern("freq"), pmt.from_double(0)))
                     t = pmt.to_double(pmt.dict_ref(msg, pmt.intern("time"), pmt.from_double(0)))
                     if f > 0 and f != self.last_f:
-                        # Safety: Only use timed command if we are at least 5ms ahead of the target
-                        if t > (time.time() + 0.005):
+                        # Safety: Increased margin to 25ms to prevent tP errors on busy CPUs
+                        if t > (time.time() + 0.025):
                             cmd_time = uhd.time_spec(t)
-                            self.src.set_command_time(cmd_time, 0); self.snk.set_command_time(cmd_time, 0)
-                            self.src.set_center_freq(f, 0); self.snk.set_center_freq(f, 0)
-                            self.src.clear_command_time(0); self.snk.clear_command_time(0)
+                            try:
+                                self.src.set_command_time(cmd_time, 0); self.snk.set_command_time(cmd_time, 0)
+                                self.src.set_center_freq(f, 0); self.snk.set_center_freq(f, 0)
+                                self.src.clear_command_time(0); self.snk.clear_command_time(0)
+                            except: pass # Prevents thread crash on UHD timeout
                         else:
-                            # Python is lagging; perform urgent untimed tune
+                            # Fallback: Urgent untimed tune
                             self.src.set_center_freq(f, 0); self.snk.set_center_freq(f, 0)
                         self.last_f = f
                 except: pass
@@ -296,7 +298,7 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
         self.msg_connect((self.hop_ctrl, "freq"), (self.uhd_h, "msg"))
 
         self.timer = QTimer(); self.timer.timeout.connect(lambda: self.hop_ctrl.handle_trigger(pmt.PMT_T))
-        if h_cfg.get('enabled', True): self.timer.start(h_cfg['dwell_time_ms'])
+        if h_cfg.get('enabled', True): self.timer.start(h_cfg['dwell_time_ms'] // 2)
 
     @pyqtSlot(object)
     def on_status_msg(self, msg):

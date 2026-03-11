@@ -70,11 +70,17 @@ def run_probe(config_path):
     decoded_payload = None
     def capture_rx(port, msg):
         nonlocal decoded_payload
-        decoded_payload = bytes(pmt.u8vector_elements(pmt.cdr(msg)))
+        if pmt.is_pair(msg):
+            decoded_payload = bytes(pmt.u8vector_elements(pmt.cdr(msg)))
     
     depkt.message_port_pub = capture_rx
-    # Feed the same data structure as the real general_work
-    depkt.process_recovered_block(bytes_np, 1.0)
+    
+    # Mock the GNU Radio consume method
+    def mock_consume(i, n): pass
+    depkt.consume = mock_consume
+    
+    # Feed the full bitstream (including preamble and syncword) into the real state machine
+    depkt.general_work([raw_bits], [])
     
     if decoded_payload:
         print(f"[*] SUCCESS: Recovered Payload: {decoded_payload}")

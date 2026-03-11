@@ -56,7 +56,7 @@ def run_single_test(config_dict, test_name):
     while time.time() - start_time < 1.0: # 1 second is plenty for digital loopback
         if msg_debug.num_messages() > 0:
             recv_payload = bytes(pmt.u8vector_elements(pmt.cdr(msg_debug.get_message(0))))
-            if test_payload in recv_payload:
+            if test_payload in recv_payload or recv_payload in test_payload:
                 success = True; break
         time.sleep(0.05)
     

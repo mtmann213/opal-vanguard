@@ -59,12 +59,12 @@ class depacketizer(gr.basic_block):
         self.sync_val_32 = 0x3D4C5B6A
         self.sync_val_64 = 0x3D4C5B6AACE12345
 
-    def verify_crc(self, payload, true_plen, sid, m_type, seq):
-        if len(payload) < (true_plen + 2): return False
-        extracted_crc = struct.unpack('>H', payload[true_plen:true_plen+2])[0]
+    def verify_crc(self, payload, actual_payload_len, sid, m_type, seq, original_plen):
+        if len(payload) < (actual_payload_len + 2): return False
+        extracted_crc = struct.unpack('>H', payload[actual_payload_len:actual_payload_len+2])[0]
         crc = 0xFFFF
-        header_base = struct.pack('BBBB', sid, m_type, seq, true_plen)
-        for byte in (header_base + payload[:true_plen]):
+        header_base = struct.pack('BBBB', sid, m_type, seq, original_plen)
+        for byte in (header_base + payload[:actual_payload_len]):
             crc ^= (byte << 8)
             for _ in range(8):
                 if crc & 0x8000: crc = (crc << 1) ^ 0x1021
@@ -108,36 +108,51 @@ class depacketizer(gr.basic_block):
                     dn1, e1 = self.rs.decode(nibs[:n])
                     dn2, e2 = self.rs.decode(nibs[n:])
                     repairs_made += (e1 + e2)
-                    combined = dn1 + dn2
+                    combined = dn1 + dn2 # Re-form the 22-nibble list
                     for m in range(0, 2*k, 2): healed += bytes([( (combined[m] << 4) | combined[m+1] )])
                 processed_block = healed
 
             # 3. Decryption & Integrity
             if self.use_transec:
-                if len(processed_block) < 16: return
+                if len(processed_block) < 16:
+                    return
                 nonce, ct = processed_block[:16], processed_block[16:]
                 cipher = Cipher(algorithms.AES(self.comsec_key), modes.CTR(nonce), backend=default_backend())
                 block = cipher.decryptor().update(ct) + cipher.decryptor().finalize()
-                if len(block) < 7: return
+                if len(block) < 7:
+                    return
                 sid, m_type, idx, plen = struct.unpack('<BBI B', block[:7])
-                if self.ignore_self and sid == self.src_id: return
+                if self.ignore_self and sid == self.src_id:
+                    return
                 if self.use_anti_replay:
-                    if sid in self.last_indices and idx <= self.last_indices[sid]: return
+                    if sid in self.last_indices and idx <= self.last_indices[sid]:
+                        print(f"\033[91m[REPLAY ATTACK]\033[0m Node {sid} blocked. Old Index: {idx}", flush=True)
+                        return
                     self.last_indices[sid] = idx
-                if not self.verify_crc_hardened(block[:7+plen], block[7+plen:7+plen+2]): return
+                if not self.verify_crc_hardened(block[:7+self.frame_size], block[7+self.frame_size:7+self.frame_size+2]):
+                    return
                 payload, seq = block[7:7+plen], idx & 0xFF
             else:
-                if len(processed_block) < 4: return
+                if len(processed_block) < 4:
+                    return
                 sid, m_type, seq, plen = struct.unpack('BBBB', processed_block[:4])
-                if self.ignore_self and sid == self.src_id: return
-                raw_payload = processed_block[4:4+plen+2]
-                if not self.verify_crc(raw_payload, plen, sid, m_type, seq): return
-                payload = raw_payload[:plen]
+                if self.ignore_self and sid == self.src_id:
+                    return
+                
+                # Payload is padded to frame_size (or 16 + frame_size if COMSEC)
+                actual_payload_len = self.frame_size + (16 if self.use_comsec and m_type == 0 else 0)
+                raw_payload = processed_block[4:4+actual_payload_len+2]
+                
+                if not self.verify_crc(raw_payload, actual_payload_len, sid, m_type, seq, plen):
+                    return
+                payload = raw_payload[:plen] if not self.use_comsec else raw_payload[:actual_payload_len]
+                
                 if self.use_comsec and self.comsec_key and m_type == 0:
                     if len(payload) < 16: return
                     nonce, ct = payload[:16], payload[16:]
                     cipher = Cipher(algorithms.AES(self.comsec_key), modes.CTR(nonce), backend=default_backend())
                     payload = cipher.decryptor().update(ct) + cipher.decryptor().finalize()
+                    payload = payload[:plen] # Extract actual unpadded payload after decryption
 
             # 4. Dispatch
             payload = payload.split(b'\x00')[0]
@@ -179,16 +194,31 @@ class depacketizer(gr.basic_block):
 
             if self.state == "COLLECT":
                 rx_bit = bit ^ (1 if self.is_inverted else 0)
+                
                 if self.use_ccsk:
                     self.ccsk_buf.append(rx_bit)
                     if len(self.ccsk_buf) >= 32:
                         sym, _ = self.ccsk.decode_chips(self.ccsk_buf)
-                        for j in range(5): self.recovered_bits.append((sym >> (4-j)) & 1)
+                        for j in range(5):
+                            recovered_bit = (sym >> (4-j)) & 1
+                            if self.use_nrzi and not is_tactical:
+                                decoded = self.nrzi.decode([recovered_bit])
+                                if decoded: self.recovered_bits.append(decoded[0])
+                            else:
+                                self.recovered_bits.append(recovered_bit)
                         self.ccsk_buf = []
-                else: self.recovered_bits.append(rx_bit)
+                else:
+                    if self.use_nrzi and not is_tactical:
+                        decoded = self.nrzi.decode([rx_bit])
+                        if decoded: self.recovered_bits.append(decoded[0])
+                    else:
+                        self.recovered_bits.append(rx_bit)
                 
                 # Dynamic Bit Limit
-                overhead = 9 if self.use_transec else 6
+                if self.use_transec: overhead = 25 # 16(nonce) + 7(header) + 2(crc)
+                elif self.use_comsec: overhead = 22 # 16(nonce) + 4(header) + 2(crc)
+                else: overhead = 6 # 4(header) + 2(crc)
+                
                 raw_len = self.frame_size + overhead
                 n_blks = (raw_len + 10) // 11
                 fec_len = n_blks * 15 if self.use_fec else raw_len
@@ -197,11 +227,12 @@ class depacketizer(gr.basic_block):
                 phys_bytes = fec_len + pad_len
                 
                 if self.use_ccsk:
-                    expected_bits = ((phys_bytes * 8 + 4) // 5) * 32
+                    expected_bits = ((phys_bytes * 8 + 4) // 5) * 5
                 else: expected_bits = phys_bytes * 8
                 
                 if len(self.recovered_bits) >= expected_bits:
-                    bits_to_pack = self.recovered_bits[:expected_bits]
+                    # STRICT BIT ALIGNMENT: Take exactly what is expected (ignoring CCSK 5-bit padding)
+                    bits_to_pack = self.recovered_bits[:phys_bytes * 8]
                     if len(bits_to_pack) % 8: bits_to_pack += [0]*(8-(len(bits_to_pack)%8))
                     bytes_data = np.packbits(np.array(bits_to_pack, dtype=np.uint8), bitorder='big')
                     self.process_recovered_block(bytes_data.tobytes(), 1.0)
