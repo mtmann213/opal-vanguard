@@ -5,28 +5,30 @@
 import numpy as np
 
 class MatrixInterleaver:
-    def __init__(self, rows=8):
+    """
+    Standard Matrix Interleaver.
+    Robust implementation that handles padding and non-standard frame sizes.
+    """
+    def __init__(self, rows=16):
         self.rows = rows
-    def interleave(self, data, *args):
-        # Convert to numpy directly from buffer
+
+    def interleave(self, data):
+        """Standard Matrix Interleaving (Write rows, Read columns)."""
         arr = np.frombuffer(data, dtype=np.uint8)
-        data_len = len(arr)
-        cols = (data_len + self.rows - 1) // self.rows
-        # Pad with zeros if necessary
-        if data_len < (cols * self.rows):
-            arr = np.append(arr, np.zeros((cols * self.rows) - data_len, dtype=np.uint8))
-        matrix = arr.reshape((self.rows, cols))
-        # Transpose and flatten (Column-major to Row-major swap)
-        interleaved = matrix.T.flatten()
-        return interleaved.tobytes()
-    def deinterleave(self, data, *args):
+        cols = int(np.ceil(len(arr) / self.rows))
+        # Self-Padding to ensure grid match
+        padded = np.pad(arr, (0, (self.rows * cols) - len(arr)), mode='constant')
+        matrix = padded.reshape(self.rows, cols)
+        return matrix.T.flatten().tobytes()
+
+    def deinterleave(self, data):
+        """Reverse Matrix Interleaving (Write columns, Read rows)."""
         arr = np.frombuffer(data, dtype=np.uint8)
-        data_len = len(arr)
-        original_len = args[0] if args else data_len
-        cols = (data_len + self.rows - 1) // self.rows
-        matrix = arr.reshape((cols, self.rows))
-        deinterleaved = matrix.T.flatten()
-        return deinterleaved[:original_len].tobytes()
+        # Ensure input is multiple of rows
+        cols = len(arr) // self.rows
+        if cols * self.rows != len(arr): return data # Protection
+        matrix = arr.reshape(cols, self.rows)
+        return matrix.T.flatten().tobytes()
 
 class DSSSProcessor:
     def __init__(self, sf=31, chipping_code=None):

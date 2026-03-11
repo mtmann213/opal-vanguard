@@ -17,7 +17,7 @@ link_layer:
   use_fec: false # [true, false] - Enable Reed-Solomon Forward Error Correction
   fec_type: "RS1511" # [RS1511, RS3115] - Reed-Solomon scheme
   use_interleaving: false # [true, false] - Matrix Interleaver to survive burst jamming
-  interleaver_rows: 15 # [Quantitative] - Must divide frame_size evenly
+  interleaver_rows: 16 # [Quantitative] - Must divide frame_size evenly
   use_whitening: true # [true, false] - LFSR scrambling to balance DC offset
   use_nrzi: true # [true, false] - Non-Return-to-Zero Inverted (immune to phase flips)
   use_comsec: false # [true, false] - AES-CTR link-layer encryption

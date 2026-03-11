@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Opal Vanguard - Reed-Solomon FEC Helpers (GF(16) and GF(32))
+# Opal Vanguard - Reed-Solomon FEC Helpers (GF(16))
+# Optimized for high-speed tactical links.
 
 class RS1511:
     """Standard Reed-Solomon (15, 11) over GF(16)."""
     def __init__(self):
+        self.K, self.N = 11, 15
         # GF(16) tables (Polynomial: x^4 + x + 1)
         self.exp = [1, 2, 4, 8, 3, 6, 12, 11, 5, 10, 7, 14, 15, 13, 9] * 3
         self.log = [0] * 16
@@ -46,8 +48,7 @@ class RS1511:
                     if self.is_valid(corrupted): return list(corrupted[:11]), 1
                 corrupted[i] = orig # Restore
         
-        # 2-symbol correction is too slow for real-time SDR in pure Python
-        # We disable it by default to prevent GUI freezing.
+        # 2-symbol correction is too slow for real-time SDR
         if max_errors >= 2:
             for i in range(14):
                 for j in range(i+1, 15):
@@ -59,53 +60,3 @@ class RS1511:
                             if self.is_valid(corrupted): return list(corrupted[:11]), 2
                         
         return list(msg_in[:11]), 0
-
-class RS3115:
-    """Link 16 Standard Reed-Solomon (31, 15) over GF(32)."""
-    def __init__(self):
-        # GF(32) tables (Polynomial: x^5 + x^2 + 1)
-        self.exp = [1, 2, 4, 8, 16, 5, 10, 20, 13, 26, 17, 7, 14, 28, 29, 31, 27, 19, 3, 6, 12, 24, 21, 15, 30, 25, 23, 11, 22, 18, 1] * 3
-        self.log = [0] * 32
-        for i in range(31): self.log[self.exp[i]] = i
-        
-        # Generator for 16 parity symbols
-        # Real Link 16 uses a specific systematic generator. 
-        # We'll use this consistent LFSR generator for our emulation.
-        self.gen = [1, 2, 4, 8, 16, 5, 10, 20, 13, 26, 17, 7, 14, 28, 29, 31, 27]
-
-    def gf_mul(self, a, b):
-        if a == 0 or b == 0: return 0
-        return self.exp[self.log[a] + self.log[b]]
-
-    def encode(self, data):
-        msg = list(data) + [0] * 16
-        for i in range(15):
-            feedback = msg[i]
-            if feedback != 0:
-                for j in range(1, 17):
-                    msg[i+j] ^= self.gf_mul(self.gen[j], feedback)
-        return list(data) + msg[15:]
-
-    def is_valid(self, msg):
-        rem = list(msg)
-        for i in range(15):
-            feedback = rem[i]
-            if feedback != 0:
-                for j in range(1, 17):
-                    rem[i+j] ^= self.gf_mul(self.gen[j], feedback)
-        return not any(rem[15:])
-
-    def decode(self, msg_in):
-        """Attempts to correct errors using brute-force for up to 1 symbol."""
-        if self.is_valid(msg_in): return list(msg_in[:15]), 0
-        
-        corrupted = list(msg_in)
-        for i in range(31):
-            orig = corrupted[i]
-            for val in range(1, 32):
-                corrupted[i] = orig ^ val
-                if self.is_valid(corrupted):
-                    return list(corrupted[:15]), 1
-            corrupted[i] = orig # Restore
-        
-        return list(msg_in[:15]), 0

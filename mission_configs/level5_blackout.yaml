@@ -17,7 +17,7 @@ link_layer:
   use_fec: true # [true, false]
   fec_type: "RS1511" # [RS1511, RS3115]
   use_interleaving: true # [true, false]
-  interleaver_rows: 15
+  interleaver_rows: 16
   use_whitening: true # [true, false]
   use_nrzi: true # [true, false]
   use_comsec: true # [true, false] - COMSEC ENABLED

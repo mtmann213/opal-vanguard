@@ -17,9 +17,9 @@ physical:
 link_layer:
   frame_size: 120
   use_fec: true
-  fec_type: "RS3115" # Authentic Link-16 FEC
+  fec_type: "RS1511" # STABILIZED: Reverted from RS3115
   use_interleaving: true
-  interleaver_rows: 15
+  interleaver_rows: 16
   use_whitening: true
   use_nrzi: true
   use_comsec: true

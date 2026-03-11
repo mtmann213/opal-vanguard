@@ -18,7 +18,7 @@ link_layer:
   use_fec: true
   fec_type: "RS1511"
   use_interleaving: true
-  interleaver_rows: 15
+  interleaver_rows: 16
   use_whitening: true
   use_nrzi: true
   use_comsec: true

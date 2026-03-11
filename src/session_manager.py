@@ -92,10 +92,10 @@ class session_manager(gr.basic_block):
         payload = bytes(pmt.u8vector_elements(pmt.cdr(msg)))
         m_type = pmt.to_long(pmt.dict_ref(meta, pmt.intern("type"), pmt.from_long(0)))
 
-        # Clear stats on successful RX
+        # CRITICAL FIX: Reset failure counters on ANY successful packet
+        self.consecutive_fails = 0
         if self.current_f in self.channel_stats:
             self.channel_stats[self.current_f] = 0
-            self.consecutive_fails = 0
 
         if m_type == 5: # TYPE_LEAP (Cognitive Sync)
             new_blacklist = list(payload)
