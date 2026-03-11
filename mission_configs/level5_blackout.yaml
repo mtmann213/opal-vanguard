@@ -30,7 +30,7 @@ mac_layer:
   amc_enabled: false # [true, false]
   arq_enabled: true # [true, false]
   max_retries: 3 # [0 to 10]
-  afh_enabled: false # [true, false]
+  afh_enabled: true # [true, false]
 
 dsss:
   enabled: false # [true, false]

@@ -97,7 +97,8 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
         
         self.status_row = Qt.QHBoxLayout()
         self.crc_led = Qt.QLabel("CRC: ---"); self.fec_count = Qt.QLabel("FEC: 0")
-        self.status_row.addWidget(self.crc_led); self.status_row.addWidget(self.fec_count)
+        self.afh_label = Qt.QLabel("AFH: [CLEAR]"); self.afh_label.setStyleSheet("color: #00FF00; font-weight: bold;")
+        self.status_row.addWidget(self.crc_led); self.status_row.addWidget(self.fec_count); self.status_row.addWidget(self.afh_label)
         self.health_layout.addLayout(self.status_row)
         
         self.lqi_history_list = Qt.QListWidget()
@@ -304,6 +305,16 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
             self.status_label.setText(f"Status: {s}")
             self.status_label.setStyleSheet(f"color: {'green' if s == 'CONNECTED' else 'orange'}; font-weight: bold;")
             print(f"[STATUS] {s}", flush=True)
+            
+            # Safely handle Blacklist if present
+            if pmt.dict_has_key(msg, pmt.intern("blacklist")):
+                bl = list(pmt.to_python(pmt.dict_ref(msg, pmt.intern("blacklist"), pmt.make_vector(0, pmt.PMT_NIL))))
+                if bl:
+                    self.afh_label.setText(f"AFH EVADED: {bl}")
+                    self.afh_label.setStyleSheet("color: #FFA500; font-weight: bold;")
+                else:
+                    self.afh_label.setText("AFH: [CLEAR]")
+                    self.afh_label.setStyleSheet("color: #00FF00; font-weight: bold;")
         except: pass
 
     @pyqtSlot(object)
@@ -330,12 +341,21 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
             conf = pmt.to_double(pmt.dict_ref(msg, pmt.intern("confidence"), pmt.from_double(0)))
             repairs = pmt.to_long(pmt.dict_ref(msg, pmt.intern("fec_repairs"), pmt.from_long(0)))
             ok = pmt.to_bool(pmt.dict_ref(msg, pmt.intern("crc_ok"), pmt.from_bool(False)))
+            bl = pmt.to_python(pmt.dict_ref(msg, pmt.intern("blacklist"), pmt.from_list([])))
             
             # Update Main UI
             self.conf_bar.setValue(int(conf))
             self.crc_led.setText(f"CRC: {'OK' if ok else 'FAIL'}")
             self.crc_led.setStyleSheet(f"color: {'green' if ok else 'red'}; font-weight: bold;")
             self.fec_count.setText(f"FEC Repairs: {repairs}")
+            
+            # Update AFH Status
+            if bl:
+                self.afh_label.setText(f"AFH EVADED: {bl}")
+                self.afh_label.setStyleSheet("color: #FFA500; font-weight: bold;")
+            else:
+                self.afh_label.setText("AFH: [CLEAR]")
+                self.afh_label.setStyleSheet("color: #00FF00; font-weight: bold;")
             
             # Update Tactical History
             ts = time.strftime("%H:%M:%S")

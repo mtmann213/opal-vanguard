@@ -48,8 +48,9 @@ class packetizer(gr.basic_block):
         self.use_ccsk = (self.cfg.get('dsss', {}).get('enabled', False) and self.cfg.get('dsss', {}).get('type') == "CCSK")
         
         if self.use_fec:
-            from rs_helper import RS1511
-            self.rs = RS1511()
+            from rs_helper import RS1511, RS3115
+            f_type = l_cfg.get('fec_type', 'RS1511')
+            self.rs = RS3115() if f_type == "RS3115" else RS1511()
 
         # Ports
         self.message_port_register_in(pmt.intern("in"))

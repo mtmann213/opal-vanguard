@@ -84,6 +84,7 @@ class session_manager(gr.basic_block):
     def publish_status(self):
         msg = pmt.make_dict()
         msg = pmt.dict_add(msg, pmt.intern("state"), pmt.intern(self.state))
+        msg = pmt.dict_add(msg, pmt.intern("blacklist"), pmt.init_u8vector(len(self.blacklist), self.blacklist))
         self.message_port_pub(pmt.intern("status_out"), msg)
 
     def handle_rx(self, msg):

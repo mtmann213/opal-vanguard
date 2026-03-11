@@ -47,8 +47,9 @@ class depacketizer(gr.basic_block):
         self.use_ccsk = (self.cfg.get('dsss', {}).get('enabled', False) and self.cfg.get('dsss', {}).get('type') == "CCSK")
         
         if self.use_fec:
-            from rs_helper import RS1511
-            self.rs = RS1511()
+            from rs_helper import RS1511, RS3115
+            f_type = l_cfg.get('fec_type', 'RS1511')
+            self.rs = RS3115() if f_type == "RS3115" else RS1511()
 
         # Ports
         self.message_port_register_out(pmt.intern("out"))
@@ -167,10 +168,12 @@ class depacketizer(gr.basic_block):
 
             # 4. Final Output
             payload = payload.split(b'\x00')[0] # Remove padding
-            t_name = {0:"DATA", 1:"SYN", 2:"ACK", 3:"NACK"}.get(m_type, "UNK")
+            t_name = {0:"DATA", 1:"SYN", 2:"ACK", 3:"NACK", 5:"LEAP"}.get(m_type, "UNK")
             print(f"\033[92m[OK]\033[0m ID: {seq:03} | TYPE: {t_name} | RX: {payload}", flush=True)
             
-            meta = pmt.make_dict(); meta = pmt.dict_add(meta, pmt.intern("type"), pmt.from_long(m_type))
+            meta = pmt.make_dict()
+            meta = pmt.dict_add(meta, pmt.intern("type"), pmt.from_long(m_type))
+            meta = pmt.dict_add(meta, pmt.intern("seq"), pmt.from_long(seq))
             self.message_port_pub(pmt.intern("out"), pmt.cons(meta, pmt.init_u8vector(len(payload), list(payload))))
             
             diag = pmt.make_dict()
