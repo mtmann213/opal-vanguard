@@ -177,7 +177,8 @@ class depacketizer(gr.basic_block):
         n = len(in0)
         is_tactical = ("LEVEL_6" in self.fec_mode or "LEVEL_7" in self.fec_mode or "LEVEL_8" in self.fec_mode)
         sync_val = self.sync_val_64 if is_tactical else self.sync_val_32
-        threshold = 4 if is_tactical else 2
+        # v19.14: Increased threshold for 64-bit syncword to be more noise-tolerant
+        threshold = 8 if is_tactical else 2
 
         for i in range(n):
             bit = int(in0[i]) & 1
