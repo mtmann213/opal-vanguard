@@ -34,10 +34,18 @@ class tod_hop_generator(gr.basic_block):
         self.message_port_register_out(pmt.intern("freq"))
 
     def handle_blacklist(self, msg):
-        """Expects a list of integers."""
-        if pmt.is_vector_obj(msg):
-            self.blacklist = list(pmt.u8vector_elements(msg))
-            print(f"[AFH] Blacklist updated: {self.blacklist}")
+        """Expects a list of integers via PMT vector or python-converted object."""
+        try:
+            if pmt.is_u8vector(msg):
+                self.blacklist = list(pmt.u8vector_elements(msg))
+            else:
+                # Handle generic python objects passed through PMT
+                new_list = pmt.to_python(msg)
+                if isinstance(new_list, list):
+                    self.blacklist = new_list
+            if self.blacklist:
+                print(f"\033[95m[AFH] Hop Engine Blacklist Updated: {self.blacklist}\033[0m", flush=True)
+        except: pass
 
     def handle_trigger(self, msg):
         """Calculates frequency based on absolute system time with AFH remapping."""

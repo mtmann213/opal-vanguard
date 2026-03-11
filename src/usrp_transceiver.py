@@ -255,6 +255,10 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
         self.msg_connect((self.depkt_b, "diagnostics"), (self.diag_proxy, "msg"))
         self.msg_connect((self.session, "status_out"), (self.status_proxy, "msg"))
         self.msg_connect((self.session, "data_out"), (self.data_proxy, "msg"))
+        
+        # Phase 14: Cognitive AFH Loop
+        self.msg_connect((self.hop_ctrl, "freq"), (self.session, "freq_in"))
+        self.msg_connect((self.session, "afh_out"), (self.hop_ctrl, "blacklist"))
 
         # GUI Optimization: 512-point FFT at 10 FPS for L6
         fft_size = 512 if "LEVEL_6" in self.cfg['mission']['id'] else 1024
