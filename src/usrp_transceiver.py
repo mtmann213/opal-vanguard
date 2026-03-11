@@ -148,11 +148,10 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
             self.usrp_sink = uhd.usrp_sink(args, uhd.stream_args(cpu_format="fc32", channels=[0]), "packet_len")
             self.usrp_source = uhd.usrp_source(args, uhd.stream_args(cpu_format="fc32", channels=[0]))
             for dev in [self.usrp_sink, self.usrp_source]:
+                dev.set_clock_source("internal"); dev.set_time_source("internal")
                 dev.set_samp_rate(self.samp_rate); dev.set_center_freq(self.center_freq, 0)
             self.usrp_sink.set_gain(hw_cfg['tx_gain'], 0); self.usrp_source.set_gain(hw_cfg['rx_gain'], 0)
-            # v19.11: Reset hardware clock to 0.0 to clear any lingering time state
-            self.usrp_sink.set_time_now(uhd.time_spec(0.0))
-            print(f"[HW] USRP {serial} Initialized (Untimed Mode).")
+            print(f"[HW] USRP {serial} Initialized (Silent Internal Mode).")
         except Exception as e: print(f"FATAL HW ERROR: {e}"); sys.exit(1)
 
     def setup_dsp(self, config_path, h_cfg, p_cfg, l_cfg):
@@ -271,21 +270,22 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
 
         # Tuning Handler (Untimed Immediate Mode)
         class UHDHandler(gr.basic_block):
-            def __init__(self, usrp_src, usrp_snk):
+            def __init__(self, usrp_src, usrp_snk, initial_f):
                 gr.basic_block.__init__(self, "UHDHandler", None, None); self.src, self.snk = usrp_src, usrp_snk
                 self.message_port_register_in(pmt.intern("msg")); self.set_msg_handler(pmt.intern("msg"), self.handle)
-                self.last_f = 0
+                self.last_f = initial_f
             def handle(self, msg):
                 try:
-                    f = pmt.to_double(pmt.dict_ref(msg, pmt.intern("freq"), pmt.from_double(0)))
+                    # Correct Extraction for PMT Double (v19.12)
+                    f = pmt.to_double(msg)
                     if f > 0 and f != self.last_f:
-                        # v19.11: Pure Immediate Tune
-                        self.src.set_center_freq(f, 0)
+                        # Direct Immediate Tune
                         self.snk.set_center_freq(f, 0)
+                        self.src.set_center_freq(f, 0)
                         self.last_f = f
                 except: pass
             def work(self, i, o): return 0
-        self.uhd_h = UHDHandler(self.usrp_source, self.usrp_sink)
+        self.uhd_h = UHDHandler(self.usrp_source, self.usrp_sink, self.center_freq)
         self.msg_connect((self.hop_ctrl, "freq"), (self.uhd_h, "msg"))
 
         self.timer = QTimer(); self.timer.timeout.connect(lambda: self.hop_ctrl.handle_trigger(pmt.PMT_T))
