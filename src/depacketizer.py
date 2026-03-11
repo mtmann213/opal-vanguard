@@ -227,8 +227,10 @@ class depacketizer(gr.basic_block):
                 phys_bytes = fec_len + pad_len
                 
                 if self.use_ccsk:
+                    # v19.13: CCSK recovered_bits contains 5-bit symbols, not 32-chip chips.
                     expected_bits = ((phys_bytes * 8 + 4) // 5) * 5
                 else: expected_bits = phys_bytes * 8
+
                 
                 if len(self.recovered_bits) >= expected_bits:
                     # STRICT BIT ALIGNMENT: Take exactly what is expected (ignoring CCSK 5-bit padding)
