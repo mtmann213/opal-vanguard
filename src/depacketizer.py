@@ -239,6 +239,8 @@ class depacketizer(gr.basic_block):
                     if len(bits_to_pack) % 8: bits_to_pack += [0]*(8-(len(bits_to_pack)%8))
                     bytes_data = np.packbits(np.array(bits_to_pack, dtype=np.uint8), bitorder='big')
                     self.process_recovered_block(bytes_data.tobytes(), 1.0)
+                    # v19.25: CRITICAL RESET. Clear all collection buffers after successful dispatch.
                     self.state, self.bit_buf = "SEARCH", 0
+                    self.recovered_bits, self.ccsk_buf = [], []
         self.consume(0, n)
         return 0

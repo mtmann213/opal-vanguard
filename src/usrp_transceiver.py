@@ -172,23 +172,25 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
         
         if self.payload_type == 'heartbeat':
             hb_msg = pmt.cons(pmt.make_dict(), pmt.init_u8vector(len(f"PING FROM {self.role}"), list(f"PING FROM {self.role}".encode())))
-            # Level 6 Stress Test: Match heartbeat to hopping speed
-            hb_interval = 100 if "LEVEL_6" in self.cfg['mission']['id'] else 1000
-            self.pdu_src = blocks.message_strobe(hb_msg, hb_interval)
+            # v19.25: Increased Handshake Speed (200ms) for high-hit probability
+            self.pdu_src = blocks.message_strobe(hb_msg, 200)
         else:
             self.pdu_src = blocks.message_debug()
 
         sps = p_cfg.get('samples_per_symbol', 10)
-        # v19.21: Unified Tag Scaling. Multiplier is always 'sps'.
-        # The packetizer already handles CCSK spreading (32x) in the bit domain.
-        self.mult_len = blocks.tagged_stream_multiply_length(gr.sizeof_char, "packet_len", sps)
+        # v19.24: Post-Modulation Scaling (Corrects the 7ms burst cutoff)
+        self.mult_len = blocks.tagged_stream_multiply_length(gr.sizeof_gr_complex, "packet_len", sps)
         
         mod_type = p_cfg.get('modulation', 'GFSK')
+        print(f"\n[DSP] Mode: {mod_type} | SPS: {sps} | Rate: {self.samp_rate/1e6:.1f} Msps")
+        print(f"[DSP] Preamble: {p_cfg.get('preamble_len', 1024)} bits | Frame: {l_cfg.get('frame_size', 120)} bytes")
+        
         if mod_type in ["GFSK", "MSK", "GMSK"]:
             bit_rate = self.samp_rate / sps
             default_dev = bit_rate / 4.0 if mod_type in ["MSK", "GMSK"] else p_cfg.get('freq_dev', 25000)
             sens = (2.0 * np.pi * default_dev) / self.samp_rate
-            bt = 1.0 if mod_type == "MSK" else p_cfg.get('gmsk_bt', 0.35)
+            # v19.25: Sharp MSK (BT=10.0) for better hardware signal lock
+            bt = 10.0 if mod_type == "MSK" else p_cfg.get('gmsk_bt', 0.35)
             self.mod_a = digital.gfsk_mod(sps, sens, bt, False, False, False)
             # v19.23: Hardened Demodulator. Increased frequency tracking (0.2) and clock limits (0.01).
             self.demod_b = digital.gfsk_demod(sps, sens, 0.2, 0.5, 0.01, 0.0)
@@ -216,7 +218,7 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
                     return len(b)
             self.mod_a, self.demod_b = CSSMod(self.css_p), CSSDemod(self.css_p)
 
-        self.rx_filter = filter.fir_filter_ccf(1, filter.firdes.low_pass(1.0, self.samp_rate, 100e3, 50e3))
+        self.rx_filter = filter.fir_filter_ccf(1, filter.firdes.low_pass(1.0, self.samp_rate, 250e3, 50e3))
         self.hop_ctrl = tod_hop_generator(key=bytes.fromhex(h_cfg.get('aes_key', '00'*32)), num_channels=h_cfg.get('num_channels', 50), center_freq=self.center_freq, channel_spacing=h_cfg.get('channel_spacing', 150000), dwell_ms=h_cfg.get('dwell_time_ms', 500))
 
     def connect_logic(self, mod_type, h_cfg):
@@ -246,17 +248,18 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
         self.msg_connect((self.pkt_a, "out"), (self.p2s_a, "pdus"))
         
         if mod_type == "OFDM":
-            self.connect(self.p2s_a, self.mod_a, self.usrp_sink)
+            self.connect(self.p2s_a, self.mod_a, self.mult_len, self.usrp_sink)
             self.connect(self.usrp_source, self.rx_filter, self.demod_b, self.unpack, self.depkt_b)
         elif mod_type == "CSS":
             # CSS handles its own tag scaling via interp_block
             self.connect(self.p2s_a, self.mod_a, self.usrp_sink)
             self.connect(self.usrp_source, self.rx_filter, self.demod_b, self.depkt_b)
         else:
-            self.connect(self.p2s_a, self.mult_len, self.mod_a, self.usrp_sink)
+            self.connect(self.p2s_a, self.mod_a, self.mult_len, self.usrp_sink)
             self.connect(self.usrp_source, self.rx_filter, self.demod_b, self.depkt_b)
 
         self.msg_connect((self.depkt_b, "out"), (self.session, "msg_in"))
+        self.msg_connect((self.depkt_b, "diagnostics"), (self.session, "msg_in"))
         self.msg_connect((self.depkt_b, "diagnostics"), (self.diag_proxy, "msg"))
         self.msg_connect((self.session, "status_out"), (self.status_proxy, "msg"))
         self.msg_connect((self.session, "data_out"), (self.data_proxy, "msg"))
@@ -339,21 +342,12 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
             conf = pmt.to_double(pmt.dict_ref(msg, pmt.intern("confidence"), pmt.from_double(0)))
             repairs = pmt.to_long(pmt.dict_ref(msg, pmt.intern("fec_repairs"), pmt.from_long(0)))
             ok = pmt.to_bool(pmt.dict_ref(msg, pmt.intern("crc_ok"), pmt.from_bool(False)))
-            bl = pmt.to_python(pmt.dict_ref(msg, pmt.intern("blacklist"), pmt.from_list([])))
             
             # Update Main UI
             self.conf_bar.setValue(int(conf))
             self.crc_led.setText(f"CRC: {'OK' if ok else 'FAIL'}")
             self.crc_led.setStyleSheet(f"color: {'green' if ok else 'red'}; font-weight: bold;")
             self.fec_count.setText(f"FEC Repairs: {repairs}")
-            
-            # Update AFH Status
-            if bl:
-                self.afh_label.setText(f"AFH EVADED: {bl}")
-                self.afh_label.setStyleSheet("color: #FFA500; font-weight: bold;")
-            else:
-                self.afh_label.setText("AFH: [CLEAR]")
-                self.afh_label.setStyleSheet("color: #00FF00; font-weight: bold;")
             
             # Update Tactical History
             ts = time.strftime("%H:%M:%S")

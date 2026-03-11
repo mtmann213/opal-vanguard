@@ -90,6 +90,14 @@ class session_manager(gr.basic_block):
         self.message_port_pub(pmt.intern("status_out"), msg)
 
     def handle_rx(self, msg):
+        # v19.25: Handle Diagnostic Messages (Link Health)
+        if pmt.is_dict(msg):
+            if pmt.dict_has_key(msg, pmt.intern("crc_ok")):
+                ok = pmt.to_bool(pmt.dict_ref(msg, pmt.intern("crc_ok"), pmt.from_bool(False)))
+                if not ok: self.handle_crc_fail(msg)
+                else: self.consecutive_fails = 0
+            return
+
         meta = pmt.car(msg)
         payload = bytes(pmt.u8vector_elements(pmt.cdr(msg)))
         m_type = pmt.to_long(pmt.dict_ref(meta, pmt.intern("type"), pmt.from_long(0)))
@@ -122,13 +130,11 @@ class session_manager(gr.basic_block):
                 while self.tx_buffer: self.send_data_packet(self.tx_buffer.pop(0))
 
         elif m_type == 0: # DATA
-            if self.state == "CONNECTED":
-                self.consecutive_fails = 0
-                seq = pmt.to_long(pmt.dict_ref(meta, pmt.intern("seq"), pmt.from_long(0)))
-                # Blast multiple ACKs for data confirmation in high-speed modes
-                if self.arq_enabled: 
-                    for _ in range(2): self.send_packet(struct.pack('B', seq), msg_type=2)
-                self.message_port_pub(pmt.intern("data_out"), msg)
+            # v19.25: Transparent Mode. Always pass DATA to UI, even if Handshake is pending.
+            seq = pmt.to_long(pmt.dict_ref(meta, pmt.intern("seq"), pmt.from_long(0)))
+            if self.arq_enabled: 
+                for _ in range(2): self.send_packet(struct.pack('B', seq), msg_type=2)
+            self.message_port_pub(pmt.intern("data_out"), msg)
 
     def handle_tx_request(self, msg):
         """Entry point for application-layer data."""
