@@ -134,9 +134,12 @@ class packetizer(gr.basic_block):
         syncword = [(sync_val >> i) & 1 for i in range(sync_len-1, -1, -1)]
         out_bits = preamble + syncword + final_bits
         
-        # v19.11: SANITIZE METADATA. Use a brand new dictionary to kill any stray rx_time tags.
+        # v19.18: SANITIZE & POWER-TAG. Kill stray rx_time and add SOB/EOB for hardware PA control.
         clean_meta = pmt.make_dict()
         clean_meta = pmt.dict_add(clean_meta, pmt.intern("packet_len"), pmt.from_long(len(out_bits)))
+        clean_meta = pmt.dict_add(clean_meta, pmt.intern("tx_sob"), pmt.PMT_T)
+        clean_meta = pmt.dict_add(clean_meta, pmt.intern("tx_eob"), pmt.PMT_T)
+        
         self.message_port_pub(pmt.intern("out"), pmt.cons(clean_meta, pmt.init_u8vector(len(out_bits), out_bits)))
 
     def work(self, i, o): return 0

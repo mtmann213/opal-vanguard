@@ -151,7 +151,9 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
                 dev.set_clock_source("internal"); dev.set_time_source("internal")
                 dev.set_samp_rate(self.samp_rate); dev.set_center_freq(self.center_freq, 0)
             self.usrp_sink.set_gain(hw_cfg['tx_gain'], 0); self.usrp_source.set_gain(hw_cfg['rx_gain'], 0)
-            print(f"[HW] USRP {serial} Initialized (Silent Internal Mode).")
+            # v19.18: Hard reset hardware clock to 0.0 for clean burst-tagging
+            self.usrp_sink.set_time_now(uhd.time_spec(0.0))
+            print(f"[HW] USRP {serial} Initialized (Stealth Mode Active).")
         except Exception as e: print(f"FATAL HW ERROR: {e}"); sys.exit(1)
 
     def setup_dsp(self, config_path, h_cfg, p_cfg, l_cfg):
