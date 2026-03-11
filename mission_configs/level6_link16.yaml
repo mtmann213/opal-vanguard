@@ -44,7 +44,7 @@ hopping:
   enabled: true
   type: "AES"
   sync_mode: "TOD"
-  dwell_time_ms: 100 # UPGRADED: 10 Hops/sec
+  dwell_time_ms: 500 # STABILIZED: Reverted from 100ms for untimed synchronization
   aes_key: "5365637265744f70616c4b6579313233"
   num_channels: 10 # Reduced for higher hit-probability in inspectrum
   channel_spacing: 150000
