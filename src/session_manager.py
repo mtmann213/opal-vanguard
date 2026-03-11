@@ -78,8 +78,10 @@ class session_manager(gr.basic_block):
     def handle_heartbeat(self, msg):
         """Triggered by a message strobe to perform background tasks."""
         if self.state != "CONNECTED":
+            # v19.22: Blast SYN packets to catch hopping peers
+            print(f"[MAC] Searching for peer... (State: {self.state})")
             syn_payload = struct.pack('>H', self.current_seed).ljust(16, b'\x00')
-            self.send_packet(syn_payload, msg_type=1)
+            for _ in range(3): self.send_packet(syn_payload, msg_type=1)
 
     def publish_status(self):
         msg = pmt.make_dict()
@@ -143,6 +145,9 @@ class session_manager(gr.basic_block):
             if self.state == "IDLE":
                 self.state = "CONNECTING"
                 self.publish_status()
+                # Immediate wake-up burst
+                syn_payload = struct.pack('>H', self.current_seed).ljust(16, b'\x00')
+                for _ in range(3): self.send_packet(syn_payload, msg_type=1)
 
     def handle_crc_fail(self, msg):
         """Tracks link quality and handles autonomous evasion."""
