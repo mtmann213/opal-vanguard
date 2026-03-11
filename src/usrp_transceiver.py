@@ -150,9 +150,9 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
             for dev in [self.usrp_sink, self.usrp_source]:
                 dev.set_samp_rate(self.samp_rate); dev.set_center_freq(self.center_freq, 0)
             self.usrp_sink.set_gain(hw_cfg['tx_gain'], 0); self.usrp_source.set_gain(hw_cfg['rx_gain'], 0)
-            # Synchronize internal hardware clocks
-            self.usrp_sink.set_time_now(uhd.time_spec(time.time()))
-            print(f"[HW] USRP {serial} Clock Synced.")
+            # v19.11: Reset hardware clock to 0.0 to clear any lingering time state
+            self.usrp_sink.set_time_now(uhd.time_spec(0.0))
+            print(f"[HW] USRP {serial} Initialized (Untimed Mode).")
         except Exception as e: print(f"FATAL HW ERROR: {e}"); sys.exit(1)
 
     def setup_dsp(self, config_path, h_cfg, p_cfg, l_cfg):
@@ -269,7 +269,7 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
         self.viz_panel.addWidget(sip.wrapinstance(self.snk_waterfall.qwidget(), Qt.QWidget))
         self.connect(self.usrp_source, self.snk_waterfall)
 
-        # Timed Tuning Handler
+        # Tuning Handler (Untimed Immediate Mode)
         class UHDHandler(gr.basic_block):
             def __init__(self, usrp_src, usrp_snk):
                 gr.basic_block.__init__(self, "UHDHandler", None, None); self.src, self.snk = usrp_src, usrp_snk
@@ -278,19 +278,10 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
             def handle(self, msg):
                 try:
                     f = pmt.to_double(pmt.dict_ref(msg, pmt.intern("freq"), pmt.from_double(0)))
-                    t = pmt.to_double(pmt.dict_ref(msg, pmt.intern("time"), pmt.from_double(0)))
                     if f > 0 and f != self.last_f:
-                        # Safety: Increased margin to 25ms to prevent tP errors on busy CPUs
-                        if t > (time.time() + 0.025):
-                            cmd_time = uhd.time_spec(t)
-                            try:
-                                self.src.set_command_time(cmd_time, 0); self.snk.set_command_time(cmd_time, 0)
-                                self.src.set_center_freq(f, 0); self.snk.set_center_freq(f, 0)
-                                self.src.clear_command_time(0); self.snk.clear_command_time(0)
-                            except: pass # Prevents thread crash on UHD timeout
-                        else:
-                            # Fallback: Urgent untimed tune
-                            self.src.set_center_freq(f, 0); self.snk.set_center_freq(f, 0)
+                        # v19.11: Pure Immediate Tune
+                        self.src.set_center_freq(f, 0)
+                        self.snk.set_center_freq(f, 0)
                         self.last_f = f
                 except: pass
             def work(self, i, o): return 0

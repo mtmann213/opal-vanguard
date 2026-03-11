@@ -77,11 +77,8 @@ class tod_hop_generator(gr.basic_block):
         if final_idx != raw_idx:
             print(f"\033[96m[AFH Hop] {time.strftime('%H:%M:%S')} | EVADED {raw_idx} -> Moved to {final_idx}\033[0m")
 
-        # Emit dict with freq and precise command time
-        out_dict = pmt.make_dict()
-        out_dict = pmt.dict_add(out_dict, pmt.intern("freq"), pmt.from_double(freq))
-        out_dict = pmt.dict_add(out_dict, pmt.intern("time"), pmt.from_double(epoch_start_time))
-        self.message_port_pub(pmt.intern("freq"), out_dict)
+        # v19.11: Emit pure frequency (No timing metadata)
+        self.message_port_pub(pmt.intern("freq"), pmt.from_double(freq))
 
     def work(self, input_items, output_items):
         return 0
