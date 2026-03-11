@@ -169,7 +169,7 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
 
         self.p2s_a = pdu.pdu_to_tagged_stream(gr.types.byte_t, "packet_len")
         self.mac_strobe = blocks.message_strobe(pmt.PMT_T, 1000)
-
+        
         if self.payload_type == 'heartbeat':
             hb_msg = pmt.cons(pmt.make_dict(), pmt.init_u8vector(len(f"PING FROM {self.role}"), list(f"PING FROM {self.role}".encode())))
             # Level 6 Stress Test: Match heartbeat to hopping speed
@@ -179,13 +179,6 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
             self.pdu_src = blocks.message_debug()
 
         sps = p_cfg.get('samples_per_symbol', 10)
-        # v19.19: Dynamic Tag Scaling for CCSK Spreading (32x chips)
-        tag_mult = sps
-        if (self.cfg.get('dsss', {}).get('enabled', False) and self.cfg.get('dsss', {}).get('type') == "CCSK"):
-            tag_mult = sps * 32 # Scale for 32 chips per 5 bits (encoded as bits)
-            
-        self.mult_len = blocks.tagged_stream_multiply_length(gr.sizeof_char, "packet_len", tag_mult)
-        
         mod_type = p_cfg.get('modulation', 'GFSK')
         if mod_type in ["GFSK", "MSK", "GMSK"]:
             bit_rate = self.samp_rate / sps
@@ -255,7 +248,7 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
             self.connect(self.p2s_a, self.mod_a, self.usrp_sink)
             self.connect(self.usrp_source, self.rx_filter, self.demod_b, self.depkt_b)
         else:
-            self.connect(self.p2s_a, self.mult_len, self.mod_a, self.usrp_sink)
+            self.connect(self.p2s_a, self.mod_a, self.usrp_sink)
             self.connect(self.usrp_source, self.rx_filter, self.demod_b, self.depkt_b)
 
         self.msg_connect((self.depkt_b, "out"), (self.session, "msg_in"))
