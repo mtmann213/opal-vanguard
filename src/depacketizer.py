@@ -55,6 +55,8 @@ class depacketizer(gr.basic_block):
         self.recovered_bits = []
         self.ccsk_buf = []
         self.is_inverted = False
+        self.collect_count = 0
+        self.max_collect = 32000 # Watchdog: Max bits to wait in COLLECT before resetting
         
         self.sync_val_32 = 0x3D4C5B6A
         self.sync_val_64 = 0x3D4C5B6AACE12345
@@ -90,9 +92,11 @@ class depacketizer(gr.basic_block):
 
     def process_recovered_block(self, data_block, confidence):
         try:
+            is_level1 = ("LEVEL_1" in self.fec_mode)
             # 1. Un-Formatting
-            if self.use_whitening: self.scrambler.reset(); data_block = self.scrambler.process(data_block)
-            data_block = self.interleaver.deinterleave(data_block)
+            if self.use_whitening and not is_level1: self.scrambler.reset(); data_block = self.scrambler.process(data_block)
+            if not is_level1:
+                data_block = self.interleaver.deinterleave(data_block)
             
             # 2. FEC
             processed_block = data_block
@@ -170,30 +174,54 @@ class depacketizer(gr.basic_block):
             diag = pmt.dict_add(diag, pmt.intern("crc_ok"), pmt.from_bool(True))
             self.message_port_pub(pmt.intern("diagnostics"), diag)
 
-        except: pass
+        except Exception as e:
+            print(f"\033[91m[DEPKT ERROR] process_recovered_block: {e}\033[0m")
+            import traceback; traceback.print_exc()
 
     def general_work(self, input_items, output_items):
         in0 = input_items[0]
         n = len(in0)
         is_tactical = ("LEVEL_6" in self.fec_mode or "LEVEL_7" in self.fec_mode or "LEVEL_8" in self.fec_mode)
         sync_val = self.sync_val_64 if is_tactical else self.sync_val_32
-        # v19.14: Increased threshold for 64-bit syncword to be more noise-tolerant
-        threshold = 8 if is_tactical else 2
+        # v19.51: Increased precision for hardware BPSK.
+        threshold = 8 if is_tactical else 6
+        
+        # v19.54: Initialize to avoid UnboundLocalError in COLLECT
+        dist, inv_dist = 99, 99
 
         for i in range(n):
             bit = int(in0[i]) & 1
+            
             if self.state == "SEARCH":
-                self.bit_buf = ((self.bit_buf << 1) | bit) & (0xFFFFFFFFFFFFFFFF if is_tactical else 0xFFFFFFFF)
-                if (self.bit_buf ^ sync_val).bit_count() <= threshold:
+                mask = (0xFFFFFFFFFFFFFFFF if is_tactical else 0xFFFFFFFF)
+                self.bit_buf = ((self.bit_buf << 1) | bit) & mask
+                
+                # Normal Search
+                dist = (self.bit_buf ^ sync_val).bit_count()
+                
+                # Inverted Search (Phase Ambiguity)
+                inv_sync = sync_val ^ mask
+                inv_dist = (self.bit_buf ^ inv_sync).bit_count()
+
+                if dist <= threshold:
+                    print(f"\033[94m[DEPKT] SYNC DETECTED (Normal) dist={dist}\033[0m", flush=True)
                     self.is_inverted, self.state = False, "COLLECT"
-                    self.recovered_bits, self.ccsk_buf = [], []; self.nrzi.reset(); self.scrambler.reset()
+                    self.recovered_bits, self.ccsk_buf = [], []; self.nrzi.reset(); self.scrambler.reset(); self.collect_count = 0
                     continue
-                elif (self.bit_buf ^ ((0xFFFFFFFFFFFFFFFF if is_tactical else 0xFFFFFFFF) ^ sync_val)).bit_count() <= threshold:
+                elif inv_dist <= threshold:
+                    print(f"\033[94m[DEPKT] SYNC DETECTED (Inverted) dist={inv_dist}\033[0m", flush=True)
                     self.is_inverted, self.state = True, "COLLECT"
-                    self.recovered_bits, self.ccsk_buf = [], []; self.nrzi.reset(); self.scrambler.reset()
+                    self.recovered_bits, self.ccsk_buf = [], []; self.nrzi.reset(); self.scrambler.reset(); self.collect_count = 0
                     continue
 
             if self.state == "COLLECT":
+                self.collect_count += 1
+                if self.collect_count > self.max_collect:
+                    print(f"\033[91m[WATCHDOG] COLLECT timeout. Resetting to SEARCH.\033[0m")
+                    self.state, self.bit_buf = "SEARCH", 0
+                    continue
+
+                # Undo phase inversion
                 rx_bit = bit ^ (1 if self.is_inverted else 0)
                 
                 if self.use_ccsk:
@@ -202,20 +230,13 @@ class depacketizer(gr.basic_block):
                         sym, _ = self.ccsk.decode_chips(self.ccsk_buf)
                         for j in range(5):
                             recovered_bit = (sym >> (4-j)) & 1
-                            if self.use_nrzi and not is_tactical:
-                                decoded = self.nrzi.decode([recovered_bit])
-                                if decoded: self.recovered_bits.append(decoded[0])
-                            else:
-                                self.recovered_bits.append(recovered_bit)
+                            self.recovered_bits.append(recovered_bit)
                         self.ccsk_buf = []
                 else:
-                    if self.use_nrzi and not is_tactical:
-                        decoded = self.nrzi.decode([rx_bit])
-                        if decoded: self.recovered_bits.append(decoded[0])
-                    else:
-                        self.recovered_bits.append(rx_bit)
+                    self.recovered_bits.append(rx_bit)
                 
                 # Dynamic Bit Limit
+                is_level1 = ("LEVEL_1" in self.fec_mode)
                 if self.use_transec: overhead = 25 # 16(nonce) + 7(header) + 2(crc)
                 elif self.use_comsec: overhead = 22 # 16(nonce) + 4(header) + 2(crc)
                 else: overhead = 6 # 4(header) + 2(crc)
@@ -223,24 +244,41 @@ class depacketizer(gr.basic_block):
                 raw_len = self.frame_size + overhead
                 n_blks = (raw_len + 10) // 11
                 fec_len = n_blks * 15 if self.use_fec else raw_len
-                rows = 16
-                pad_len = (rows - (fec_len % rows)) % rows
-                phys_bytes = fec_len + pad_len
                 
-                if self.use_ccsk:
-                    # v19.13: CCSK recovered_bits contains 5-bit symbols, not 32-chip chips.
-                    expected_bits = ((phys_bytes * 8 + 4) // 5) * 5
-                else: expected_bits = phys_bytes * 8
+                if is_level1:
+                    # v19.58: Level 1 skips interleaving, so no 16-byte padding.
+                    phys_bytes = fec_len
+                else:
+                    rows = 16
+                    pad_len = (rows - (fec_len % rows)) % rows
+                    phys_bytes = fec_len + pad_len
+                
+                total_bits = phys_bytes * 8
 
-                
-                if len(self.recovered_bits) >= expected_bits:
-                    # STRICT BIT ALIGNMENT: Take exactly what is expected (ignoring CCSK 5-bit padding)
-                    bits_to_pack = self.recovered_bits[:phys_bytes * 8]
-                    if len(bits_to_pack) % 8: bits_to_pack += [0]*(8-(len(bits_to_pack)%8))
-                    bytes_data = np.packbits(np.array(bits_to_pack, dtype=np.uint8), bitorder='big')
-                    self.process_recovered_block(bytes_data.tobytes(), 1.0)
-                    # v19.25: CRITICAL RESET. Clear all collection buffers after successful dispatch.
-                    self.state, self.bit_buf = "SEARCH", 0
-                    self.recovered_bits, self.ccsk_buf = [], []
+                if len(self.recovered_bits) >= total_bits:
+                    # Debug print
+                    raw_bits = self.recovered_bits[:64]
+                    print(f"[DEPKT] COLLECT COMPLETE ({len(self.recovered_bits)} bits). Raw head: {''.join(map(str, raw_bits))}")
+                    
+                    bits = self.recovered_bits
+                    if not is_level1:
+                        # Standard path uses NRZI/Scrambler
+                        if self.use_nrzi and not is_tactical:
+                            bits = self.nrzi.decode(bits)
+                        bits = self.scrambler.decode(bits)
+                    
+                    # v19.53: Calculate confidence from sync word match.
+                    sync_len = 64 if is_tactical else 32
+                    conf = 1.0 - (min(dist, inv_dist) / float(sync_len))
+                    
+                    # v19.58: Reverted to 'big' bitorder.
+                    byte_payload = np.packbits(bits, bitorder='big').tobytes()
+                    self.process_recovered_block(byte_payload, confidence=conf)
+                    
+                    # v19.58: Final Cleanup and reset to SEARCH.
+                    self.state = "SEARCH"; self.recovered_bits = []; self.collect_count = 0
+                    self.bit_buf = 0 # Clear buffer to avoid immediate re-sync on noise
+                    continue
+            
         self.consume(0, n)
         return 0

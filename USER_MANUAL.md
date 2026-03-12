@@ -27,16 +27,16 @@ Opal Vanguard is best understood as a **Packet-Switched Network** running over a
     *   **FEC Encoding**: The block is passed through a **Reed-Solomon** encoder (e.g., RS(15,11) or RS(31,15)).
     *   **Hardening**: Data is interleaved (spread out) and whitened (scrambled) to prevent long strings of identical bits.
     *   **Bitstream**: The final bytes are expanded into raw bits, and a **Preamble** (clock recovery) and **Syncword** (unique signature) are prepended.
-3. **Physical Domain (`usrp_transceiver.py`)**:
-    *   **Modulation**: Bits enter the GFSK, BPSK, or OFDM modulator.
-    *   **Tag Scaling**: A critical `packet_len` tag is attached to the stream to tell the USRP hardware exactly when to start and stop the transmitter's power amplifier.
+3. **Physical Domain (`usrp_transceiver.py` / `usrp_headless.py`)**:
+    *   **Modulation**: Bits enter the GFSK, BPSK, or MSK modulator.
+    *   **Tag Scaling (v19.58)**: A critical `FinalTagFixer` block converts `bit_count` tags into sample-accurate `packet_len` tags, including a **320-sample delay compensation** to account for the modulator's internal filter pipeline.
     *   **RF Emission**: Samples are streamed over USB 3.0 to the SDR and transmitted over the air.
 
 ### The "Blind Search" Engine (`depacketizer.py`)
 Because the system is "Zero-Header" (no standard Wi-Fi MAC headers), the receiver is always in a **SEARCH** state. 
 - It uses a sliding **XOR bitmask** to look for the Syncword.
-- In Python 3.10+, we use `.bit_count()` to calculate the **Hamming Distance** (number of bit errors). 
-- If the distance is within tolerance (e.g., `<= 4`), the state machine transitions to **COLLECT** and starts harvesting bits.
+- **Phase-Resilient Sync (v19.51)**: The search engine simultaneously tracks both the normal syncword and its 180-degree inverted counterpart to survive phase flips in BPSK/MSK.
+- If the Hamming distance is within tolerance (e.g., `<= 6` for BPSK), the state machine transitions to **COLLECT**.
 
 ---
 
@@ -168,7 +168,7 @@ This project features a ramping "Digital Duel" EW competition.
 | **L3** | Resilient | FEC + Interleaving | **Saturation** (High gain) |
 | **L4** | Stealth | DSSS Spreading + Ghost Mode | **Wideband Interference** (Sweep mode) |
 | **L5** | Blackout | AES + TOD Hopping | **Manipulation** (Attack the sync logic) |
-| **L6** | Link-16 | CCSK 32-chip + RS(31,15) | **Total Denial** (Massive wideband noise) |
+| **L6** | Link-16 | CCSK 32-chip + MSK + RS(31,15) | **Phase-Resilient Denial** (Target the MSK loop) |
 | **L7** | OFDM Master | [WIP - EXPERIMENTAL] | **Surgical Strike** (In Development) |
 | **L8** | Advanced | MSK / GMSK / DQPSK | **Efficiency** (Maximum spectral density) |
 

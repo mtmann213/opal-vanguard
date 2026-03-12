@@ -38,7 +38,7 @@ Opal Vanguard runs in a multi-threaded environment where GNU Radio (C++) and PyQ
 The USRP hardware relies on nanosecond-precise metadata (Tags) to control the RF front-end.
 
 ### Standards:
-- **Tag Scaling**: If a block changes the number of samples (like interpolation/decimation), the `packet_len` tag must be scaled using `tagged_stream_multiply_length` BEFORE reaching the USRP Sink.
+- **Tag Scaling & Delay Compensation (v19.58)**: GNU Radio modulators (like `gfsk_mod`) introduce internal pipeline delays. When using `packet_len` tags for USRP burst control, you MUST use the `FinalTagFixer` pattern to scale the tag by `SPS` and add the required sample offset (typically 32 bits * SPS) to ensure the hardware burst matches the modulated samples exactly. Failure to do so results in `tP` (Tag Propagation) errors.
 - **Hardware-Timed Hopping**: Use UHD `set_command_time()` for frequency transitions. This offloads the timing from the jittery Python scheduler to the USRP's internal FPGA clock.
 - **Ghost Mode**: Ensure the `tx_sob` and `tx_eob` tags are correctly placed to trigger the Power Amplifier (PA) only during active bursts.
 

@@ -10,7 +10,7 @@
 </head>
 <body>
     <div class="header">
-        <h1>OPAL VANGUARD // COMMANDER DASHBOARD</h1>
+        <h1>OPAL VANGUARD // COMMANDER DASHBOARD <span id="mission-id-header" style="color: #ffcc00; margin-left: 20px; font-size: 0.8em;"></span></h1>
         <div style="display: flex; align-items: center; gap: 15px;">
             <button id="clear-btn" class="status-indicator offline" style="background: transparent; cursor: pointer; font-size: 14px; font-family: inherit;">WIPE TELEMETRY</button>
             <div id="connection-status" class="status-indicator online">LIVE</div>
@@ -233,6 +233,7 @@
                         if (event.event === "START") {
                             totalProcessed = 0; totalSuccess = 0; totalRepairs = 0; confSum = 0;
                             chanSuccess.fill(0); chanFail.fill(0);
+                            document.getElementById('mission-id-header').innerText = `[ ${event.mission_id || 'UNKNOWN'} ]`;
                             newLogsHtml += `<div class="log-entry info">[${new Date(event.timestamp*1000).toLocaleTimeString()}] MISSION START: ${event.mission_id || 'UNKNOWN'}</div>`;
                             return;
                         }

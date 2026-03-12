@@ -42,6 +42,7 @@ class session_manager(gr.basic_block):
         self.num_channels = h_cfg.get('num_channels', 50)
         self.center_freq = self.cfg.get('physical', {}).get('center_freq', 915e6)
         self.spacing = h_cfg.get('channel_spacing', 150e3)
+        self.fec_mode = self.cfg.get('mission', {}).get('id', "")
 
         # Message Ports
         self.message_port_register_in(pmt.intern("msg_in"))
@@ -78,10 +79,12 @@ class session_manager(gr.basic_block):
     def handle_heartbeat(self, msg):
         """Triggered by a message strobe to perform background tasks."""
         if self.state != "CONNECTED":
-            # v19.22: Blast SYN packets to catch hopping peers
+            # v19.29: Throttled SYN for wideband modes. Level 6+ sends 1 burst to prevent buffer bloat.
+            is_wideband = ("LEVEL_6" in self.fec_mode or "LEVEL_7" in self.fec_mode)
+            num_syns = 1 if is_wideband else 3
             print(f"[MAC] Searching for peer... (State: {self.state})")
             syn_payload = struct.pack('>H', self.current_seed).ljust(16, b'\x00')
-            for _ in range(3): self.send_packet(syn_payload, msg_type=1)
+            for _ in range(num_syns): self.send_packet(syn_payload, msg_type=1)
 
     def publish_status(self):
         msg = pmt.make_dict()

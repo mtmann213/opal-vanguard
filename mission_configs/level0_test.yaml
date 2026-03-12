@@ -1,17 +1,19 @@
-# Opal Vanguard Mission Configuration: LEVEL 1 (Soft Link)
-# Objective: Establish a basic, unhardened GFSK link. Extreme vulnerability to jamming.
+# Opal Vanguard Mission Configuration: LEVEL 6 (Link-16)
+# Objective: Authentic Military Waveform (MSK) + CCSK Spreading.
+# Note: Dwell time reverted to 500ms for initial modulation stability.
 
 mission:
-  id: "LEVEL_1_SOFT_LINK" # Unique mission identifier string
+  id: "LEVEL_0_TEST"
 
 physical:
-  modulation: "DBPSK" # v19.50: Switched to DBPSK for hardware phase-resilience
-  samp_rate: 1000000 
-  center_freq: 915000000
-  samples_per_symbol: 10
-  preamble_len: 2048 # v19.50: Extended preamble for AGC
-  freq_dev: 25000
-  ghost_mode: false
+  modulation: "GFSK" # [GFSK, DBPSK, DQPSK, OFDM] - Base modulation scheme
+  samp_rate: 2000000 # [200000 to 56000000] - SDR sample rate in Hz
+  center_freq: 915000000 # [50000000 to 6000000000] - Center frequency in Hz
+  samples_per_symbol: 10 # [2 to 100] - Samples per information symbol
+  freq_dev: 25000 # [5000 to 500000] - Frequency deviation for GFSK in Hz
+  #preamble_len: 256 # STABILIZED: Reverted from 2048 to prevent buffer overload
+  ghost_mode: false # [true, false] - Disable TX amplifier between bursts (LPI/LPD)
+  #pulse_duration_us: 7.2 # Authentic Link-16 Pulse (Logic Placeholder)
 
 link_layer:
   frame_size: 120 # [16 to 1024] - Total packet size in bytes
@@ -32,6 +34,7 @@ mac_layer:
   arq_enabled: true # [true, false] - Automatic Repeat Request (ACK/Retransmit)
   max_retries: 3 # [0 to 10] - Number of ARQ retry attempts
   afh_enabled: false # [true, false] - Adaptive Frequency Hopping
+  #slot_duration_ms: 7.8125 # Authentic Link-16 TDMA Slot (Logic Placeholder)
 
 dsss:
   enabled: false # [true, false] - Direct Sequence Spread Spectrum
@@ -46,6 +49,7 @@ hopping:
   aes_key: "00000000000000000000000000000000" # [32-byte Hex] - Hopping sequence key
   num_channels: 50 # [2 to 200] - Total frequencies in hop pool
   channel_spacing: 150000 # [Quantitative] - Frequency gap between channels in Hz
+  jitter_enabled: false # Future Hardening: Time-Jittered transmission
 
 hardware:
   args: "type=b200" # [UHD Device Arguments]

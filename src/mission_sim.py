@@ -24,8 +24,8 @@ def run_hardware_test(config_path, alpha_serial, bravo_serial, duration=60):
     env["PYTHONPATH"] = env.get("PYTHONPATH", "") + ":" + os.path.join(os.getcwd(), "src")
 
     # Headless commands for efficiency
-    cmd_alpha = ["sudo", "-E", "python3", "src/usrp_headless.py", "--role", "ALPHA", "--config", config_path, "--serial", alpha_serial]
-    cmd_bravo = ["sudo", "-E", "python3", "src/usrp_headless.py", "--role", "BRAVO", "--config", config_path, "--serial", bravo_serial]
+    cmd_alpha = ["python3", "src/usrp_headless.py", "--role", "ALPHA", "--config", config_path, "--serial", alpha_serial]
+    cmd_bravo = ["python3", "src/usrp_headless.py", "--role", "BRAVO", "--config", config_path, "--serial", bravo_serial]
 
     print(f"[*] Launching BRAVO...")
     p_bravo = subprocess.Popen(cmd_bravo, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env)

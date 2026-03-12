@@ -55,13 +55,16 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
         self.log_f = open(self.log_filename, "a", buffering=1)
         sys.stdout = LoggerProxy(sys.stdout, self.log_f)
         sys.stderr = LoggerProxy(sys.stderr, self.log_f)
-        print(f"\n--- [OPAL VANGUARD {role} START: {time.ctime()}] ---")
-
-        gr.top_block.__init__(self, f"Opal Vanguard - {role}")
-        Qt.QWidget.__init__(self)
         
         self.role, self.serial, self.config_path = role, serial, config_path
         with open(config_path, 'r') as f: self.cfg = yaml.safe_load(f)
+        mission_id = self.cfg.get('mission', {}).get('id', 'UNKNOWN')
+        
+        print(f"\n--- [OPAL VANGUARD {role} START: {time.ctime()} | MISSION: {mission_id}] ---")
+
+        gr.top_block.__init__(self, f"Opal Vanguard - {role} [{mission_id}]")
+        Qt.QWidget.__init__(self)
+        self.setWindowTitle(f"Opal Vanguard - {role} [{mission_id}]")
         p_cfg, h_cfg, hw_cfg = self.cfg['physical'], self.cfg['hopping'], self.cfg['hardware']
         l_cfg = self.cfg['link_layer']
         
@@ -76,9 +79,11 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
         self.connect_logic(mod_type=p_cfg.get('modulation', 'GFSK'), h_cfg=h_cfg)
 
     def setup_ui(self, role, serial, hw_cfg):
-        self.setWindowTitle(f"Opal Vanguard - {role}")
+        mission_id = self.cfg.get('mission', {}).get('id', 'UNKNOWN')
+        self.setWindowTitle(f"Opal Vanguard - {role} [{mission_id}]")
         self.main_layout = Qt.QVBoxLayout(); self.setLayout(self.main_layout)
-        self.info_label = Qt.QLabel(f"<b>NODE: {role} | SDR: {serial}</b>")
+        self.info_label = Qt.QLabel(f"<b>NODE: {role} | SDR: {serial} | MISSION: {mission_id}</b>")
+        self.info_label.setStyleSheet("color: #00ffcc; font-size: 14px;")
         self.status_label = Qt.QLabel("Status: IDLE"); self.status_label.setStyleSheet("color: gray; font-weight: bold;")
         self.main_layout.addWidget(self.info_label); self.main_layout.addWidget(self.status_label)
 
@@ -172,14 +177,15 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
         
         if self.payload_type == 'heartbeat':
             hb_msg = pmt.cons(pmt.make_dict(), pmt.init_u8vector(len(f"PING FROM {self.role}"), list(f"PING FROM {self.role}".encode())))
-            # v19.25: Increased Handshake Speed (200ms) for high-hit probability
-            self.pdu_src = blocks.message_strobe(hb_msg, 200)
+            # v19.29: Adaptive Handshake Strobe. Level 6+ uses 1000ms to avoid TX saturation.
+            strobe_ms = 1000 if "LEVEL_6" in config_path or "LEVEL_7" in config_path else 200
+            self.pdu_src = blocks.message_strobe(hb_msg, strobe_ms)
         else:
             self.pdu_src = blocks.message_debug()
 
         sps = p_cfg.get('samples_per_symbol', 10)
-        # v19.24: Post-Modulation Scaling (Corrects the 7ms burst cutoff)
-        self.mult_len = blocks.tagged_stream_multiply_length(gr.sizeof_gr_complex, "packet_len", sps)
+        # v19.36: Bit-Domain Scaling. Pre-calculates the final sample count for the USRP Sink.
+        self.mult_len = blocks.tagged_stream_multiply_length(gr.sizeof_char, "packet_len", sps)
         
         mod_type = p_cfg.get('modulation', 'GFSK')
         print(f"\n[DSP] Mode: {mod_type} | SPS: {sps} | Rate: {self.samp_rate/1e6:.1f} Msps")
@@ -189,11 +195,11 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
             bit_rate = self.samp_rate / sps
             default_dev = bit_rate / 4.0 if mod_type in ["MSK", "GMSK"] else p_cfg.get('freq_dev', 25000)
             sens = (2.0 * np.pi * default_dev) / self.samp_rate
-            # v19.25: Sharp MSK (BT=10.0) for better hardware signal lock
-            bt = 10.0 if mod_type == "MSK" else p_cfg.get('gmsk_bt', 0.35)
+            # v19.27: Standard MSK (BT=0.5) for improved hardware sensitivity
+            bt = 0.5 if mod_type == "MSK" else p_cfg.get('gmsk_bt', 0.35)
             self.mod_a = digital.gfsk_mod(sps, sens, bt, False, False, False)
-            # v19.23: Hardened Demodulator. Increased frequency tracking (0.2) and clock limits (0.01).
-            self.demod_b = digital.gfsk_demod(sps, sens, 0.2, 0.5, 0.01, 0.0)
+            # v19.31: Restored original stable clock recovery parameters
+            self.demod_b = digital.gfsk_demod(sps, sens, 0.1, 0.5, 0.005, 0.0)
         elif mod_type == "DQPSK":
             self.mod_a = digital.psk_mod(4, differential=True, samples_per_symbol=sps, excess_bw=0.35)
             self.demod_b = digital.psk_demod(4, differential=True, samples_per_symbol=sps, excess_bw=0.35)
@@ -248,14 +254,14 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
         self.msg_connect((self.pkt_a, "out"), (self.p2s_a, "pdus"))
         
         if mod_type == "OFDM":
-            self.connect(self.p2s_a, self.mod_a, self.mult_len, self.usrp_sink)
+            self.connect(self.p2s_a, self.mod_a, self.usrp_sink)
             self.connect(self.usrp_source, self.rx_filter, self.demod_b, self.unpack, self.depkt_b)
         elif mod_type == "CSS":
             # CSS handles its own tag scaling via interp_block
             self.connect(self.p2s_a, self.mod_a, self.usrp_sink)
             self.connect(self.usrp_source, self.rx_filter, self.demod_b, self.depkt_b)
         else:
-            self.connect(self.p2s_a, self.mod_a, self.mult_len, self.usrp_sink)
+            self.connect(self.p2s_a, self.mult_len, self.mod_a, self.usrp_sink)
             self.connect(self.usrp_source, self.rx_filter, self.demod_b, self.depkt_b)
 
         self.msg_connect((self.depkt_b, "out"), (self.session, "msg_in"))
@@ -297,7 +303,7 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
         self.msg_connect((self.hop_ctrl, "freq"), (self.uhd_h, "msg"))
 
         self.timer = QTimer(); self.timer.timeout.connect(lambda: self.hop_ctrl.handle_trigger(pmt.PMT_T))
-        if h_cfg.get('enabled', True): self.timer.start(h_cfg['dwell_time_ms'] // 2)
+        if h_cfg.get('enabled', True): self.timer.start(h_cfg['dwell_time_ms'])
 
     @pyqtSlot(object)
     def on_status_msg(self, msg):

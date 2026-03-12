@@ -21,7 +21,8 @@ class packetizer(gr.basic_block):
         l_cfg = self.cfg.get('link_layer', {})
         p_cfg = self.cfg.get('physical', {})
         self.frame_size = l_cfg.get('frame_size', 120)
-        self.preamble_len = p_cfg.get('preamble_len', 512)
+        # v19.50: Beefy preamble for AGC settling.
+        self.preamble_len = 2048
         self.use_fec = l_cfg.get('use_fec', True)
         self.use_interleaving = l_cfg.get('use_interleaving', True)
         self.use_whitening = l_cfg.get('use_whitening', True)
@@ -110,14 +111,26 @@ class packetizer(gr.basic_block):
             data_block = fec_payload
 
         # Final Formatting
-        packet = self.interleaver.interleave(data_block)
-        if self.use_whitening: self.scrambler.reset(); packet = self.scrambler.process(packet)
+        is_level1 = ("LEVEL_1" in self.fec_mode)
+        if is_level1:
+            packet = data_block
+        else:
+            packet = self.interleaver.interleave(data_block)
+        
+        if self.use_whitening and not is_level1: 
+            self.scrambler.reset(); packet = self.scrambler.process(packet)
 
         # Modulation
+        # v19.58: Reverted to 'big' bitorder (MSB first) to match the depacketizer's
+        # shift register approach naturally.
         bits = np.unpackbits(np.frombuffer(packet, dtype=np.uint8), bitorder='big').tolist()
+        
+        # Debug: Print the first 64 bits of the modulated payload (pre-syncword)
+        print(f"[PKT] Modulating payload ({len(bits)} bits). Head: {''.join(map(str, bits[:64]))}")
+
         is_tactical = ("LEVEL_6" in self.fec_mode or "LEVEL_7" in self.fec_mode or "LEVEL_8" in self.fec_mode)
         
-        if self.use_nrzi and not is_tactical:
+        if self.use_nrzi and not is_tactical and not is_level1:
             self.nrzi.tx_state = 0
             bits = self.nrzi.encode(bits)
         
@@ -132,12 +145,14 @@ class packetizer(gr.basic_block):
         sync_val = 0x3D4C5B6AACE12345 if is_tactical else 0x3D4C5B6A
         sync_len = 64 if is_tactical else 32
         syncword = [(sync_val >> i) & 1 for i in range(sync_len-1, -1, -1)]
-        out_bits = preamble + syncword + final_bits
-        
-        # v19.21: SANITIZE & SOB. Kill stray rx_time and add Start-of-Burst for hardware PA control.
-        # Note: tx_eob is handled automatically by the USRP Sink using the packet_len tag.
+        # v19.49: Restored post-padding (512 bits) to protect the payload tail.
+        post_padding = [0] * 512
+        out_bits = preamble + syncword + final_bits + post_padding
+
+        # v19.45: Use 'bit_count' to avoid any GNU Radio auto-scaling magic.
         clean_meta = pmt.make_dict()
-        clean_meta = pmt.dict_add(clean_meta, pmt.intern("packet_len"), pmt.from_long(len(out_bits)))
+        clean_meta = pmt.dict_add(clean_meta, pmt.intern("bit_count"), pmt.from_long(len(out_bits)))
+        # v19.49: Explicitly pass tx_sob for the tag fixer to see.
         clean_meta = pmt.dict_add(clean_meta, pmt.intern("tx_sob"), pmt.PMT_T)
         
         self.message_port_pub(pmt.intern("out"), pmt.cons(clean_meta, pmt.init_u8vector(len(out_bits), out_bits)))
