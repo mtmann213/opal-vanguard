@@ -17,12 +17,10 @@ link_layer:
   use_fec: true # [true, false]
   fec_type: "RS1511" # [RS1511, RS3115]
   use_interleaving: true # [true, false]
-  interleaver_rows: 16
+  interleaver_rows: 15
   use_whitening: true # [true, false]
   use_nrzi: true # [true, false]
   use_comsec: true # [true, false] - COMSEC ENABLED
-  use_transec: true
-  use_anti_replay: false
   comsec_key: "5365637265744f70616c4b6579313233" # 32-byte Hex - 'SecretOpalKey123'
   crc_type: "CRC16" # [CRC16, CRC32]
 
@@ -30,7 +28,7 @@ mac_layer:
   amc_enabled: false # [true, false]
   arq_enabled: true # [true, false]
   max_retries: 3 # [0 to 10]
-  afh_enabled: true # [true, false]
+  afh_enabled: false # [true, false]
 
 dsss:
   enabled: false # [true, false]

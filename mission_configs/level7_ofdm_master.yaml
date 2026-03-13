@@ -19,12 +19,10 @@ link_layer:
   use_fec: true # [true, false]
   fec_type: "RS1511" # [RS1511, RS3115]
   use_interleaving: true # [true, false]
-  interleaver_rows: 16 # [Quantitative] - INCREASED DEPTH
+  interleaver_rows: 64 # [Quantitative] - INCREASED DEPTH
   use_whitening: true # [true, false]
   use_nrzi: true # [true, false]
   use_comsec: true # [true, false]
-  use_transec: false
-  use_anti_replay: false
   comsec_key: "5365637265744f70616c4b6579313233"
   crc_type: "CRC32" # [CRC16, CRC32] - UPGRADED INTEGRITY
 

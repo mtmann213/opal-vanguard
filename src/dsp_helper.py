@@ -5,30 +5,28 @@
 import numpy as np
 
 class MatrixInterleaver:
-    """
-    Standard Matrix Interleaver.
-    Robust implementation that handles padding and non-standard frame sizes.
-    """
-    def __init__(self, rows=16):
+    def __init__(self, rows=8):
         self.rows = rows
-
-    def interleave(self, data):
-        """Standard Matrix Interleaving (Write rows, Read columns)."""
+    def interleave(self, data, *args):
+        # Convert to numpy directly from buffer
         arr = np.frombuffer(data, dtype=np.uint8)
-        cols = int(np.ceil(len(arr) / self.rows))
-        # Self-Padding to ensure grid match
-        padded = np.pad(arr, (0, (self.rows * cols) - len(arr)), mode='constant')
-        matrix = padded.reshape(self.rows, cols)
-        return matrix.T.flatten().tobytes()
-
-    def deinterleave(self, data):
-        """Reverse Matrix Interleaving (Write columns, Read rows)."""
+        data_len = len(arr)
+        cols = (data_len + self.rows - 1) // self.rows
+        # Pad with zeros if necessary
+        if data_len < (cols * self.rows):
+            arr = np.append(arr, np.zeros((cols * self.rows) - data_len, dtype=np.uint8))
+        matrix = arr.reshape((self.rows, cols))
+        # Transpose and flatten (Column-major to Row-major swap)
+        interleaved = matrix.T.flatten()
+        return interleaved.tobytes()
+    def deinterleave(self, data, *args):
         arr = np.frombuffer(data, dtype=np.uint8)
-        # Ensure input is multiple of rows
-        cols = len(arr) // self.rows
-        if cols * self.rows != len(arr): return data # Protection
-        matrix = arr.reshape(cols, self.rows)
-        return matrix.T.flatten().tobytes()
+        data_len = len(arr)
+        original_len = args[0] if args else data_len
+        cols = (data_len + self.rows - 1) // self.rows
+        matrix = arr.reshape((cols, self.rows))
+        deinterleaved = matrix.T.flatten()
+        return deinterleaved[:original_len].tobytes()
 
 class DSSSProcessor:
     def __init__(self, sf=31, chipping_code=None):
@@ -95,85 +93,35 @@ class CCSKProcessor:
         self.base_sequence = np.array([
             0, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 0, 1, 0, 0, 1,
             0, 0, 0, 0, 1, 0, 1, 0, 1, 1, 1, 0, 1, 1, 0, 0
-        ], dtype=np.uint8)
-        # Pre-calculate all 32 possible shifts for ultra-fast indexing
-        self.shifts = np.array([np.roll(self.base_sequence, -i) for i in range(32)], dtype=np.uint8)
-        # Pre-calculate correlation matrix (Bipolar shifts)
-        self.base_bipolar_matrix = np.array([np.roll(np.where(self.base_sequence == 1, 1, -1), -i) for i in range(32)], dtype=np.int8)
-        # Convert base bipolar for single symbols
-        self.base_bipolar = np.where(self.base_sequence == 1, 1, -1).astype(np.int8)
+        ])
+        # Convert to bipolar (+1, -1) for correlation
+        self.base_bipolar = np.where(self.base_sequence == 1, 1, -1)
 
     def encode_symbol(self, symbol):
         """Maps a 5-bit symbol (0-31) to a cyclic shift of the base sequence."""
-        return self.shifts[symbol % 32].tolist()
-
-    def vectorized_encode(self, symbols):
-        """Encodes a block of 5-bit symbols using pre-calculated matrix indexing."""
-        return self.shifts[symbols % 32].flatten().tolist()
+        shift = symbol % 32
+        return np.roll(self.base_sequence, -shift).tolist()
 
     def decode_chips(self, chips):
-        """Finds the shift with the highest magnitude correlation using matrix dot product."""
+        """Finds the shift with the highest magnitude correlation to recover the 5-bit symbol."""
         if len(chips) < 32: return 0, 0.0
-        chip_bipolar = np.where(np.array(chips[:32]) == 1, 1, -1).astype(np.int8)
+        chip_bipolar = np.where(np.array(chips[:32]) == 1, 1, -1)
         
-        # Single matrix multiplication replaces 32 loops
-        correlations = np.abs(np.dot(self.base_bipolar_matrix, chip_bipolar))
+        correlations = []
+        for shift in range(32):
+            ref = np.roll(self.base_bipolar, -shift)
+            # Use absolute sum to handle phase inversions natively
+            correlations.append(abs(np.sum(chip_bipolar * ref)))
         
         best_shift = np.argmax(correlations)
         confidence = correlations[best_shift] / 32.0
-        return int(best_shift), float(confidence)
-
-class CSSProcessor:
-    """
-    Chirp Spread Spectrum (CSS) Processor.
-    Uses Linear Frequency Sweeps (Chirps) to represent bits.
-    Robust against noise and multipath. Optimized via Vectorization.
-    """
-    def __init__(self, sps=128, samp_rate=2000000):
-        self.sps = sps
-        self.samp_rate = samp_rate
-        self.t = np.arange(sps) / samp_rate
-        self.bw = samp_rate / 10 # Default bandwidth is 10% of sample rate
-        
-        # Pre-calculate reference chirps
-        k = self.bw / (sps / samp_rate)
-        phase_up = 2 * np.pi * (-self.bw/2 * self.t + 0.5 * k * self.t**2)
-        phase_down = 2 * np.pi * (self.bw/2 * self.t - 0.5 * k * self.t**2)
-        
-        self.up_chirp = np.exp(1j * phase_up).astype(np.complex64)
-        self.down_chirp = np.exp(1j * phase_down).astype(np.complex64)
-        
-        # Pre-calculate Mod/Demod matrices
-        self.mod_matrix = np.vstack([self.up_chirp, self.down_chirp])
-        self.demod_matrix_conj = np.vstack([np.conj(self.up_chirp), np.conj(self.down_chirp)]).T
-
-    def modulate(self, bits):
-        """Converts bits to continuous complex baseband chirps (Vectorized)."""
-        bits_arr = np.array(bits, dtype=np.int32)
-        # Ultra-fast row indexing
-        return self.mod_matrix.take(bits_arr, axis=0).flatten()
-
-    def demodulate(self, samples):
-        """Recovers bits using vectorized conjugate correlation (Matrix Dot Product)."""
-        n_syms = len(samples) // self.sps
-        if n_syms == 0: return [], []
-        
-        # Reshape samples into symbols
-        sym_matrix = samples[:n_syms*self.sps].reshape(n_syms, self.sps)
-        
-        # Matrix multiply: (N_syms, SPS) @ (SPS, 2) -> (N_syms, 2 correlations)
-        correlations = np.abs(np.dot(sym_matrix, self.demod_matrix_conj))
-        
-        bits = np.argmax(correlations, axis=1).astype(np.uint8)
-        confidences = np.max(correlations, axis=1) / self.sps
-        
-        return bits.tolist(), confidences.tolist()
+        return best_shift, confidence
 
 class Scrambler:
     def __init__(self, mask=0x48, seed=0x7F):
         self.mask = mask; self.seed = seed; self.state = seed
-        # Pre-calculate a mask for the maximum possible expanded frame size (2048 bytes)
-        self.cached_mask = self._generate_mask(2048) 
+        # Pre-calculate a mask for the maximum possible frame size (1024 bytes)
+        self.cached_mask = self._generate_mask(1024) 
     def reset(self):
         self.state = self.seed
     def _generate_mask(self, n_bytes):

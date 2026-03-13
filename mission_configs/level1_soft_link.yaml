@@ -5,25 +5,22 @@ mission:
   id: "LEVEL_1_SOFT_LINK" # Unique mission identifier string
 
 physical:
-  modulation: "DBPSK" # v19.50: Switched to DBPSK for hardware phase-resilience
-  samp_rate: 1000000 
-  center_freq: 915000000
-  samples_per_symbol: 10
-  preamble_len: 2048 # v19.50: Extended preamble for AGC
-  freq_dev: 25000
-  ghost_mode: false
+  modulation: "GFSK" # [GFSK, DBPSK, DQPSK, OFDM] - Base modulation scheme
+  samp_rate: 2000000 # [200000 to 56000000] - SDR sample rate in Hz
+  center_freq: 915000000 # [50000000 to 6000000000] - Center frequency in Hz
+  samples_per_symbol: 10 # [2 to 100] - Samples per information symbol
+  freq_dev: 25000 # [5000 to 500000] - Frequency deviation for GFSK in Hz
+  ghost_mode: false # [true, false] - Disable TX amplifier between bursts (LPI/LPD)
 
 link_layer:
   frame_size: 120 # [16 to 1024] - Total packet size in bytes
   use_fec: false # [true, false] - Enable Reed-Solomon Forward Error Correction
   fec_type: "RS1511" # [RS1511, RS3115] - Reed-Solomon scheme
   use_interleaving: false # [true, false] - Matrix Interleaver to survive burst jamming
-  interleaver_rows: 16 # [Quantitative] - Must divide frame_size evenly
+  interleaver_rows: 15 # [Quantitative] - Must divide frame_size evenly
   use_whitening: true # [true, false] - LFSR scrambling to balance DC offset
   use_nrzi: true # [true, false] - Non-Return-to-Zero Inverted (immune to phase flips)
   use_comsec: false # [true, false] - AES-CTR link-layer encryption
-  use_transec: false
-  use_anti_replay: false
   comsec_key: "00000000000000000000000000000000" # [32-byte Hex] - Link layer key
   crc_type: "CRC16" # [CRC16, CRC32] - Integrity scheme
 

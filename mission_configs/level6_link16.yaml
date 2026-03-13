@@ -11,21 +11,18 @@ physical:
   center_freq: 915000000
   samples_per_symbol: 10
   freq_dev: 50000 # Standard for MSK at 200kbps (bit_rate/4)
-  preamble_len: 1024 # STABILIZED: Reverted from 2048 to prevent buffer overload
   ghost_mode: true
   pulse_duration_us: 7.2 # Authentic Link-16 Pulse (Logic Placeholder)
 
 link_layer:
   frame_size: 120
   use_fec: true
-  fec_type: "RS1511" # STABILIZED: Reverted from RS3115
+  fec_type: "RS3115" # Authentic Link-16 FEC
   use_interleaving: true
-  interleaver_rows: 16
+  interleaver_rows: 15
   use_whitening: true
-  use_nrzi: false # HARDENED: Disabled for MSK (Differential phase is inherent)
+  use_nrzi: true
   use_comsec: true
-  use_transec: false
-  use_anti_replay: false
   comsec_key: "5365637265744f70616c4b6579313233"
   crc_type: "CRC16"
 
@@ -45,7 +42,7 @@ hopping:
   enabled: true
   type: "AES"
   sync_mode: "TOD"
-  dwell_time_ms: 2000 # HARDENED: Slower hops for reliable discovery
+  dwell_time_ms: 100 # UPGRADED: 10 Hops/sec
   aes_key: "5365637265744f70616c4b6579313233"
   num_channels: 10 # Reduced for higher hit-probability in inspectrum
   channel_spacing: 150000

@@ -99,3 +99,9 @@ This document outlines the detailed engineering plans for the next four phases o
 
 ---
 *Roadmap generated for Opal Vanguard v15.0. These frontiers represent the path to a Tier-1 Tactical Data Link.*
+
+## 🛰️ Phase 33: Multiprocessing Offload (Performance Target)
+**Objective**: Solve the "Progressive Stutter" in Level 6.
+- **The Strategy**: Move the Reed-Solomon (RS-FEC) and Matrix Deinterleaving logic into a dedicated Python Process instead of a Thread. 
+- **The Benefit**: By decoupling the heavy mathematical "Link Layer" from the high-speed "Physical Layer," we ensure the Waterfall and USRP Sink never run dry, even when correcting maximum bit errors.
+- **Target Modulation**: High-speed multi-carrier OFDM (Level 7) and 128-chip CCSK (Level 6).

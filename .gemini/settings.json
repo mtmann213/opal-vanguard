@@ -9,8 +9,8 @@
     "showStatusInTitle": true
   },
   "model": {
-    "maxSessionTurns": 150,
-    "compressionThreshold": 0.3,
+    "maxSessionTurns": 200,
+    "compressionThreshold": 0.4,
     "name": ""
   }
 }

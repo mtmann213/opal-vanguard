@@ -212,3 +212,19 @@ To allow the Red Team to perform "Reactive Jamming" (sniffing and injecting), us
 
 ---
 *Opal Vanguard System Documentation | Prepared for Software Engineering Evaluation & Tactical Operation*
+
+## 🛠️ Field Tuning & Optimization (Phase 24)
+Starting with v15.8.12, operators can tune burst characteristics directly in the YAML mission configurations. This is critical for maintaining links in high-noise or contested environments.
+
+### 📡 Tuning the Preamble (`preamble_len`)
+- **Default**: 1024 bits.
+- **When to increase**: If you see "SYNC DETECTED" in the terminal but the LQI remains below 50%, your USRP AGC (Automatic Gain Control) may need more time to settle. Increase to **2048** or **4096** for improved stability in noisy conditions.
+- **When to decrease**: If the link is 100% stable and you need to reduce "Air Time" for stealth (LPI), you can safely drop this to **512**.
+
+### 🔑 Tuning the Syncword (`syncword`)
+- **Default**: `0x3D4C5B6A`.
+- **Tactical Strategy**: In a multi-node environment, changing the syncword allows you to isolate different tactical groups on the same frequency pool. 
+- **Length Matter**: Longer syncwords (e.g., 64-bit `0x3D4C5B6AACE12345`) provide better false-alarm rejection but are more susceptible to bit-flips in high noise. The system automatically adjusts the Hamming tolerance based on the length you provide.
+
+### 🧪 Using Level 0 (The Testbed)
+Always use `mission_configs/level0_test.yaml` to verify new tuning parameters before deploying them to a primary mission level. Level 0 is designed to be "Vanilla" GFSK with no secondary hardening, making it the perfect environment to isolate waveform timing issues.

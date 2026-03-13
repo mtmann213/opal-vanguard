@@ -34,25 +34,15 @@ class tod_hop_generator(gr.basic_block):
         self.message_port_register_out(pmt.intern("freq"))
 
     def handle_blacklist(self, msg):
-        """Expects a list of integers via PMT vector or python-converted object."""
-        try:
-            if pmt.is_u8vector(msg):
-                self.blacklist = list(pmt.u8vector_elements(msg))
-            else:
-                # Handle generic python objects passed through PMT
-                new_list = pmt.to_python(msg)
-                if isinstance(new_list, list):
-                    self.blacklist = new_list
-            if self.blacklist:
-                print(f"\033[95m[AFH] Hop Engine Blacklist Updated: {self.blacklist}\033[0m", flush=True)
-        except: pass
+        """Expects a list of integers."""
+        if pmt.is_vector_obj(msg):
+            self.blacklist = list(pmt.u8vector_elements(msg))
+            print(f"[AFH] Blacklist updated: {self.blacklist}")
 
     def handle_trigger(self, msg):
         """Calculates frequency based on absolute system time with AFH remapping."""
-        now = time.time()
-        # Always target the NEXT epoch boundary to guarantee a future timestamp for UHD
-        epoch = int(now / self.dwell_sec) + 1
-        epoch_start_time = epoch * self.dwell_sec
+        now = time.time() + self.lookahead_sec
+        epoch = int(now / self.dwell_sec)
         
         nonce = struct.pack(">QQ", 0, epoch)
         cipher = Cipher(algorithms.AES(self.key), modes.ECB(), backend=self.backend)
@@ -72,13 +62,20 @@ class tod_hop_generator(gr.basic_block):
                     break
         
         freq = self.center_freq + (final_idx - (self.num_channels // 2)) * self.channel_spacing
+        epoch_start_time = epoch * self.dwell_sec
         
         # Log absolute time and channel for synchronization verification
         if final_idx != raw_idx:
             print(f"\033[96m[AFH Hop] {time.strftime('%H:%M:%S')} | EVADED {raw_idx} -> Moved to {final_idx}\033[0m")
+        else:
+            # High-Speed Optimization: Silence console logging for Phase 9+
+            pass 
 
-        # v19.11: Emit pure frequency (No timing metadata)
-        self.message_port_pub(pmt.intern("freq"), pmt.from_double(freq))
+        # Emit dict with freq and precise command time
+        out_dict = pmt.make_dict()
+        out_dict = pmt.dict_add(out_dict, pmt.intern("freq"), pmt.from_double(freq))
+        out_dict = pmt.dict_add(out_dict, pmt.intern("time"), pmt.from_double(epoch_start_time))
+        self.message_port_pub(pmt.intern("freq"), out_dict)
 
     def work(self, input_items, output_items):
         return 0
