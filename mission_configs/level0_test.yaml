@@ -5,7 +5,7 @@ mission:
   id: "LEVEL_0_TEST"
 
 physical:
-  modulation: "OFDM" # [GFSK, DBPSK, DQPSK, OFDM] - Base modulation scheme
+  modulation: "MSK" # [GFSK, DBPSK, DQPSK, OFDM] - Base modulation scheme
   samp_rate: 4000000 # [200000 to 56000000] - SDR sample rate in Hz
   center_freq: 915000000 # [50000000 to 6000000000] - Center frequency in Hz
   samples_per_symbol: 10 # [2 to 100] - Samples per information symbol
@@ -24,7 +24,7 @@ link_layer:
   use_whitening: true # [true, false] - LFSR scrambling to balance DC offset
   use_nrzi: true # [true, false] - Non-Return-to-Zero Inverted (immune to phase flips)
   use_comsec: true # [true, false] - AES-CTR link-layer encryption
-  use_transec: false
+  use_transec: true
   use_anti_replay: false
   comsec_key: "00000000000000000000000000000000" # [32-byte Hex] - Link layer key
   crc_type: "CRC16" # [CRC16, CRC32] - Integrity scheme

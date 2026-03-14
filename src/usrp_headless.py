@@ -86,13 +86,14 @@ class OpalVanguardUSRPHeadless(gr.top_block):
 
         print(f"[{self.role}] Setting up RX filters...")
         self.rx_filter = filter.fir_filter_ccf(1, filter.firdes.low_pass(1.0, self.samp_rate, 100e3, 50e3))
-
+        
         print(f"[{self.role}] Connecting blocks...")
         self.msg_connect((self.pdu_src, "strobe"), (self.session_a, "data_in"))
         self.msg_connect((self.session_a, "pkt_out"), (self.pkt_a, "in"))
         self.msg_connect((self.pkt_a, "out"), (self.p2s_a, "pdus"))
         # v15.8.17: Scale complex samples AFTER modulation
         self.connect(self.p2s_a, self.mod_a, self.mult_len, self.usrp_sink)
+        # v15.8.20: Demodulator outputs 1 bit per symbol natively.
         self.connect(self.usrp_source, self.rx_filter, self.demod_b, self.depkt_b)
         self.msg_connect((self.depkt_b, "out"), (self.session_b, "msg_in"))
         self.msg_connect((self.session_b, "pkt_out"), (self.session_a, "msg_in"))

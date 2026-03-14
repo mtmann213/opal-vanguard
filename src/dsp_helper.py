@@ -94,8 +94,11 @@ class CCSKProcessor:
             0, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 0, 1, 0, 0, 1,
             0, 0, 0, 0, 1, 0, 1, 0, 1, 1, 1, 0, 1, 1, 0, 0
         ])
-        # Convert to bipolar (+1, -1) for correlation
-        self.base_bipolar = np.where(self.base_sequence == 1, 1, -1)
+        # v15.8.18: Pre-calculate the entire 32x32 Cyclic Shift Matrix (LUT)
+        # Each row is a unique 5-bit symbol's chip sequence in bipolar form.
+        self.lut_matrix = np.zeros((32, 32), dtype=np.int8)
+        for i in range(32):
+            self.lut_matrix[i] = np.where(np.roll(self.base_sequence, -i) == 1, 1, -1)
 
     def encode_symbol(self, symbol):
         """Maps a 5-bit symbol (0-31) to a cyclic shift of the base sequence."""
@@ -105,13 +108,12 @@ class CCSKProcessor:
     def decode_chips(self, chips):
         """Finds the shift with the highest magnitude correlation to recover the 5-bit symbol."""
         if len(chips) < 32: return 0, 0.0
+        # Fast bipolar conversion
         chip_bipolar = np.where(np.array(chips[:32]) == 1, 1, -1)
         
-        correlations = []
-        for shift in range(32):
-            ref = np.roll(self.base_bipolar, -shift)
-            # Use absolute sum to handle phase inversions natively
-            correlations.append(abs(np.sum(chip_bipolar * ref)))
+        # v15.8.18: Vectorized Matrix-Vector Multiplication.
+        # This replaces the 32-iteration Python loop with a single C-level operation.
+        correlations = np.abs(np.dot(self.lut_matrix, chip_bipolar))
         
         best_shift = np.argmax(correlations)
         confidence = correlations[best_shift] / 32.0

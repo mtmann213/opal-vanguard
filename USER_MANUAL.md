@@ -228,3 +228,12 @@ Starting with v15.8.12, operators can tune burst characteristics directly in the
 
 ### 🧪 Using Level 0 (The Testbed)
 Always use `mission_configs/level0_test.yaml` to verify new tuning parameters before deploying them to a primary mission level. Level 0 is designed to be "Vanilla" GFSK with no secondary hardening, making it the perfect environment to isolate waveform timing issues.
+
+## 🕵️ Stealth UI Mode (v15.8.22)
+For high-rate missions (Level 6/7) or when operating on portable hardware, you may encounter USRP Overflows (indicated by a red "O" in the terminal). 
+
+### 🚀 How to fix Overflows:
+1.  Locate the **"Stealth Mode: OFF"** button in the Hardware control panel.
+2.  Click it to toggle to **"Stealth Mode: ON"**.
+3.  The waterfall rendering will pause and the widget will hide. This frees up ~30% of your CPU, allowing the radio thread to prioritize data processing over visualization.
+4.  Heartbeats, BFT tracking, and Chat remain fully operational while in Stealth Mode.

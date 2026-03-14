@@ -96,6 +96,13 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
         self.hw_layout.addWidget(Qt.QLabel("RX:")); self.hw_layout.addWidget(self.rx_gain_slider)
         self.tx_gain_slider.valueChanged.connect(lambda v: self.usrp_sink.set_gain(v, 0)); self.rx_gain_slider.valueChanged.connect(lambda v: self.usrp_source.set_gain(v, 0))
 
+        # v15.8.22: Stealth UI Control
+        self.stealth_btn = Qt.QPushButton("Stealth Mode: OFF")
+        self.stealth_btn.setCheckable(True)
+        self.stealth_btn.setStyleSheet("background-color: #444; color: white; font-weight: bold;")
+        self.stealth_btn.clicked.connect(self.toggle_stealth)
+        self.hw_layout.addWidget(self.stealth_btn)
+
         self.feed_group = Qt.QGroupBox("Tactical Feed & BFT Tracking")
         self.feed_layout = Qt.QVBoxLayout(self.feed_group); self.toc_layout.addWidget(self.feed_group, 3, 0, 1, 2)
         self.text_out = Qt.QTextEdit(); self.text_out.setReadOnly(True); self.feed_layout.addWidget(self.text_out)
@@ -112,11 +119,26 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
         self.data_ui_sig.connect(self.on_data_msg)
         self.diag_ui_sig.connect(self.on_diag_msg)
 
+    def toggle_stealth(self):
+        is_stealth = self.stealth_btn.isChecked()
+        self.stealth_btn.setText(f"Stealth Mode: {'ON' if is_stealth else 'OFF'}")
+        self.stealth_btn.setStyleSheet(f"background-color: {'#b33' if is_stealth else '#444'}; color: white; font-weight: bold;")
+        if is_stealth:
+            self.snk_waterfall.qwidget().hide()
+            print("[UI] Stealth Mode Active: Waterfall Rendering Paused.")
+        else:
+            self.snk_waterfall.qwidget().show()
+            print("[UI] Stealth Mode Inactive: Waterfall Rendering Resumed.")
+
     def setup_hardware(self, hw_cfg, serial):
         args = hw_cfg['args'] + (f",serial={serial}" if serial else "")
         try:
             self.usrp_sink = uhd.usrp_sink(args, uhd.stream_args(cpu_format="fc32", channels=[0]), "packet_len")
             self.usrp_source = uhd.usrp_source(args, uhd.stream_args(cpu_format="fc32", channels=[0]))
+            
+            # v15.8.22: Tune buffers for Python efficiency
+            self.usrp_source.set_max_noutput_items(8192)
+            
             for dev in [self.usrp_sink, self.usrp_source]:
                 dev.set_samp_rate(self.samp_rate); dev.set_center_freq(self.center_freq, 0)
             self.usrp_sink.set_gain(hw_cfg['tx_gain'], 0); self.usrp_source.set_gain(hw_cfg['rx_gain'], 0)
@@ -187,7 +209,8 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
             self.connect(self.p2s_a, self.mod_a, self.usrp_sink)
             self.connect(self.usrp_source, self.rx_filter, self.demod_b, self.unpack, self.depkt_b)
         else:
-            # v15.8.17: Scale complex samples AFTER modulation.
+            # v15.8.20: Demodulator outputs 1 bit per symbol natively.
+            # Scale complex samples AFTER modulation.
             self.connect(self.p2s_a, self.mod_a, self.mult_len, self.usrp_sink)
             self.connect(self.usrp_source, self.rx_filter, self.demod_b, self.depkt_b)
 
@@ -196,7 +219,15 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
         self.msg_connect((self.session, "status_out"), (self.status_proxy, "msg"))
         self.msg_connect((self.session, "data_out"), (self.data_proxy, "msg"))
 
-        fft_size = 1024; fps_delay = 0.06
+        # v15.8.18: Adaptive UI Performance
+        # Drop waterfall FPS for high-CPU mission levels (Level 6+)
+        mission_id = self.cfg.get('mission', {}).get('id', 'UNKNOWN')
+        is_high_cpu = ("LEVEL_6" in mission_id or "LEVEL_7" in mission_id)
+        fps_delay = 0.20 if is_high_cpu else 0.06 # 5 FPS vs 16 FPS
+        fft_size = 512 if is_high_cpu else 1024
+        
+        print(f"[UI] Performance Mode: {'LOW-LATENCY' if is_high_cpu else 'STANDARD'} ({1.0/fps_delay:.1f} FPS)")
+        
         self.snk_waterfall = qtgui.waterfall_sink_c(fft_size, fft.window.WIN_BLACKMAN_HARRIS, self.center_freq, self.samp_rate, "Tactical Display", 1)
         self.snk_waterfall.set_update_time(fps_delay) 
         self.viz_panel.addWidget(sip.wrapinstance(self.snk_waterfall.qwidget(), Qt.QWidget))

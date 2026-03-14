@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Opal Vanguard - Super-Vectorized Depacketizer (v15.8.12)
+# Opal Vanguard - Super-Vectorized Depacketizer (v15.8.21.2)
 
 import numpy as np
 from gnuradio import gr
@@ -12,6 +12,7 @@ import time
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
 from dsp_helper import MatrixInterleaver, Scrambler, NRZIEncoder, CCSKProcessor
+from numpy.lib.stride_tricks import sliding_window_view
 
 class depacketizer(gr.basic_block):
     def __init__(self, config_path="mission_configs/level1_soft_link.yaml", src_id=0, ignore_self=False):
@@ -28,19 +29,21 @@ class depacketizer(gr.basic_block):
         self.use_nrzi = l_cfg.get('use_nrzi', True)
         self.fec_mode = self.cfg.get('mission', {}).get('id', "")
         
-        # Dynamic Waveform Parameters (Phase 24)
+        # Dynamic Waveform Parameters
         self.sync_hex = p_cfg.get('syncword', "0x3D4C5B6A")
         self.sync_val = int(self.sync_hex, 16)
         self.sync_len = (len(self.sync_hex) - 2) * 4
-        self.sync_mask = (1 << self.sync_len) - 1
         self.threshold = max(1, self.sync_len // 16)
+        
+        # Pre-calculate bit-arrays for vectorized comparison
+        self.target_bits = np.array([int(b) for b in format(self.sync_val, f'0{self.sync_len}b')], dtype=np.uint8)
+        self.target_inv = 1 - self.target_bits
         
         self.use_comsec = l_cfg.get('use_comsec', False)
         self.comsec_key = bytes.fromhex(l_cfg.get('comsec_key', '00'*32)) if self.use_comsec else None
         self.interleaver = MatrixInterleaver(rows=l_cfg.get('interleaver_rows', 15))
         self.scrambler = Scrambler(mask=l_cfg.get('scrambler_mask', 0x48), seed=l_cfg.get('scrambler_seed', 0x7F))
         self.nrzi = NRZIEncoder(); self.ccsk = CCSKProcessor()
-        self.use_ccsk = (self.cfg.get('dsss', {}).get('enabled', False) and self.cfg.get('dsss', {}).get('type') == "CCSK")
         
         if self.use_fec:
             from rs_helper import RS1511
@@ -51,7 +54,7 @@ class depacketizer(gr.basic_block):
         self.message_port_register_in(pmt.intern("pdu_in"))
         self.set_msg_handler(pmt.intern("pdu_in"), self.handle_pdu)
         
-        self.state = "SEARCH"; self.bit_buf = 0; self.recovered_bits = []; self.is_inverted = False
+        self.state = "SEARCH"; self.recovered_bits = []; self.is_inverted = False
 
     def verify_crc(self, payload, true_plen, sid, m_type, seq):
         if len(payload) < (true_plen + 2): return False
@@ -120,44 +123,77 @@ class depacketizer(gr.basic_block):
         n = len(in0)
         
         if self.state == "SEARCH":
-            # v15.8.12: High-Speed NumPy Search
             if n < self.sync_len: return 0
-            bits = np.array(in0 & 1, dtype=np.uint8)
+            bits = in0 & 1
             
-            for i in range(n - self.sync_len):
-                window = 0
-                for b in bits[i:i+self.sync_len]: window = (window << 1) | int(b)
+            try:
+                windows = sliding_window_view(bits, self.sync_len)
                 
-                if (window ^ self.sync_val).bit_count() <= self.threshold:
-                    self.is_inverted, found = False, True
-                elif (window ^ (self.sync_mask ^ self.sync_val)).bit_count() <= self.threshold:
-                    self.is_inverted, found = True, True
-                else: found = False
-                
-                if found:
-                    self.state = "COLLECT"; self.consume(0, i + self.sync_len); self.recovered_bits = []
-                    self.nrzi.reset(); self.scrambler.reset()
+                # Normal Sync Check
+                dists = np.sum(windows != self.target_bits, axis=1)
+                matches = np.where(dists <= self.threshold)[0]
+                if len(matches) > 0:
+                    idx = matches[0]
+                    self.is_inverted, self.state = False, "COLLECT"
+                    self.consume(0, idx + self.sync_len)
+                    self.recovered_bits = []; self.nrzi.reset(); self.scrambler.reset()
                     return 0
+                
+                # Inverted Sync Check
+                dists_inv = np.sum(windows != self.target_inv, axis=1)
+                matches_inv = np.where(dists_inv <= self.threshold)[0]
+                if len(matches_inv) > 0:
+                    idx = matches_inv[0]
+                    self.is_inverted, self.state = True, "COLLECT"
+                    self.consume(0, idx + self.sync_len)
+                    self.recovered_bits = []; self.nrzi.reset(); self.scrambler.reset()
+                    return 0
+            except: pass
             
-            self.consume(0, n - self.sync_len)
+            # Leave sync_len-1 bits for next window continuity
+            to_consume = n - self.sync_len + 1
+            self.consume(0, max(0, to_consume))
             return 0
 
         if self.state == "COLLECT":
-            needed = (self.frame_size * 8) - len(self.recovered_bits)
+            is_tactical = ("LEVEL_6" in self.fec_mode or "LEVEL_7" in self.fec_mode)
+            bits_per_frame = (self.frame_size * 8)
+            # v15.8.21.2: Fixed CCSK chip length calculation (6144 chips for 120-byte frame)
+            chips_per_frame = (bits_per_frame // 5) * 32 if is_tactical else bits_per_frame
+            
+            needed = chips_per_frame - len(self.recovered_bits)
             to_take = min(n, needed)
+            
             chunk = in0[:to_take] & 1
             if self.is_inverted: chunk = chunk ^ 1
             self.recovered_bits.extend(chunk.tolist())
             
-            if len(self.recovered_bits) >= (self.frame_size * 8):
-                bits_arr = np.array(self.recovered_bits[:self.frame_size * 8], dtype=np.uint8)
-                is_tactical = ("LEVEL_6" in self.fec_mode or "LEVEL_7" in self.fec_mode)
+            if len(self.recovered_bits) >= chips_per_frame:
+                raw_chips = np.array(self.recovered_bits[:chips_per_frame], dtype=np.uint8)
+                
+                if is_tactical:
+                    # v15.8.21.2: FULLY VECTORIZED CCSK DECODER
+                    # 1. Convert to bipolar (+1, -1)
+                    chips_bipolar = np.where(raw_chips == 1, 1, -1)
+                    # 2. Reshape into symbols: (192 symbols, 32 chips each)
+                    symbols_chips = chips_bipolar.reshape(-1, 32)
+                    # 3. Matrix-Matrix correlation: (192, 32) . (32, 32).T -> (192, 32)
+                    correlations = np.abs(np.dot(symbols_chips, self.ccsk.lut_matrix.T))
+                    # 4. Find best symbols: (192,)
+                    best_symbols = np.argmax(correlations, axis=1)
+                    # 5. Convert symbols (0-31) back to bits (960,)
+                    # Create bit-mask: [[16, 8, 4, 2, 1], ...]
+                    mask = 2**np.arange(5)[::-1]
+                    bits_arr = ((best_symbols[:, None] & mask) > 0).astype(np.uint8).flatten()
+                else:
+                    bits_arr = raw_chips
+                
                 if self.use_nrzi and not is_tactical:
                     bits_arr = np.array(self.nrzi.decode(bits_arr.tolist()), dtype=np.uint8)
                 
                 bytes_data = np.packbits(bits_arr)
                 self.process_recovered_block(bytes_data.tobytes(), 1.0)
-                self.state = "SEARCH"; self.recovered_bits = []
+                self.state, self.recovered_bits = "SEARCH", []
             
             self.consume(0, to_take)
             return 0
