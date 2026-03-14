@@ -5,7 +5,7 @@ mission:
   id: "LEVEL_0_TEST"
 
 physical:
-  modulation: "MSK" # [GFSK, DBPSK, DQPSK, OFDM] - Base modulation scheme
+  modulation: "OFDM" # [GFSK, DBPSK, DQPSK, OFDM] - Base modulation scheme
   samp_rate: 4000000 # [200000 to 56000000] - SDR sample rate in Hz
   center_freq: 915000000 # [50000000 to 6000000000] - Center frequency in Hz
   samples_per_symbol: 10 # [2 to 100] - Samples per information symbol

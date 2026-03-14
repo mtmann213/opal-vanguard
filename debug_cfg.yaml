@@ -1,0 +1,19 @@
+dsss:
+  enabled: false
+hardware:
+  samp_rate: 2000000
+hopping:
+  enabled: false
+link_layer:
+  frame_size: 120
+  use_comsec: false
+  use_fec: false
+  use_interleaving: false
+  use_nrzi: false
+  use_whitening: false
+mission:
+  id: DEBUG
+physical:
+  freq_dev: 25000
+  modulation: GFSK
+  samples_per_symbol: 10

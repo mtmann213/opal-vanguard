@@ -1,0 +1,7 @@
+link_layer:
+  frame_size: 120
+mission:
+  id: TEST
+physical:
+  modulation: DQPSK
+  samples_per_symbol: 10
