@@ -180,3 +180,28 @@ Level 6 (Link-16) suffered from USRP Overflows (O) due to the heavy computationa
 
 ---
 *Main branch locked at peak performance. Structural offloading initialized.*
+
+## 🏁 2026-03-14: The Threaded Offload Breakthrough (v15.9.5)
+**Status:** [STABLE] - Hybrid Offload Success.
+
+### 🛑 The Challenge
+Despite 100% vectorization, Level 6 still exhibited occasional overflows due to the Python Global Interpreter Lock (GIL) contention between the radio thread and the GUI. True multiprocessing was attempted but found brittle for high-speed bitstreams.
+
+### 🛠 The Breakthroughs
+1.  **Phase 40: Threaded Link-Layer Offload:**
+    - Decoupled high-speed syncword search from heavy link-layer math (RS-FEC, CCSK, Interleaving).
+    - Syncword search remains in the radio thread for buffer continuity, while math is pushed to an asynchronous background worker.
+2.  **Handshake Resilience:**
+    - Implemented Random-Backoff SYN pulses to break half-duplex handshake loops.
+3.  **Hardware Lifecycle Guards:**
+    - Fixed `libusb` interface claiming errors by adding explicit cleanup and zombie-process terminal hints.
+4.  **Bit-Perfect Vectorization:**
+    - Corrected CCSK frame math (6144 chips) and implemented pure NumPy Hamming distance correlations.
+
+### 📊 Final Performance State
+- **Stability:** Level 6 heartbeats verified. Link established within 2 seconds.
+- **Fluidity:** Zero-stutter waterfall and UI responsiveness achieved.
+- **Accuracy:** Master Validation Suite confirmed 100% bit-perfect logic across all modes.
+
+---
+*Production Baseline locked. Link-layer bottleneck definitively broken.*

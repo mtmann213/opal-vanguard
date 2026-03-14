@@ -135,16 +135,21 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
         try:
             self.usrp_sink = uhd.usrp_sink(args, uhd.stream_args(cpu_format="fc32", channels=[0]), "packet_len")
             self.usrp_source = uhd.usrp_source(args, uhd.stream_args(cpu_format="fc32", channels=[0]))
-            
+
             # v15.8.22: Tune buffers for Python efficiency
             self.usrp_source.set_max_noutput_items(8192)
-            
+
             for dev in [self.usrp_sink, self.usrp_source]:
                 dev.set_samp_rate(self.samp_rate); dev.set_center_freq(self.center_freq, 0)
             self.usrp_sink.set_gain(hw_cfg['tx_gain'], 0); self.usrp_source.set_gain(hw_cfg['rx_gain'], 0)
             self.usrp_sink.set_time_now(uhd.time_spec(time.time()))
             print(f"[HW] USRP {serial} Clock Synced.")
-        except Exception as e: print(f"FATAL HW ERROR: {e}"); sys.exit(1)
+        except Exception as e:
+            print(f"\n\033[91mFATAL HW ERROR: {e}\033[0m")
+            print("\033[93m[HINT] Your USRP is likely claimed by a zombie process.\033[0m")
+            print("\033[93m[HINT] Run: 'sudo killall -9 python3' and power-cycle your B205mini.\033[0m")
+            sys.exit(1)
+
 
     def setup_dsp(self, config_path, h_cfg, p_cfg, l_cfg):
         sid = 1 if self.role == "ALPHA" else 2

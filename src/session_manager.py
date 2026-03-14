@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Opal Vanguard - Autonomous Tactical Session Manager (v12.5)
+# Opal Vanguard - Autonomous Tactical Session Manager (v15.9.4)
 
 import numpy as np
 from gnuradio import gr
@@ -42,7 +42,6 @@ class session_manager(gr.basic_block):
         self.message_port_register_in(pmt.intern("crc_fail"))
         self.set_msg_handler(pmt.intern("crc_fail"), self.handle_crc_fail)
         
-        # New: Heartbeat port for autonomous pulses
         self.message_port_register_in(pmt.intern("heartbeat"))
         self.set_msg_handler(pmt.intern("heartbeat"), self.handle_heartbeat)
         
@@ -50,16 +49,19 @@ class session_manager(gr.basic_block):
         self.message_port_register_out(pmt.intern("data_out"))
         self.message_port_register_out(pmt.intern("status_out"))
 
-    def handle_heartbeat(self, msg):
-        """Triggered by a message strobe to perform background tasks."""
-        if self.state != "CONNECTED":
-            syn_payload = struct.pack('>H', self.current_seed).ljust(16, b'\x00')
-            self.send_packet(syn_payload, msg_type=1)
-
     def publish_status(self):
+        """Broadcasts current state to the UI process."""
         msg = pmt.make_dict()
         msg = pmt.dict_add(msg, pmt.intern("state"), pmt.intern(self.state))
         self.message_port_pub(pmt.intern("status_out"), msg)
+
+    def handle_heartbeat(self, msg):
+        """Triggered by a message strobe to perform background tasks."""
+        if self.state != "CONNECTED":
+            # v15.9.3: Random Backoff to prevent SYN collisions
+            if np.random.random() > 0.3:
+                syn_payload = struct.pack('>H', self.current_seed).ljust(16, b'\x00')
+                self.send_packet(syn_payload, msg_type=1)
 
     def handle_rx(self, msg):
         meta = pmt.car(msg)
@@ -67,9 +69,9 @@ class session_manager(gr.basic_block):
         m_type = pmt.to_long(pmt.dict_ref(meta, pmt.intern("type"), pmt.from_long(0)))
 
         if m_type == 1: # Handshake SYN
+            print(f"[MAC] Handshake SYN Detected. Responding with High-Availability ACK.")
+            for _ in range(3): self.send_packet(b"ACK", msg_type=2) 
             if self.state != "CONNECTED":
-                print(f"[MAC] Handshake SYN Detected. Responding with High-Availability ACK.")
-                for _ in range(5): self.send_packet(b"ACK", msg_type=2) # Blast ACKs to ensure capture
                 self.state = "CONNECTED"
                 self.publish_status()
         
@@ -79,23 +81,25 @@ class session_manager(gr.basic_block):
                 self.state = "CONNECTED"
                 self.publish_status()
                 # Flush transmission buffer
-                while self.tx_buffer: self.send_data_packet(self.tx_buffer.pop(0))
+                while self.tx_buffer:
+                    self.send_data_packet(self.tx_buffer.pop(0))
 
         elif m_type == 0: # DATA
-            if self.state == "CONNECTED":
-                self.consecutive_fails = 0
-                seq = pmt.to_long(pmt.dict_ref(meta, pmt.intern("seq"), pmt.from_long(0)))
-                # Blast multiple ACKs for data confirmation in high-speed modes
-                if self.arq_enabled: 
-                    for _ in range(2): self.send_packet(struct.pack('B', seq), msg_type=2)
-                self.message_port_pub(pmt.intern("data_out"), msg)
+            if self.state != "CONNECTED":
+                self.state = "CONNECTED"
+                self.publish_status()
+            
+            self.consecutive_fails = 0
+            seq = pmt.to_long(pmt.dict_ref(meta, pmt.intern("seq"), pmt.from_long(0)))
+            if self.arq_enabled: 
+                for _ in range(2): self.send_packet(struct.pack('B', seq), msg_type=2)
+            self.message_port_pub(pmt.intern("data_out"), msg)
 
     def handle_tx_request(self, msg):
         """Entry point for application-layer data."""
         payload = bytes(pmt.u8vector_elements(pmt.cdr(msg)))
         if len(payload) > 0 and b"PING" not in payload:
             print(f"[MAC] Queuing Manual Tactical Data: {payload.decode('utf-8', errors='replace')}", flush=True)
-            # Insert a tiny micro-delay to avoid colliding with an ongoing heartbeat pulse
             time.sleep(0.01) 
             
         if self.state == "CONNECTED":
@@ -109,7 +113,7 @@ class session_manager(gr.basic_block):
     def handle_crc_fail(self, msg):
         """Tracks link quality and handles NACKs."""
         self.consecutive_fails += 1
-        if self.consecutive_fails > 50: # Increased threshold for high-speed hopping
+        if self.consecutive_fails > 50:
             print("\033[91m[MAC] Link Reliability Lost. Re-Synchronizing...\033[0m", flush=True)
             self.state = "CONNECTING"
             self.publish_status()
