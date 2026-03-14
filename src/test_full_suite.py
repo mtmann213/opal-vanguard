@@ -83,14 +83,13 @@ def main():
     # 2. Timing Standards
     print("\n--- [PHASE 2] PHY Hardware Timing Standards ---")
     timing_ok = True
-    # We verify that FinalTagFixer exists in the source files
     try:
         with open("src/usrp_transceiver.py", 'r') as f:
             content = f.read()
-            if "FinalTagFixer" in content and "+ 8000" in content:
-                print("\033[92m[PASS]\033[0m FinalTagFixer found with 8000-sample safety margin.")
+            if "mult_len" in content and "sizeof_gr_complex" in content:
+                print("\033[92m[PASS]\033[0m Native C++ scaling found with correct sample-domain sizing.")
             else:
-                print("\033[91m[FAIL]\033[0m FinalTagFixer missing or safety margin too low.")
+                print("\033[91m[FAIL]\033[0m High-speed scaling block missing or misconfigured.")
                 timing_ok = False
     except:
         timing_ok = False

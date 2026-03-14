@@ -34,31 +34,6 @@ class MessageProxy(gr.basic_block):
         self.signal.emit(msg)
     def work(self, i, o): return 0
 
-class FinalTagFixer(gr.sync_block):
-    """
-    v15.8.15: The Tag Gap Resolver.
-    Ensures the USRP burst gate stays open long enough for the modulator filter tail.
-    """
-    def __init__(self, sps):
-        gr.sync_block.__init__(self, "FinalTagFixer", in_sig=[np.complex64], out_sig=[np.complex64])
-        self.sps = sps
-        self.set_tag_propagation_policy(gr.TPP_DONT)
-
-    def work(self, i, o):
-        tags = self.get_tags_in_window(0, 0, len(i[0]))
-        for tag in tags:
-            if pmt.symbol_to_string(tag.key) == "packet_len":
-                val = pmt.to_long(tag.value)
-                # Adaptive scaling: If val < 5000, it's bits. If > 5000, it's already samples.
-                samples = (val * self.sps) if val < 5000 else val
-                # Add 8000 samples safety margin to cover all modulator filter tails (RRC/FIR)
-                new_val = samples + 8000
-                self.add_item_tag(0, tag.offset, tag.key, pmt.from_long(new_val))
-            else:
-                self.add_item_tag(0, tag.offset, tag.key, tag.value)
-        o[0][:] = i[0]
-        return len(i[0])
-
 class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
     status_ui_sig = pyqtSignal(object)
     data_ui_sig = pyqtSignal(object)
@@ -171,8 +146,8 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
             self.pdu_src = blocks.message_debug()
 
         sps = p_cfg.get('samples_per_symbol', 10)
-        # v15.8.15: Use FinalTagFixer for hardware-native gating across all levels.
-        self.tag_fixer = FinalTagFixer(sps)
+        # v15.8.17: Use native C++ scaling for maximum performance and to resolve tP errors.
+        self.mult_len = blocks.tagged_stream_multiply_length(gr.sizeof_gr_complex, "packet_len", sps)
         
         mod_type = p_cfg.get('modulation', 'GFSK')
         if mod_type in ["GFSK", "MSK", "GMSK"]:
@@ -209,11 +184,11 @@ class OpalVanguardUSRP(gr.top_block, Qt.QWidget):
         
         if mod_type == "OFDM":
             # OFDM handles its own scaling
-            self.connect(self.p2s_a, self.mod_a, self.tag_fixer, self.usrp_sink)
+            self.connect(self.p2s_a, self.mod_a, self.usrp_sink)
             self.connect(self.usrp_source, self.rx_filter, self.demod_b, self.unpack, self.depkt_b)
         else:
-            # v15.8.15: FinalTagFixer placed AFTER mod_a to ensure correct sample count + margin.
-            self.connect(self.p2s_a, self.mod_a, self.tag_fixer, self.usrp_sink)
+            # v15.8.17: Scale complex samples AFTER modulation.
+            self.connect(self.p2s_a, self.mod_a, self.mult_len, self.usrp_sink)
             self.connect(self.usrp_source, self.rx_filter, self.demod_b, self.depkt_b)
 
         self.msg_connect((self.depkt_b, "out"), (self.session, "msg_in"))

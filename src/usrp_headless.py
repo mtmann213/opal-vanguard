@@ -20,29 +20,6 @@ from hop_generator_tod import tod_hop_generator
 from hop_generator_aes import aes_hop_generator
 from session_manager import session_manager
 
-class FinalTagFixer(gr.sync_block):
-    """
-    v15.8.15: The Tag Gap Resolver.
-    Ensures the USRP burst gate stays open long enough for the modulator filter tail.
-    """
-    def __init__(self, sps):
-        gr.sync_block.__init__(self, "FinalTagFixer", in_sig=[np.complex64], out_sig=[np.complex64])
-        self.sps = sps
-        self.set_tag_propagation_policy(gr.TPP_DONT)
-
-    def work(self, i, o):
-        tags = self.get_tags_in_window(0, 0, len(i[0]))
-        for tag in tags:
-            if pmt.symbol_to_string(tag.key) == "packet_len":
-                val = pmt.to_long(tag.value)
-                samples = (val * self.sps) if val < 5000 else val
-                new_val = samples + 8000
-                self.add_item_tag(0, tag.offset, tag.key, pmt.from_long(new_val))
-            else:
-                self.add_item_tag(0, tag.offset, tag.key, tag.value)
-        o[0][:] = i[0]
-        return len(i[0])
-
 class OpalVanguardUSRPHeadless(gr.top_block):
     def __init__(self, role="ALPHA", serial="", config_path="mission_configs/level1_soft_link.yaml"):
         gr.top_block.__init__(self, f"Opal Vanguard - {role}")
@@ -89,8 +66,8 @@ class OpalVanguardUSRPHeadless(gr.top_block):
         
         mod_type = p_cfg.get('modulation', 'GFSK')
         sps = p_cfg.get('samples_per_symbol', 10)
-        # v15.8.15: Use FinalTagFixer for reliable hardware gating
-        self.tag_fixer = FinalTagFixer(sps)
+        # v15.8.17: Use native C++ scaling for high-speed reliability.
+        self.mult_len = blocks.tagged_stream_multiply_length(gr.sizeof_gr_complex, "packet_len", sps)
         
         if mod_type == "DBPSK":
             self.mod_a = digital.psk_mod(2, samples_per_symbol=sps, differential=True)
@@ -114,8 +91,8 @@ class OpalVanguardUSRPHeadless(gr.top_block):
         self.msg_connect((self.pdu_src, "strobe"), (self.session_a, "data_in"))
         self.msg_connect((self.session_a, "pkt_out"), (self.pkt_a, "in"))
         self.msg_connect((self.pkt_a, "out"), (self.p2s_a, "pdus"))
-        # v15.8.15: FinalTagFixer placed AFTER mod_a
-        self.connect(self.p2s_a, self.mod_a, self.tag_fixer, self.usrp_sink)
+        # v15.8.17: Scale complex samples AFTER modulation
+        self.connect(self.p2s_a, self.mod_a, self.mult_len, self.usrp_sink)
         self.connect(self.usrp_source, self.rx_filter, self.demod_b, self.depkt_b)
         self.msg_connect((self.depkt_b, "out"), (self.session_b, "msg_in"))
         self.msg_connect((self.session_b, "pkt_out"), (self.session_a, "msg_in"))
