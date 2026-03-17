@@ -70,7 +70,14 @@ body {
 .metric-value {
     font-size: 2.5em;
     color: var(--primary);
-    text-shadow: 0 0 10px rgba(0, 255, 204, 0.2);
+    text-shadow: 0 0 15px rgba(0, 255, 204, 0.5);
+    transition: color 0.3s ease;
+}
+
+@keyframes pulse-red {
+    0% { background-color: transparent; }
+    50% { background-color: rgba(255, 51, 51, 0.2); }
+    100% { background-color: transparent; }
 }
 
 .chart-container {

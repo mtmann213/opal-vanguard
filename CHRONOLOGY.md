@@ -133,9 +133,6 @@ The project entered a "Stability Loop" where attempts to fix USRP Tag Gaps intro
 ## 🏁 2026-03-12: The Super-Vectorized Breakthrough (v15.8.12)
 **Status:** [STABLE] - Performance Milestone.
 
-### 🛑 The Challenge
-While Level 1 was stable, Levels 2-6 suffered from "Progressive Stuttering." The Python bit-by-bit search loop (2,000,000 iterations/sec) was consuming 100% of the radio thread CPU, leaving no room for the Waterfall UI or complex FEC/Interleaving calculations.
-
 ### 🛠 The Breakthroughs
 1.  **Phase 24: Dynamic Waveform Parameters:**
     - Integrated `preamble_len` and `syncword` directly into the YAML mission configs.
@@ -159,9 +156,6 @@ While Level 1 was stable, Levels 2-6 suffered from "Progressive Stuttering." The
 ## 🏁 2026-03-12: The Hardware-Limit Optimization (v15.8.22)
 **Status:** [STABLE] - High-Rate Optimization.
 
-### 🛑 The Challenge
-Level 6 (Link-16) suffered from USRP Overflows (O) due to the heavy computational load of CCSK decoding and high-speed UI rendering. Single-threaded Python was reaching its processing ceiling at 2.0 Msps.
-
 ### 🛠 The Breakthroughs
 1.  **Phase 36: Intelligent Clock Recovery:**
     - Abandoned "dumb" decimation in favor of the demodulator's native internal symbol synchronization.
@@ -184,9 +178,6 @@ Level 6 (Link-16) suffered from USRP Overflows (O) due to the heavy computationa
 ## 🏁 2026-03-14: The Threaded Offload Breakthrough (v15.9.5)
 **Status:** [STABLE] - Hybrid Offload Success.
 
-### 🛑 The Challenge
-Despite 100% vectorization, Level 6 still exhibited occasional overflows due to the Python Global Interpreter Lock (GIL) contention between the radio thread and the GUI. True multiprocessing was attempted but found brittle for high-speed bitstreams.
-
 ### 🛠 The Breakthroughs
 1.  **Phase 40: Threaded Link-Layer Offload:**
     - Decoupled high-speed syncword search from heavy link-layer math (RS-FEC, CCSK, Interleaving).
@@ -205,3 +196,46 @@ Despite 100% vectorization, Level 6 still exhibited occasional overflows due to 
 
 ---
 *Production Baseline locked. Link-layer bottleneck definitively broken.*
+
+## 🏁 2026-03-15: MISSION: THE BLOB BREAKTHROUGH
+**Status:** [STABLE] - Physics Bottleneck Broken.
+
+### 🛑 The Challenge
+Validation accuracy was plateaued at 29% because hardware CFO (Frequency Offset) was rotating the constellations so fast they appeared as "Hollow Donuts" to the AI. Standard linear phase fitting failed due to the high noise floor of the 60dB attenuators.
+
+### 🛠 The Breakthroughs
+1.  **FFT-Lock Frequency Estimation (v2.32):**
+    - Transitioned from phase-domain fitting to frequency-domain peak detection.
+    - Achieved sub-Hz frequency lock by searching the 50kHz pilot spectrum for the "Brightest Peak."
+2.  **Auto-Leveler AGC (v2.33):**
+    - Implemented real-time Automatic Gain Control to scale attenuated signals (Peak 0.007) to full-scale digital range (Target 0.8).
+    - Definitively transformed "Donuts" into "Blobs," revealing the distinct modulation signatures.
+3.  **Nyquist-Safe Sync (v3.8):**
+    - Standardized a 50kHz pilot frequency at 500ksps to prevent aliasing and wrap-around errors during hardware calibration.
+
+### 📊 Project State
+- **Status:** Specter Harvest Initialized.
+- **Current Dataset:** `SPECTER_GOLDEN_FINAL.h5` (Launching).
+- **Next:** Transfer Learning on the 3080 Ti.
+
+## 🏁 2026-03-15: MISSION: SPECTER'S EDGE
+**Status:** [ACTIVE] - Mega-Harvest Initialized.
+
+### 🛑 The Objective
+Transition the model from a lab-environment specialist to a field-ready Neural Receiver by capturing 250,000+ snapshots of "Dirty" real-world hardware data.
+
+### 🛠 The Breakthroughs
+1.  **Specter-Sequencer (v1.7):**
+    - Implemented nested hardware loops for multi-dimensional diversity: 24 Classes x 4 Gains x 3 SCO Drift levels x 3 CFO Offsets.
+    - Synchronized the "Hardware Trinity" (TX, RX, Adversary) for industrial-grade data production.
+2.  **Live-Monitor Watchtower (v1.0):**
+    - Developed a real-time visualization tool using HDF5 SWMR mode.
+    - Enables instantaneous audit of constellations and peak power during the 4-hour mega-run to prevent "garbage" collection.
+3.  **Industrial Hardening:**
+    - Standardized a 1.5s hardware settling time and precise timing bridges between bursts to ensure USRP PLL stability.
+    - Forced absolute pathing and defensive disk-flushing to protect progress against OS crashes.
+
+### 📊 Project State
+- **Status:** Specter Mega-Harvest Active.
+- **Goal:** 250,000 snapshots of resilient hardware data.
+- **Current Progress:** BPSK Golden Audit Verified. 24-Class run in progress.

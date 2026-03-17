@@ -10,7 +10,7 @@
   },
   "model": {
     "maxSessionTurns": 200,
-    "compressionThreshold": 0.4,
+    "compressionThreshold": 0.5,
     "name": ""
   }
 }

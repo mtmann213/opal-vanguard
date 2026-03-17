@@ -16,3 +16,10 @@ binary
 build/
 .grc_history
 legacy_archive/last_night
+data/
+*.npy
+*.h5
+*.tar
+*.png
+*.log
+*.h5
