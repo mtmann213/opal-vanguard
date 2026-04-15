@@ -42,8 +42,10 @@ hopping:
   enabled: true
   type: "AES"
   sync_mode: "TOD"
+  initial_seed: 0xACE
   dwell_time_ms: 100 # UPGRADED: 10 Hops/sec
   aes_key: "5365637265744f70616c4b6579313233"
+  fhss_key: "486f7070696e67436172656972457874"
   num_channels: 10 # Reduced for higher hit-probability in inspectrum
   channel_spacing: 150000
   jitter_enabled: false # Future Hardening: Time-Jittered transmission

@@ -39,6 +39,7 @@ hopping:
   enabled: false # [true, false]
   type: "AES"
   sync_mode: "TOD"
+  initial_seed: 0xACE
   dwell_time_ms: 1000
   aes_key: "00000000000000000000000000000000"
   num_channels: 50

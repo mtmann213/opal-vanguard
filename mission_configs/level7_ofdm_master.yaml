@@ -19,7 +19,7 @@ link_layer:
   use_fec: true # [true, false]
   fec_type: "RS1511" # [RS1511, RS3115]
   use_interleaving: true # [true, false]
-  interleaver_rows: 64 # [Quantitative] - INCREASED DEPTH
+  interleaver_rows: 20
   use_whitening: true # [true, false]
   use_nrzi: true # [true, false]
   use_comsec: true # [true, false]
@@ -41,10 +41,13 @@ hopping:
   enabled: true # [true, false]
   type: "AES" # [AES]
   sync_mode: "TOD" # [TOD]
+  initial_seed: 0xACE
   dwell_time_ms: 1000 # [50 to 5000]
   aes_key: "5365637265744f70616c4b6579313233"
+  fhss_key: "4f46444d61737465724368616e6e656c"
   num_channels: 50
   channel_spacing: 150000
+  jitter_enabled: false
 
 hardware:
   args: "type=b200"

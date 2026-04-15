@@ -40,8 +40,10 @@ hopping:
   enabled: true
   type: "AES"
   sync_mode: "TOD"
+  initial_seed: 0xACE
   dwell_time_ms: 1000
   aes_key: "5365637265744f70616c4b6579313233"
+  fhss_key: "416476616e63656457617665466f726d73"
   num_channels: 50
   channel_spacing: 150000
 

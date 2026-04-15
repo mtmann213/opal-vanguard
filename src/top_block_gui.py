@@ -24,6 +24,7 @@ from hop_generator_aes import aes_hop_generator
 from hop_generator_tod import tod_hop_generator
 from session_manager import session_manager
 
+
 # ----------------------------------------------------------------------
 # INTERNAL HANDLER BLOCKS
 # ----------------------------------------------------------------------
@@ -31,30 +32,47 @@ class FreqHandlerBlock(gr.basic_block):
     def __init__(self, parent):
         gr.basic_block.__init__(self, name="FreqHandler", in_sig=None, out_sig=None)
         self.parent = parent
-        self.message_port_register_in(pmt.intern("msg")); self.set_msg_handler(pmt.intern("msg"), self.handle_msg)
+        self.message_port_register_in(pmt.intern("msg"))
+        self.set_msg_handler(pmt.intern("msg"), self.handle_msg)
+
     def handle_msg(self, msg):
         try:
-            freq = pmt.to_double(msg); offset = freq - self.parent.center_freq
+            freq = pmt.to_double(msg)
+            offset = freq - self.parent.center_freq
             phase_inc = 2 * np.pi * offset / self.parent.samp_rate
-            self.parent.rot_tx.set_phase_inc(phase_inc); self.parent.rot_rx.set_phase_inc(-phase_inc)
-        except: pass
+            self.parent.rot_tx.set_phase_inc(phase_inc)
+            self.parent.rot_rx.set_phase_inc(-phase_inc)
+        except Exception as e:
+            pass  # Silent fail on freq handler errors
+
 
 class StatusHandlerBlock(gr.basic_block):
     def __init__(self, parent):
         gr.basic_block.__init__(self, name="StatusHandler", in_sig=None, out_sig=None)
         self.parent = parent
-        self.message_port_register_in(pmt.intern("msg")); self.set_msg_handler(pmt.intern("msg"), self.handle_msg)
-    def handle_msg(self, msg): self.parent.status_signal.emit(self.parent.session_a.state, self.parent.session_b.state)
+        self.message_port_register_in(pmt.intern("msg"))
+        self.set_msg_handler(pmt.intern("msg"), self.handle_msg)
+
+    def handle_msg(self, msg):
+        self.parent.status_signal.emit(
+            self.parent.session_a.state, self.parent.session_b.state
+        )
+
 
 class DataHandlerBlock(gr.basic_block):
     def __init__(self, parent):
         gr.basic_block.__init__(self, name="DataHandler", in_sig=None, out_sig=None)
         self.parent = parent
-        self.message_port_register_in(pmt.intern("msg")); self.set_msg_handler(pmt.intern("msg"), self.handle_msg)
+        self.message_port_register_in(pmt.intern("msg"))
+        self.set_msg_handler(pmt.intern("msg"), self.handle_msg)
+
     def handle_msg(self, msg):
         try:
-            p = bytes(pmt.u8vector_elements(pmt.cdr(msg))).decode('utf-8', 'ignore'); self.parent.data_signal.emit(p)
-        except: pass
+            p = bytes(pmt.u8vector_elements(pmt.cdr(msg))).decode("utf-8", "ignore")
+            self.parent.data_signal.emit(p)
+        except Exception as e:
+            pass  # Silent fail on data decode errors
+
 
 # ----------------------------------------------------------------------
 # MAIN GUI CLASS
@@ -67,57 +85,87 @@ class OpalVanguardVisualDemo(gr.top_block, Qt.QWidget):
         gr.top_block.__init__(self, "Opal Vanguard Lab")
         Qt.QWidget.__init__(self)
         self.setWindowTitle(f"Opal Vanguard Lab - [{config_path}]")
-        
-        with open(config_path, 'r') as f:
+
+        with open(config_path, "r") as f:
             self.cfg = yaml.safe_load(f)
-            
-        self.samp_rate = self.cfg['physical']['samp_rate']
-        self.center_freq = self.cfg['physical']['center_freq']
-        hcfg = self.cfg['hopping']
-        mod_type = self.cfg['physical'].get('modulation', 'GFSK')
+
+        self.samp_rate = self.cfg.get("hardware", {}).get(
+            "samp_rate", self.cfg.get("physical", {}).get("samp_rate", 2000000)
+        )
+        self.center_freq = self.cfg.get("hardware", {}).get(
+            "center_freq", self.cfg.get("physical", {}).get("center_freq", 915000000)
+        )
+        hcfg = self.cfg["hopping"]
+        mod_type = self.cfg["physical"].get("modulation", "GFSK")
 
         # Layout
-        self.main_layout = Qt.QHBoxLayout(); self.setLayout(self.main_layout)
-        self.ctrl_panel = Qt.QVBoxLayout(); self.main_layout.addLayout(self.ctrl_panel, 1)
-        self.viz_panel = Qt.QVBoxLayout(); self.main_layout.addLayout(self.viz_panel, 3)
-        
+        self.main_layout = Qt.QHBoxLayout()
+        self.setLayout(self.main_layout)
+        self.ctrl_panel = Qt.QVBoxLayout()
+        self.main_layout.addLayout(self.ctrl_panel, 1)
+        self.viz_panel = Qt.QVBoxLayout()
+        self.main_layout.addLayout(self.viz_panel, 3)
+
         # Dashboard
         self.status_label = Qt.QLabel("Initial Syncing...")
-        self.status_label.setStyleSheet("font-weight: bold; color: orange; font-size: 14px;")
+        self.status_label.setStyleSheet(
+            "font-weight: bold; color: orange; font-size: 14px;"
+        )
         self.ctrl_panel.addWidget(self.status_label)
-        
+
         mode_info = f"MOD: {mod_type} | SYNC: {hcfg['sync_mode']}"
         self.ctrl_panel.addWidget(Qt.QLabel(f"<font color='blue'>{mode_info}</font>"))
 
         self.record_btn = Qt.QPushButton("START 1s IQ CAPTURE")
-        self.record_btn.setStyleSheet("background-color: red; color: white; font-weight: bold;")
+        self.record_btn.setStyleSheet(
+            "background-color: red; color: white; font-weight: bold;"
+        )
         self.record_btn.clicked.connect(self.start_capture)
         self.ctrl_panel.addWidget(self.record_btn)
 
         # Stress Sliders
         self.ctrl_panel.addWidget(Qt.QLabel("<b>Channel Stress</b>"))
-        self.noise_val = Qt.QLabel("Noise: 0.00 V"); self.ctrl_panel.addWidget(self.noise_val)
-        self.noise_slider = Qt.QSlider(Qt.Qt.Horizontal); self.noise_slider.setRange(0, 100); self.noise_slider.valueChanged.connect(self.update_channel); self.ctrl_panel.addWidget(self.noise_slider)
-        self.burst_slider = Qt.QSlider(Qt.Qt.Horizontal); self.burst_slider.setRange(0, 100); self.burst_slider.valueChanged.connect(self.update_channel); self.ctrl_panel.addWidget(Qt.QLabel("Burst Jammer")); self.ctrl_panel.addWidget(self.burst_slider)
+        self.noise_val = Qt.QLabel("Noise: 0.00 V")
+        self.ctrl_panel.addWidget(self.noise_val)
+        self.noise_slider = Qt.QSlider(Qt.Qt.Horizontal)
+        self.noise_slider.setRange(0, 100)
+        self.noise_slider.valueChanged.connect(self.update_channel)
+        self.ctrl_panel.addWidget(self.noise_slider)
+        self.burst_slider = Qt.QSlider(Qt.Qt.Horizontal)
+        self.burst_slider.setRange(0, 100)
+        self.burst_slider.valueChanged.connect(self.update_channel)
+        self.ctrl_panel.addWidget(Qt.QLabel("Burst Jammer"))
+        self.ctrl_panel.addWidget(self.burst_slider)
 
         self.clear_btn = Qt.QPushButton("Clear Mission Log")
-        self.clear_btn.clicked.connect(lambda: self.text_out.clear()); self.ctrl_panel.addWidget(self.clear_btn)
-        self.text_out = Qt.QTextEdit(); self.text_out.setReadOnly(True); self.ctrl_panel.addWidget(self.text_out)
+        self.clear_btn.clicked.connect(lambda: self.text_out.clear())
+        self.ctrl_panel.addWidget(self.clear_btn)
+        self.text_out = Qt.QTextEdit()
+        self.text_out.setReadOnly(True)
+        self.ctrl_panel.addWidget(self.text_out)
 
         # ----------------------------------------------------------------------
         # BLOCKS
         # ----------------------------------------------------------------------
-        self.session_a = session_manager(initial_seed=hcfg['initial_seed'])
-        self.session_b = session_manager(initial_seed=hcfg['initial_seed'])
-        if hcfg['sync_mode'] == "TOD": self.session_a.state = "CONNECTED"; self.session_b.state = "CONNECTED"
-            
+        self.session_a = session_manager(initial_seed=hcfg["initial_seed"])
+        self.session_b = session_manager(initial_seed=hcfg["initial_seed"])
+        if hcfg["sync_mode"] == "TOD":
+            self.session_a.state = "CONNECTED"
+            self.session_b.state = "CONNECTED"
+
         self.pkt_a = packetizer(config_path=config_path)
         self.depkt_b = depacketizer(config_path=config_path)
 
-        self.pdu_src = blocks.message_strobe(pmt.cons(pmt.make_dict(), pmt.init_u8vector(len("MISSION DATA"), list("MISSION DATA".encode()))), 3000)
+        self.pdu_src = blocks.message_strobe(
+            pmt.cons(
+                pmt.make_dict(),
+                pmt.init_u8vector(len("MISSION DATA"), list("MISSION DATA".encode())),
+            ),
+            3000,
+        )
         self.p2s_a = pdu.pdu_to_tagged_stream(gr.types.byte_t, "packet_len")
-        mod_type = self.cfg['physical'].get('modulation', 'GFSK')
-        sps = self.cfg['physical'].get('samples_per_symbol', 8)
+        mod_type = self.cfg["physical"].get("modulation", "GFSK")
+        sps = self.cfg["physical"].get("samples_per_symbol", 8)
 
         if mod_type in ["DBPSK", "DQPSK", "D8PSK"]:
             const_points = 2 if "BPSK" in mod_type else (4 if "QPSK" in mod_type else 8)
@@ -128,58 +176,114 @@ class OpalVanguardVisualDemo(gr.top_block, Qt.QWidget):
                 samples_per_symbol=sps,
                 excess_bw=0.35,
                 verbose=False,
-                log=False)
+                log=False,
+            )
             self.demod_b = digital.psk_demod(
                 constellation_points=const_points,
                 differential=True,
                 samples_per_symbol=sps,
                 excess_bw=0.35,
-                phase_bw=6.28/100.0,
-                timing_bw=6.28/100.0,
+                phase_bw=6.28 / 100.0,
+                timing_bw=6.28 / 100.0,
                 mod_code=digital.mod_codes.GRAY_CODE,
                 verbose=False,
-                log=False)
+                log=False,
+            )
         elif mod_type == "MSK":
             self.mod_a = digital.msk_mod(samples_per_symbol=sps, bt=0.5)
-            self.demod_b = digital.msk_demod(samples_per_symbol=sps, gain_mu=0.1, mu=0.5, omega_relative_limit=0.005, freq_error=0.0)
+            self.demod_b = digital.msk_demod(
+                samples_per_symbol=sps,
+                gain_mu=0.1,
+                mu=0.5,
+                omega_relative_limit=0.005,
+                freq_error=0.0,
+            )
         else:
             # GFSK Default
-            freq_dev = self.cfg['physical'].get('freq_dev', 125000)
-            mod_sensitivity = (2.0 * np.pi * freq_dev) / 2e6 # Default samp_rate
-            self.mod_a = digital.gfsk_mod(samples_per_symbol=sps, sensitivity=mod_sensitivity, bt=0.35)
-            self.demod_b = digital.gfsk_demod(samples_per_symbol=sps, gain_mu=0.1, mu=0.5, omega_relative_limit=0.005, freq_error=0.0)
+            freq_dev = self.cfg["physical"].get("freq_dev", 125000)
+            mod_sensitivity = (2.0 * np.pi * freq_dev) / 2e6  # Default samp_rate
+            self.mod_a = digital.gfsk_mod(
+                samples_per_symbol=sps, sensitivity=mod_sensitivity, bt=0.35
+            )
+            self.demod_b = digital.gfsk_demod(
+                samples_per_symbol=sps,
+                gain_mu=0.1,
+                mu=0.5,
+                omega_relative_limit=0.005,
+                freq_error=0.0,
+            )
         self.rot_tx = blocks.rotator_cc(0)
-        
+
         # Hop Controller
-        if hcfg['sync_mode'] == "TOD":
-            self.hop_ctrl = tod_hop_generator(key=bytes.fromhex(hcfg['aes_key']), num_channels=hcfg['num_channels'], center_freq=self.center_freq, channel_spacing=hcfg['channel_spacing'], dwell_ms=hcfg['dwell_time_ms'], lookahead_ms=hcfg['lookahead_ms'])
+        if hcfg["sync_mode"] == "TOD":
+            self.hop_ctrl = tod_hop_generator(
+                key=bytes.fromhex(hcfg["aes_key"]),
+                num_channels=hcfg["num_channels"],
+                center_freq=self.center_freq,
+                channel_spacing=hcfg["channel_spacing"],
+                dwell_ms=hcfg["dwell_time_ms"],
+                lookahead_ms=hcfg["lookahead_ms"],
+            )
         else:
-            if hcfg['type'] == "AES":
-                self.hop_ctrl = aes_hop_generator(key=bytes.fromhex(hcfg['aes_key']), num_channels=hcfg['num_channels'], center_freq=self.center_freq, channel_spacing=hcfg['channel_spacing'])
+            if hcfg["type"] == "AES":
+                self.hop_ctrl = aes_hop_generator(
+                    key=bytes.fromhex(hcfg["aes_key"]),
+                    num_channels=hcfg["num_channels"],
+                    center_freq=self.center_freq,
+                    channel_spacing=hcfg["channel_spacing"],
+                )
             else:
-                self.hop_ctrl = lfsr_hop_generator(seed=hcfg['initial_seed'], num_channels=hcfg['num_channels'], center_freq=self.center_freq, channel_spacing=hcfg['channel_spacing'])
-        
-        self.channel = channels.channel_model(noise_voltage=0.0, frequency_offset=0.0, epsilon=1.0, taps=[1.0+0j])
+                self.hop_ctrl = lfsr_hop_generator(
+                    seed=hcfg["initial_seed"],
+                    num_channels=hcfg["num_channels"],
+                    center_freq=self.center_freq,
+                    channel_spacing=hcfg["channel_spacing"],
+                )
+
+        self.channel = channels.channel_model(
+            noise_voltage=0.0, frequency_offset=0.0, epsilon=1.0, taps=[1.0 + 0j]
+        )
         self.rot_rx = blocks.rotator_cc(0)
-        
+
         cutoff = min(0.8e6, self.samp_rate / 2.1)
         lpf_taps = filter.firdes.low_pass(1.0, self.samp_rate, cutoff, 100e3)
         self.rx_filter = filter.fir_filter_ccf(1, lpf_taps)
-        
+
         self.stabilizer = blocks.delay(gr.sizeof_gr_complex, 100)
 
         # IQ Recorder Sink
-        self.file_sink = blocks.file_sink(gr.sizeof_gr_complex, "mission_capture_10M.cf32")
-        self.valve = blocks.copy(gr.sizeof_gr_complex); self.valve.set_enabled(False)
+        self.file_sink = blocks.file_sink(
+            gr.sizeof_gr_complex, "mission_capture_10M.cf32"
+        )
+        self.valve = blocks.copy(gr.sizeof_gr_complex)
+        self.valve.set_enabled(False)
 
         # ----------------------------------------------------------------------
         # VISUAL SINKS
         # ----------------------------------------------------------------------
-        self.snk_waterfall = qtgui.waterfall_sink_c(2048, fft.window.WIN_BLACKMAN_HARRIS, 0, self.samp_rate, "Wideband Spectrum", 1)
+        self.snk_waterfall = qtgui.waterfall_sink_c(
+            2048,
+            fft.window.WIN_BLACKMAN_HARRIS,
+            0,
+            self.samp_rate,
+            "Wideband Spectrum",
+            1,
+        )
         self.snk_waterfall.set_update_time(0.15)
-        self.snk_rx_freq = qtgui.freq_sink_c(1024, fft.window.WIN_BLACKMAN_HARRIS, 0, self.samp_rate, "De-hopped Baseband", 1)
-        self.viz_panel.addWidget(sip.wrapinstance(self.snk_waterfall.qwidget(), Qt.QWidget))
-        self.viz_panel.addWidget(sip.wrapinstance(self.snk_rx_freq.qwidget(), Qt.QWidget))
+        self.snk_rx_freq = qtgui.freq_sink_c(
+            1024,
+            fft.window.WIN_BLACKMAN_HARRIS,
+            0,
+            self.samp_rate,
+            "De-hopped Baseband",
+            1,
+        )
+        self.viz_panel.addWidget(
+            sip.wrapinstance(self.snk_waterfall.qwidget(), Qt.QWidget)
+        )
+        self.viz_panel.addWidget(
+            sip.wrapinstance(self.snk_rx_freq.qwidget(), Qt.QWidget)
+        )
 
         # ----------------------------------------------------------------------
         # CONNECTIONS
@@ -188,13 +292,23 @@ class OpalVanguardVisualDemo(gr.top_block, Qt.QWidget):
         self.msg_connect((self.session_a, "pkt_out"), (self.pkt_a, "in"))
         self.msg_connect((self.pkt_a, "out"), (self.p2s_a, "pdus"))
         self.connect(self.p2s_a, self.mod_a, self.rot_tx, self.channel)
-        self.connect(self.channel, self.rot_rx, self.rx_filter, self.stabilizer, self.demod_b, self.depkt_b)
+        self.connect(
+            self.channel,
+            self.rot_rx,
+            self.rx_filter,
+            self.stabilizer,
+            self.demod_b,
+            self.depkt_b,
+        )
         self.msg_connect((self.depkt_b, "out"), (self.session_b, "msg_in"))
         self.msg_connect((self.session_b, "pkt_out"), (self.session_a, "msg_in"))
 
-        self.freq_h = FreqHandlerBlock(self); self.msg_connect((self.hop_ctrl, "freq"), (self.freq_h, "msg"))
-        self.stat_h = StatusHandlerBlock(self); self.msg_connect((self.session_a, "pkt_out"), (self.stat_h, "msg"))
-        self.data_h = DataHandlerBlock(self); self.msg_connect((self.session_b, "data_out"), (self.data_h, "msg"))
+        self.freq_h = FreqHandlerBlock(self)
+        self.msg_connect((self.hop_ctrl, "freq"), (self.freq_h, "msg"))
+        self.stat_h = StatusHandlerBlock(self)
+        self.msg_connect((self.session_a, "pkt_out"), (self.stat_h, "msg"))
+        self.data_h = DataHandlerBlock(self)
+        self.msg_connect((self.session_b, "data_out"), (self.data_h, "msg"))
 
         self.connect(self.channel, self.valve, self.file_sink)
         self.viz_throttle = blocks.throttle(gr.sizeof_gr_complex, self.samp_rate)
@@ -203,31 +317,45 @@ class OpalVanguardVisualDemo(gr.top_block, Qt.QWidget):
 
         self.timer = Qt.QTimer()
         self.timer.timeout.connect(lambda: self.hop_ctrl.handle_trigger(pmt.PMT_T))
-        if hcfg.get('enabled', True):
-            self.timer.start(hcfg['dwell_time_ms'])
-            
+        if hcfg.get("enabled", True):
+            self.timer.start(hcfg["dwell_time_ms"])
+
         self.status_signal.connect(self.on_status_change)
         self.data_signal.connect(lambda p: self.text_out.append(f"<b>[RX]:</b> {p}"))
 
     def start_capture(self):
-        self.valve.set_enabled(True); self.record_btn.setEnabled(False); self.record_btn.setText("RECORDING...")
-        QTimer.singleShot(1000, self.stop_capture) # 1s capture
+        self.valve.set_enabled(True)
+        self.record_btn.setEnabled(False)
+        self.record_btn.setText("RECORDING...")
+        QTimer.singleShot(1000, self.stop_capture)  # 1s capture
 
     def stop_capture(self):
-        self.valve.set_enabled(False); self.record_btn.setEnabled(True); self.record_btn.setText("START 1s IQ CAPTURE")
+        self.valve.set_enabled(False)
+        self.record_btn.setEnabled(True)
+        self.record_btn.setText("START 1s IQ CAPTURE")
 
     def update_channel(self):
-        n = self.noise_slider.value() / 100.0; b = self.burst_slider.value()
-        self.noise_val.setText(f"Noise: {n:.2f} V"); self.channel.set_noise_voltage(n + (b/100.0 * 0.5))
+        n = self.noise_slider.value() / 100.0
+        b = self.burst_slider.value()
+        self.noise_val.setText(f"Noise: {n:.2f} V")
+        self.channel.set_noise_voltage(n + (b / 100.0 * 0.5))
 
     def on_status_change(self, sa, sb):
         self.status_label.setText(f"Node A: {sa} | Node B: {sb}")
-        if sa == "CONNECTED": self.status_label.setStyleSheet("color: green; font-weight: bold;")
+        if sa == "CONNECTED":
+            self.status_label.setStyleSheet("color: green; font-weight: bold;")
+
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default="mission_configs/level1_soft_link.yaml")
     args = parser.parse_args()
-    qapp = Qt.QApplication(sys.argv); tb = OpalVanguardVisualDemo(config_path=args.config); tb.start(); tb.show(); qapp.exec_()
+    qapp = Qt.QApplication(sys.argv)
+    tb = OpalVanguardVisualDemo(config_path=args.config)
+    tb.start()
+    tb.show()
+    qapp.exec_()
 
-if __name__ == '__main__': main()
+
+if __name__ == "__main__":
+    main()

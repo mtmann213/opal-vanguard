@@ -39,6 +39,7 @@ hopping:
   enabled: false # [true, false] - Frequency Hopping Spread Spectrum
   type: "AES" # [AES] - Pseudo-random sequence generator
   sync_mode: "TOD" # [TOD] - Synchronization mode (Time-of-Day)
+  initial_seed: 0xACE # [Hex] - Initial LFSR seed for session sync
   dwell_time_ms: 1000 # [50 to 5000] - Milliseconds per frequency channel
   aes_key: "00000000000000000000000000000000" # [32-byte Hex] - Hopping sequence key
   num_channels: 50 # [2 to 200] - Total frequencies in hop pool

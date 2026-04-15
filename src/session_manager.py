@@ -6,30 +6,31 @@ import numpy as np
 from gnuradio import gr
 import pmt
 import struct
-import time
 import yaml
-import os
+
 
 class session_manager(gr.basic_block):
     """
     Tactical MAC Layer for Opal Vanguard.
     Handles Handshaking (SYN/ACK), ARQ Retries, and Link Quality Monitoring.
     """
-    def __init__(self, initial_seed=0xACE, config_path="mission_configs/level1_soft_link.yaml"):
+
+    def __init__(
+        self, initial_seed=0xACE, config_path="mission_configs/level1_soft_link.yaml"
+    ):
         gr.basic_block.__init__(self, name="session_manager", in_sig=None, out_sig=None)
-        
-        with open(config_path, 'r') as f: self.cfg = yaml.safe_load(f)
-        mac_cfg = self.cfg.get('mac_layer', {})
-        self.arq_enabled = mac_cfg.get('arq_enabled', True)
-        self.max_retries = mac_cfg.get('max_retries', 3)
-        
+
+        with open(config_path, "r") as f:
+            self.cfg = yaml.safe_load(f)
+        mac_cfg = self.cfg.get("mac_layer", {})
+        self.arq_enabled = mac_cfg.get("arq_enabled", True)
+        self.max_retries = mac_cfg.get("max_retries", 3)
+
         # Internal State
         self.state = "IDLE"
         self.current_seed = initial_seed
         self.tx_buffer = []
-        self.sent_history = {}
         self.local_seq = 0
-        self.last_pulse = 0
         self.consecutive_fails = 0
 
         # Message Ports
@@ -41,13 +42,14 @@ class session_manager(gr.basic_block):
         self.set_msg_handler(pmt.intern("manual_in"), self.handle_tx_request)
         self.message_port_register_in(pmt.intern("crc_fail"))
         self.set_msg_handler(pmt.intern("crc_fail"), self.handle_crc_fail)
-        
+
         self.message_port_register_in(pmt.intern("heartbeat"))
         self.set_msg_handler(pmt.intern("heartbeat"), self.handle_heartbeat)
-        
+
         self.message_port_register_out(pmt.intern("pkt_out"))
         self.message_port_register_out(pmt.intern("data_out"))
         self.message_port_register_out(pmt.intern("status_out"))
+        self.message_port_register_out(pmt.intern("set_seed"))
 
     def publish_status(self):
         """Broadcasts current state to the UI process."""
@@ -60,7 +62,7 @@ class session_manager(gr.basic_block):
         if self.state != "CONNECTED":
             # v15.9.3: Random Backoff to prevent SYN collisions
             if np.random.random() > 0.3:
-                syn_payload = struct.pack('>H', self.current_seed).ljust(16, b'\x00')
+                syn_payload = struct.pack(">H", self.current_seed).ljust(16, b"\x00")
                 self.send_packet(syn_payload, msg_type=1)
 
     def handle_rx(self, msg):
@@ -68,40 +70,55 @@ class session_manager(gr.basic_block):
         payload = bytes(pmt.u8vector_elements(pmt.cdr(msg)))
         m_type = pmt.to_long(pmt.dict_ref(meta, pmt.intern("type"), pmt.from_long(0)))
 
-        if m_type == 1: # Handshake SYN
-            print(f"[MAC] Handshake SYN Detected. Responding with High-Availability ACK.")
-            for _ in range(3): self.send_packet(b"ACK", msg_type=2) 
+        if m_type == 1:  # Handshake SYN
+            peer_seed = (
+                struct.unpack(">H", payload[:2].ljust(2, b"\x00"))[0]
+                if len(payload) >= 2
+                else 0
+            )
+            print(
+                f"[MAC] Handshake SYN Detected (seed=0x{peer_seed:04X}). Responding with High-Availability ACK."
+            )
+            for _ in range(3):
+                self.send_packet(b"ACK", msg_type=2)
             if self.state != "CONNECTED":
                 self.state = "CONNECTED"
+                self.current_seed = peer_seed
+                self.message_port_pub(pmt.intern("set_seed"), pmt.from_long(peer_seed))
                 self.publish_status()
-        
-        elif m_type == 2: # Handshake ACK
+
+        elif m_type == 2:  # Handshake ACK
             if self.state != "CONNECTED":
-                print("\033[96m[MAC] Handshake ACK Received. Secure Link Established.\033[0m")
+                print(
+                    "\033[96m[MAC] Handshake ACK Received. Secure Link Established.\033[0m"
+                )
                 self.state = "CONNECTED"
                 self.publish_status()
                 # Flush transmission buffer
                 while self.tx_buffer:
                     self.send_data_packet(self.tx_buffer.pop(0))
 
-        elif m_type == 0: # DATA
+        elif m_type == 0:  # DATA
             if self.state != "CONNECTED":
                 self.state = "CONNECTED"
                 self.publish_status()
-            
+
             self.consecutive_fails = 0
             seq = pmt.to_long(pmt.dict_ref(meta, pmt.intern("seq"), pmt.from_long(0)))
-            if self.arq_enabled: 
-                for _ in range(2): self.send_packet(struct.pack('B', seq), msg_type=2)
+            if self.arq_enabled:
+                for _ in range(2):
+                    self.send_packet(struct.pack("B", seq), msg_type=2)
             self.message_port_pub(pmt.intern("data_out"), msg)
 
     def handle_tx_request(self, msg):
         """Entry point for application-layer data."""
         payload = bytes(pmt.u8vector_elements(pmt.cdr(msg)))
         if len(payload) > 0 and b"PING" not in payload:
-            print(f"[MAC] Queuing Manual Tactical Data: {payload.decode('utf-8', errors='replace')}", flush=True)
-            time.sleep(0.01) 
-            
+            print(
+                f"[MAC] Queuing Manual Tactical Data: {payload.decode('utf-8', errors='replace')}",
+                flush=True,
+            )
+
         if self.state == "CONNECTED":
             self.send_data_packet(msg)
         else:
@@ -114,7 +131,10 @@ class session_manager(gr.basic_block):
         """Tracks link quality and handles NACKs."""
         self.consecutive_fails += 1
         if self.consecutive_fails > 50:
-            print("\033[91m[MAC] Link Reliability Lost. Re-Synchronizing...\033[0m", flush=True)
+            print(
+                "\033[91m[MAC] Link Reliability Lost. Re-Synchronizing...\033[0m",
+                flush=True,
+            )
             self.state = "CONNECTING"
             self.publish_status()
 
@@ -125,7 +145,10 @@ class session_manager(gr.basic_block):
         meta = pmt.dict_add(meta, pmt.intern("seq"), pmt.from_long(self.local_seq))
         self.local_seq = (self.local_seq + 1) & 0xFF
         if b"PING" not in payload:
-            print(f"\033[94m[MAC] Dispatching DATA Frame ({len(payload)} bytes)...\033[0m", flush=True)
+            print(
+                f"\033[94m[MAC] Dispatching DATA Frame ({len(payload)} bytes)...\033[0m",
+                flush=True,
+            )
         self.message_port_pub(pmt.intern("pkt_out"), pmt.cons(meta, pmt.cdr(msg)))
 
     def send_packet(self, payload_bytes, msg_type):
@@ -135,4 +158,5 @@ class session_manager(gr.basic_block):
         blob = pmt.init_u8vector(len(payload_bytes), list(payload_bytes))
         self.message_port_pub(pmt.intern("pkt_out"), pmt.cons(meta, blob))
 
-    def work(self, i, o): return 0
+    def work(self, i, o):
+        return 0

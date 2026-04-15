@@ -19,14 +19,14 @@ link_layer:
   frame_size: 120 # [16 to 1024] - Total packet size in bytes
   use_fec: true # [true, false] - Enable Reed-Solomon Forward Error Correction
   fec_type: "RS1511" # [RS1511, RS3115] - Reed-Solomon scheme
-  use_interleaving: false # [true, false] - Matrix Interleaver to survive burst jamming
-  interleaver_rows: 16 # [Quantitative] - Must divide frame_size evenly
+  use_interleaving: false  # Disabled for Level 0 - baseline test
+  interleaver_rows: 15
   use_whitening: true # [true, false] - LFSR scrambling to balance DC offset
   use_nrzi: true # [true, false] - Non-Return-to-Zero Inverted (immune to phase flips)
   use_comsec: true # [true, false] - AES-CTR link-layer encryption
   use_transec: true
   use_anti_replay: false
-  comsec_key: "00000000000000000000000000000000" # [32-byte Hex] - Link layer key
+  comsec_key: "5365637265744f70616c4b6579313233" # Real key for testing COMSEC
   crc_type: "CRC16" # [CRC16, CRC32] - Integrity scheme
 
 mac_layer:
@@ -45,8 +45,10 @@ hopping:
   enabled: true # [true, false] - Frequency Hopping Spread Spectrum
   type: "AES" # [AES] - Pseudo-random sequence generator
   sync_mode: "TOD" # [TOD] - Synchronization mode (Time-of-Day)
+  initial_seed: 0xACE
   dwell_time_ms: 50 # [50 to 5000] - Milliseconds per frequency channel
   aes_key: "00000000000000000000000000000000" # [32-byte Hex] - Hopping sequence key
+  fhss_key: "544553745365656430414345464F4F44" # Test seed derived key
   num_channels: 40 # [2 to 200] - Total frequencies in hop pool
   channel_spacing: 75000 # [Quantitative] - Frequency gap between channels in Hz
   jitter_enabled: false # Future Hardening: Time-Jittered transmission
@@ -57,6 +59,11 @@ hardware:
   rx_gain: 80 # [0 to 90] - Receive sensitivity in dB
   tx_antenna: "TX/RX" # [TX/RX, RX2] - Physical port for transmission
   rx_antenna: "TX/RX" # [TX/RX, RX2] - Physical port for reception
+  samp_rate: 4000000
+  center_freq: 915000000
 
 application_layer:
   payload_type: "heartbeat" # [heartbeat, chat] - Default application behavior
+  heartbeat_ms: 1000
+  src_id: 1
+  dst_id: 2

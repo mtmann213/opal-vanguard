@@ -10,9 +10,17 @@ __pycache__/
 *.cfile
 *.dat
 *.log
+*.jsonl
+*.sig
+*.raw
 binary
+
+# Environment and secrets
+.env
+*.env
 
 # Temporary and build files
 build/
 .grc_history
 legacy_archive/last_night
+.pytest_cache/

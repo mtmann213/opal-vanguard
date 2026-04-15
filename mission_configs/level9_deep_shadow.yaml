@@ -17,7 +17,7 @@ link_layer:
   use_fec: true
   fec_type: "RS1511"
   use_interleaving: true
-  interleaver_rows: 16
+  interleaver_rows: 12
   use_whitening: true
   use_nrzi: false # CSS is robust enough without NRZI
   use_comsec: true
@@ -27,20 +27,26 @@ link_layer:
   crc_type: "CRC16"
 
 mac_layer:
+  amc_enabled: false
   arq_enabled: true
   max_retries: 5
 
 dsss:
-  enabled: false # CSS is its own spreading mechanism
+  enabled: false
+  type: "CCSK"
+  spreading_factor: 32
 
 hopping:
   enabled: true
   type: "AES"
   sync_mode: "TOD"
+  initial_seed: 0xACE
   dwell_time_ms: 500
   aes_key: "5365637265744f70616c4b6579313233"
+  fhss_key: "44656570536861646f77436869727073"
   num_channels: 50
   channel_spacing: 150000
+  jitter_enabled: false
 
 hardware:
   args: "type=b200"
@@ -48,6 +54,11 @@ hardware:
   rx_gain: 70
   tx_antenna: "TX/RX"
   rx_antenna: "TX/RX"
+  samp_rate: 2000000
+  center_freq: 915000000
 
 application_layer:
   payload_type: "heartbeat"
+  heartbeat_ms: 1000
+  src_id: 1
+  dst_id: 2
